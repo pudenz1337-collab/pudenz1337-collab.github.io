@@ -378,10 +378,10 @@ textarea.notes-area:focus { border-color: var(--accent); }
       <div style="margin-bottom:16px;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:8px;">What's your plan today?</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;" id="day-plan-btns">
-          <button class="btn btn-ghost btn-sm day-plan-btn" data-plan="workout" onclick="setDayPlan('workout')">💪 Training Day</button>
-          <button class="btn btn-ghost btn-sm day-plan-btn" data-plan="recover" onclick="setDayPlan('recover')">😴 Recovery Day</button>
-          <button class="btn btn-ghost btn-sm day-plan-btn" data-plan="light" onclick="setDayPlan('light')">🚶 Light Activity</button>
-          <button class="btn btn-ghost btn-sm day-plan-btn" data-plan="injection" onclick="setDayPlan('injection')">💉 Injection Day</button>
+          <button class="btn btn-ghost btn-sm day-plan-btn" data-plan="workout" onclick="toggleDayPlan('workout')">💪 Training Day</button>
+          <button class="btn btn-ghost btn-sm day-plan-btn" data-plan="recover" onclick="toggleDayPlan('recover')">😴 Recovery Day</button>
+          <button class="btn btn-ghost btn-sm day-plan-btn" data-plan="light" onclick="toggleDayPlan('light')">🚶 Light Activity</button>
+          <button class="btn btn-ghost btn-sm day-plan-btn" data-plan="injection" onclick="toggleDayPlan('injection')">💉 Injection Day</button>
         </div>
 
         <!-- WORKOUT TIME — only visible on Training Day -->
@@ -957,6 +957,7 @@ function addToMeal(food, qty = 1) {
   renderMealLog();
   updateTotals();
   updateInsights();
+  updateTimingTab();
   autoSave();
   showToast(`✓ ${qty > 1 ? qty + '× ' : ''}${food.name} added to ${meal}`);
 }
@@ -967,6 +968,7 @@ function removeFromMeal(meal, idx) {
   renderMealLog();
   updateTotals();
   updateInsights();
+  updateTimingTab();
   autoSave();
 }
 const MEAL_ORDER = ['Breakfast','Morning Snack','Lunch','Afternoon Snack','Dinner','Evening Snack'];
@@ -1119,40 +1121,81 @@ function addCustomFood() {
 }
 
 // ═══════════════════════════════
-// MEAL TIMING
+// MEAL TIMING TAB
 // ═══════════════════════════════
 const TIMING = [
-  { time: '9:00 AM', meal: 'Breakfast', color: 'var(--yellow)', desc: 'High protein start: 2–3 eggs + cottage cheese + spinach = ~35g protein. Add broccoli or apple chips for fiber. No rush — eat within an hour of getting up.' },
-  { time: '11:30 AM', meal: 'Morning Snack', color: 'var(--accent)', desc: 'Oikos Pro drink (23g) or cheese sticks + a small handful of granola. Quick, no-prep protein to bridge to lunch.' },
-  { time: '1:30 PM', meal: 'Lunch', color: 'var(--accent3)', desc: 'Marketside Caesar Salad (17g) or Cobb Salad (12g) + Tyson diced chicken added = up to 35g. Add avocado for healthy fats.' },
-  { time: '4:00 PM', meal: 'Afternoon Snack', color: 'var(--accent2)', desc: 'Cottage cheese bowl + freeze-dried apples. ~15g protein, satisfies sweet cravings. Great tirzepatide-day option when hunger is low.' },
-  { time: '6:30 PM', meal: 'Dinner', color: 'var(--purple)', desc: 'Marie Callender meal (18-20g) OR Tyson chicken + broccoli + cheese + avocado bowl. Aim for 30-40g protein at dinner.' },
-  { time: '9:00 PM', meal: 'Evening Snack (optional)', color: 'var(--muted)', desc: 'Only if under protein goal: a Frego cheese stick or Oikos Pro. Casein from cottage cheese before bed = overnight muscle repair.' },
+  { time: '9:00 AM',  meal: 'Breakfast',         color: 'var(--yellow)',  desc: 'High protein start: 2–3 eggs + cottage cheese + spinach = ~35g. Add broccoli or apple chips for fiber.' },
+  { time: '11:30 AM', meal: 'Morning Snack',      color: 'var(--accent)',  desc: 'Oikos Pro drink (23g) or cheese sticks + granola. Quick no-prep protein to bridge to lunch.' },
+  { time: '1:30 PM',  meal: 'Lunch',              color: 'var(--accent3)', desc: 'Caesar/Cobb Salad + Tyson chicken = up to 35g. Add avocado for healthy fats.' },
+  { time: '4:00 PM',  meal: 'Afternoon Snack',    color: 'var(--accent2)', desc: 'Cottage cheese + freeze-dried apples. ~15g protein, satisfies sweet cravings.' },
+  { time: '6:30 PM',  meal: 'Dinner',             color: 'var(--purple)',  desc: 'Marie Callender meal OR Tyson chicken + broccoli + cheese + avocado bowl. Aim for 30–40g protein.' },
+  { time: '9:00 PM',  meal: 'Evening Snack',      color: 'var(--muted)',   desc: 'Only if under protein goal: Oikos Pro or cottage cheese. Casein before bed = overnight muscle repair.' },
 ];
-function initTiming() {
+
+function updateTimingTab() {
   const el = document.getElementById('timing-list');
-  el.innerHTML = TIMING.map((t, i) => `
+  if (!el) return;
+
+  // Build total protein logged so far
+  let totalPSoFar = 0;
+  Object.values(state.mealLog).forEach(items => items.forEach(i => totalPSoFar += i.protein));
+  const proteinLeft = Math.max(0, state.goalProtein - totalPSoFar);
+  const unloggedMeals = TIMING.filter(t => !(state.mealLog[t.meal] && state.mealLog[t.meal].length));
+  const perMealTarget = unloggedMeals.length > 0 ? Math.ceil(proteinLeft / unloggedMeals.length) : 0;
+
+  el.innerHTML = TIMING.map((t, i) => {
+    const logged = state.mealLog[t.meal] && state.mealLog[t.meal].length > 0;
+    const items  = state.mealLog[t.meal] || [];
+    const mealP  = items.reduce((s, x) => s + x.protein, 0);
+    const mealC  = items.reduce((s, x) => s + x.cal, 0);
+    const mealFb = items.reduce((s, x) => s + x.fiber, 0);
+
+    const loggedHTML = logged ? `
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:${t.color};margin-bottom:6px;">✓ Logged</div>
+        ${items.map(item => `
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+            <span>${item.icon || '🍽'} ${item.displayName || item.name}</span>
+            <span style="font-family:'DM Mono',monospace;color:var(--accent3);margin-left:8px;flex-shrink:0;">${item.protein}g P</span>
+          </div>`).join('')}
+        <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);display:flex;gap:12px;font-size:11px;">
+          <span style="color:var(--accent3);font-family:'DM Mono',monospace;font-weight:700;">${Math.round(mealP*10)/10}g protein</span>
+          <span style="color:var(--yellow);font-family:'DM Mono',monospace;">${mealC} kcal</span>
+          ${mealFb > 0 ? `<span style="color:var(--accent);font-family:'DM Mono',monospace;">${Math.round(mealFb*10)/10}g fiber</span>` : ''}
+        </div>
+      </div>` : `
+      <div style="margin-top:8px;font-size:12px;color:var(--muted);line-height:1.6;">${t.desc}${unloggedMeals.length > 0 ? `<br><span style="color:var(--yellow);">Target: ~${perMealTarget}g protein</span>` : ''}</div>`;
+
+    return `
     <div style="display:flex;gap:12px;margin-bottom:14px;align-items:flex-start;">
-      <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
-        <div style="width:10px;height:10px;border-radius:50%;background:${t.color};box-shadow:0 0 8px ${t.color};flex-shrink:0;margin-top:5px;"></div>
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="width:10px;height:10px;border-radius:50%;background:${logged ? t.color : 'var(--border)'};box-shadow:${logged ? '0 0 8px '+t.color : 'none'};flex-shrink:0;margin-top:5px;"></div>
         ${i < TIMING.length - 1 ? `<div style="width:2px;flex:1;background:var(--border);min-height:30px;margin-top:4px;"></div>` : ''}
       </div>
       <div style="flex:1;">
-        <div style="font-family:'DM Mono',monospace;font-size:11px;color:${t.color};margin-bottom:3px;">${t.time}</div>
-        <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px;">
-          <div style="font-weight:600;font-size:13px;margin-bottom:5px;">${t.meal}</div>
-          <div style="font-size:12px;color:var(--muted);line-height:1.6;">${t.desc}</div>
+        <div style="font-family:'DM Mono',monospace;font-size:11px;color:${logged ? t.color : 'var(--muted)'};margin-bottom:3px;">${t.time}</div>
+        <div style="background:${logged ? 'rgba(0,229,160,0.05)' : 'var(--card2)'};border:1px solid ${logged ? t.color+'44' : 'var(--border)'};border-radius:8px;padding:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-weight:600;font-size:13px;">${t.meal}</div>
+            ${logged ? `<span style="font-size:10px;font-weight:700;color:${t.color};text-transform:uppercase;letter-spacing:.5px;">✓ Done</span>` : '<span style="font-size:10px;color:var(--muted);">Not yet logged</span>'}
+          </div>
+          ${loggedHTML}
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+}
+
+function initTiming() {
+  updateTimingTab();
 
   const combos = document.getElementById('meal-combos');
   combos.innerHTML = [
-    { label: 'Quick Protein Bomb', items: 'Oikos Pro + 2 eggs + Frego stick', p: 35, cal: 310 },
-    { label: 'Muscle Salad Bowl', items: 'Caesar Salad + Tyson chicken + avocado', p: 40, cal: 470 },
-    { label: 'Cottage Power Bowl', items: 'Kemps cottage cheese + 3 eggs + broccoli', p: 38, cal: 310 },
-    { label: 'Easy Tired Day', items: 'Marie Callender + Oikos Pro drink', p: 42, cal: 550 },
-    { label: 'High Fiber + Protein', items: 'Cobb salad + Tyson chicken + Bare apple chips', p: 35, cal: 500 },
+    { label: 'Quick Protein Bomb',       items: 'Oikos Pro + 2 eggs + Frego stick',                    p: 35, cal: 310 },
+    { label: 'Muscle Salad Bowl',        items: 'Caesar Salad + Tyson chicken + avocado',              p: 40, cal: 470 },
+    { label: 'Cottage Power Bowl',       items: 'Kemps cottage cheese + 3 eggs + broccoli',            p: 38, cal: 310 },
+    { label: 'Easy Tired Day',           items: 'Marie Callender + Oikos Pro drink',                   p: 42, cal: 550 },
+    { label: 'High Fiber + Protein',     items: 'Cobb salad + Tyson chicken + Bare apple chips',       p: 35, cal: 500 },
   ].map(c => `
     <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
       <div>
@@ -1431,7 +1474,8 @@ function resetDailyState() {
   delete checkins[todayKey()];
   localStorage.setItem('fs-training', JSON.stringify(checkins));
   // Reset day plan
-  dayPlan = null;
+  dayPlans = [];
+  localStorage.removeItem('fs-dayplans');
   localStorage.removeItem('fs-dayplan');
   workoutTime = null;
   localStorage.removeItem('fs-workouttime');
@@ -1520,7 +1564,7 @@ function confirmCompleteDay() {
     trained: training ? training.trained : null,
     muscles: training ? training.muscles : [],
     postProtein: training ? training.postProtein : null,
-    dayPlan,
+    dayPlans: [...dayPlans],
   };
   state.history.unshift(entry);
   if (state.history.length > 60) state.history = state.history.slice(0, 60);
@@ -1589,22 +1633,48 @@ function initTimeInput() {
 // ═══════════════════════════════
 // DAY PLAN + DYNAMIC INSIGHTS
 // ═══════════════════════════════
-let dayPlan = localStorage.getItem('fs-dayplan') || null;
+let dayPlans = JSON.parse(localStorage.getItem('fs-dayplans') || '[]');
+// legacy migration: single plan -> array
+if (!dayPlans.length && localStorage.getItem('fs-dayplan')) {
+  dayPlans = [localStorage.getItem('fs-dayplan')];
+  localStorage.removeItem('fs-dayplan');
+}
 let workoutTime = localStorage.getItem('fs-workouttime') || null;
 
-function setDayPlan(plan) {
-  dayPlan = plan;
-  localStorage.setItem('fs-dayplan', plan);
-  document.querySelectorAll('.day-plan-btn').forEach(b => {
-    const active = b.dataset.plan === plan;
-    b.classList.toggle('btn-primary', active);
-    b.classList.toggle('btn-ghost', !active);
-  });
-  const wtRow = document.getElementById('workout-time-row');
-  wtRow.style.display = plan === 'workout' ? 'block' : 'none';
+// Keep backward compat for any code referencing dayPlan
+Object.defineProperty(window, 'dayPlan', {
+  get() { return dayPlans[0] || null; },
+  configurable: true
+});
+
+function toggleDayPlan(plan) {
+  const idx = dayPlans.indexOf(plan);
+  if (idx === -1) {
+    // Recovery / light / workout are mutually exclusive; injection stacks with anything
+    if (plan !== 'injection') dayPlans = dayPlans.filter(p => p === 'injection');
+    dayPlans.push(plan);
+  } else {
+    dayPlans.splice(idx, 1);
+  }
+  localStorage.setItem('fs-dayplans', JSON.stringify(dayPlans));
+  syncDayPlanButtons();
   updateInsights();
+  updateTimingTab();
   autoSave();
 }
+
+function syncDayPlanButtons() {
+  document.querySelectorAll('.day-plan-btn').forEach(b => {
+    const on = dayPlans.includes(b.dataset.plan);
+    b.classList.toggle('btn-primary', on);
+    b.classList.toggle('btn-ghost', !on);
+  });
+  document.getElementById('workout-time-row').style.display =
+    dayPlans.includes('workout') ? 'block' : 'none';
+}
+
+// keep old name working just in case
+function setDayPlan(plan) { toggleDayPlan(plan); }
 
 function saveWorkoutTime() {
   workoutTime = document.getElementById('workout-time').value;
@@ -1651,219 +1721,191 @@ function updateInsights() {
   const el = document.getElementById('dynamic-insights');
   if (!el) return;
 
-  // Gather current intake data
+  // Current intake snapshot
   let totalP = 0, totalCal = 0;
-  const allItems = [];
-  Object.values(state.mealLog).forEach(items => items.forEach(i => {
-    totalP += i.protein;
-    totalCal += i.cal;
-    allItems.push(i);
-  }));
-
-  const proteinLeft = Math.max(0, state.goalProtein - totalP);
-  const mealsLogged = Object.keys(state.mealLog).length;
-  const now = new Date();
-  const hourNow = now.getHours();
-
-  // Figure out remaining meals in the day
+  Object.values(state.mealLog).forEach(items => items.forEach(i => { totalP += i.protein; totalCal += i.cal; }));
+  const proteinLeft  = Math.max(0, state.goalProtein - totalP);
   const remainingMeals = MEAL_ORDER.filter(m => !(state.mealLog[m] && state.mealLog[m].length));
   const remainingCount = remainingMeals.length;
+  const isTraining   = dayPlans.includes('workout');
+  const isInjection  = dayPlans.includes('injection');
+  const isRecovery   = dayPlans.includes('recover');
+  const isLight      = dayPlans.includes('light');
+  const mins         = minsUntilWorkout();
 
-  // Build insight blocks based on plan
   let insights = [];
 
-  if (!dayPlan) {
+  if (!dayPlans.length) {
     insights.push({
       icon: '🎯', color: 'var(--accent)',
       bg: 'rgba(0,229,160,0.08)', border: 'rgba(0,229,160,0.2)',
       title: 'Set your day plan above',
-      body: 'Tell me if you\'re training, recovering, or it\'s an injection day — I\'ll build a personalized protein schedule around it.'
+      body: 'Tap one or more options — Training Day, Injection Day, Recovery Day — and I\'ll merge the guidance into one smart plan for your day.'
     });
     el.innerHTML = insights.map(insightHTML).join('');
     return;
   }
 
-  // ── TRAINING DAY ──
-  if (dayPlan === 'workout') {
-    const preWorkoutProtein = 30;
-    const postWorkoutProtein = 40;
-    const otherProtein = state.goalProtein - preWorkoutProtein - postWorkoutProtein;
-    const mins = minsUntilWorkout();
+  // ── INJECTION DAY (always first if active) ──
+  if (isInjection) {
+    if (isTraining) {
+      insights.push({
+        icon: '💉💪', color: 'var(--accent2)',
+        bg: 'rgba(255,107,53,0.08)', border: 'rgba(255,107,53,0.25)',
+        title: 'Injection + Training Day — toughest combo, here\'s the plan',
+        body: `Appetite will drop but muscle needs fuel. <strong>Front-load your protein before the injection</strong> hits. Pre-workout: 30g protein + carbs. Post-workout: 40g within 60 min. If nausea kicks in, Oikos Pro drinks (23g each, liquid) are your MVP — no chewing required.`
+      });
+    } else {
+      insights.push({
+        icon: '💉', color: 'var(--accent2)',
+        bg: 'rgba(255,107,53,0.08)', border: 'rgba(255,107,53,0.2)',
+        title: 'Injection Day — appetite will drop, plan ahead now',
+        body: `Tirzepatide suppresses appetite most in the 24–48 hrs after injection. <strong>Pre-log your protein</strong> while you still feel okay. Liquid &amp; soft proteins are easiest when nauseous: Oikos Pro (23g), cottage cheese (13g), cheese sticks (6g each). Goal: ${state.goalProtein}g even if you eat nothing "real" — 4–5 Oikos Pros = 92g alone.`
+      });
+    }
+  }
 
-    // Phase-aware guidance based on workout time
+  // ── TRAINING DAY ──
+  if (isTraining) {
+    const preP = 30, postP = 40, otherP = state.goalProtein - preP - postP;
+
     if (workoutTime && mins !== null) {
       if (mins > 180) {
-        // Far from workout — general day setup
         insights.push({
           icon: '📋', color: 'var(--accent3)',
           bg: 'rgba(77,168,255,0.08)', border: 'rgba(77,168,255,0.2)',
-          title: `Training at ${formatTime(workoutTime)} — here's your nutrition roadmap`,
-          body: `You have <strong>${Math.round(mins/60*10)/10} hrs</strong> until your workout. Plan your meals around these anchors:<br><br>
-            <span style="color:var(--accent3)">1–2 hrs before (${formatTime(subtractMins(workoutTime, 90))}):</span> Pre-workout meal — ~${preWorkoutProtein}g protein + carbs<br>
-            <span style="color:var(--accent)">Within 60 min after (by ${formatTime(addMins(workoutTime, 60))}):</span> Post-workout — ~${postWorkoutProtein}g protein<br>
-            <span style="color:var(--muted)">Rest of day:</span> ~${otherProtein}g spread across other meals`
+          title: `Training at ${formatTime(workoutTime)} — nutrition roadmap`,
+          body: `<span style="color:var(--accent3)">1–2 hrs before (${formatTime(subtractMins(workoutTime,90))}):</span> ~${preP}g protein + carbs<br>
+            <span style="color:var(--accent)">Within 60 min after (by ${formatTime(addMins(workoutTime,60))}):</span> ~${postP}g protein<br>
+            <span style="color:var(--muted)">Rest of day:</span> ~${otherP}g spread across other meals${isInjection ? '<br><br>⚠️ <strong>Injection day:</strong> if appetite drops before your workout, get an Oikos Pro in ASAP.' : ''}`
         });
-      } else if (mins > 60 && mins <= 180) {
-        // Pre-workout window — 1-3 hrs out
-        const preMealLogged = totalP >= 20;
+      } else if (mins > 60) {
         insights.push({
           icon: '⏰', color: 'var(--yellow)',
           bg: 'rgba(255,212,96,0.09)', border: 'rgba(255,212,96,0.25)',
           title: `Pre-workout window — ${Math.round(mins/60*10)/10} hrs to go`,
-          body: preMealLogged
-            ? `✅ You've got <strong>${totalP}g protein</strong> in — good foundation. Eat your pre-workout meal in the next 30–60 min. Target <strong>30g protein + some carbs</strong> for energy: eggs + granola, or cottage cheese + apple chips.`
-            : `This is your pre-workout window. Eat <strong>30g protein + carbs now</strong> — your muscles need fuel loaded before you train. Try: 2 eggs + cottage cheese + a small granola portion (~35g protein, energy included).`
+          body: totalP >= 20
+            ? `✅ ${totalP}g protein in — solid foundation. Eat your pre-workout meal (30g + carbs) in the next 30–60 min.`
+            : `Eat <strong>30g protein + carbs now</strong>: 2 eggs + cottage cheese + granola (~35g protein). ${isInjection ? 'Do it before the injection effect kicks in.' : ''}`
         });
-        if (!preMealLogged) {
-          insights.push({
-            icon: '⚡', color: 'var(--accent2)',
-            bg: 'rgba(255,107,53,0.07)', border: 'rgba(255,107,53,0.2)',
-            title: 'Carbs matter today',
-            body: `On training days, carbs before your workout = better performance and less muscle breakdown. Don't skip them. A small serving of granola, apple chips, or rice crisps alongside your protein is exactly right.`
-          });
-        }
-      } else if (mins > 0 && mins <= 60) {
-        // Imminent — under 1 hour
+      } else if (mins > 0) {
         insights.push({
           icon: '🚨', color: 'var(--accent2)',
           bg: 'rgba(255,107,53,0.10)', border: 'rgba(255,107,53,0.3)',
-          title: `Workout in ${mins} min — last chance for pre-workout fuel`,
+          title: `Workout in ${mins} min`,
           body: totalP >= 25
-            ? `You've got <strong>${totalP}g protein</strong> in — you're fueled. Have some fast carbs if you feel low energy (apple chips, rice crisps). Don't eat a full meal this close — stick to something light.`
-            : `<strong>You haven't eaten much yet!</strong> Something is better than nothing — grab an Oikos Pro drink (23g protein, fast absorbing) right now. It won't sit heavy and your muscles will thank you.`
-        });
-        insights.push({
-          icon: '💧', color: 'var(--accent)',
-          bg: 'rgba(0,229,160,0.07)', border: 'rgba(0,229,160,0.2)',
-          title: 'Hydrate before you lift',
-          body: `You're at <strong>${state.water}oz water</strong> today. Get another 8–16oz in before your workout — even mild dehydration tanks strength and endurance.`
+            ? `You're fueled (${totalP}g). Grab fast carbs if energy is low — apple chips, rice crisps. Don't eat a full meal this close.`
+            : `Grab an <strong>Oikos Pro right now</strong> — 23g protein, fast absorbing, won't sit heavy. Better than nothing.`
         });
       } else {
-        // Post-workout
         const minsSince = Math.abs(mins);
-        const postLogged = totalP >= (state.goalProtein * 0.5); // rough proxy
         if (minsSince <= 90) {
           insights.push({
-            icon: postLogged ? '🏆' : '⚡', color: postLogged ? 'var(--accent)' : 'var(--accent2)',
-            bg: postLogged ? 'rgba(0,229,160,0.08)' : 'rgba(255,107,53,0.10)',
-            border: postLogged ? 'rgba(0,229,160,0.2)' : 'rgba(255,107,53,0.3)',
-            title: postLogged ? `Post-workout window — you're on it! 🎉` : `⚡ Post-workout window is OPEN — ${90 - minsSince} min left!`,
-            body: postLogged
-              ? `Great work! Your muscles are in repair mode. Keep protein coming the rest of the day — you need <strong>${Math.max(0, state.goalProtein - totalP)}g more</strong> to hit your goal.`
-              : `Your workout ended <strong>${minsSince} min ago</strong>. You have about <strong>${90 - minsSince} min</strong> left in the prime recovery window. Get <strong>40g protein in NOW</strong> — Tyson chicken + Oikos Pro is the fastest combo you have.`
+            icon: totalP >= state.goalProtein * 0.5 ? '🏆' : '⚡',
+            color: totalP >= state.goalProtein * 0.5 ? 'var(--accent)' : 'var(--accent2)',
+            bg: totalP >= state.goalProtein * 0.5 ? 'rgba(0,229,160,0.08)' : 'rgba(255,107,53,0.10)',
+            border: totalP >= state.goalProtein * 0.5 ? 'rgba(0,229,160,0.2)' : 'rgba(255,107,53,0.3)',
+            title: totalP >= state.goalProtein * 0.5 ? 'Post-workout — you\'re on it!' : `⚡ Post-workout window — ${90 - minsSince} min left!`,
+            body: totalP >= state.goalProtein * 0.5
+              ? `Muscles in repair mode. ${Math.max(0, state.goalProtein - totalP)}g protein left for the day.`
+              : `Workout ended ${minsSince} min ago. Get <strong>40g protein NOW</strong>${isInjection ? ' — even if nauseous, Oikos Pro liquid is easiest' : ': Tyson chicken + Oikos Pro'}.`
           });
         } else {
           insights.push({
             icon: '🔧', color: 'var(--purple)',
             bg: 'rgba(180,127,255,0.08)', border: 'rgba(180,127,255,0.2)',
-            title: `Workout done — recovery mode for the rest of the day`,
-            body: `The acute post-workout window has passed, but protein keeps working. You've logged <strong>${totalP}g</strong> — you need <strong>${Math.max(0, state.goalProtein - totalP)}g more</strong> today. Spread it across your remaining meals and get casein (cottage cheese) before bed.`
+            title: 'Workout done — recovery mode',
+            body: `Post-workout window passed. ${totalP}g logged — ${Math.max(0, state.goalProtein - totalP)}g more today. Casein (cottage cheese) before bed = overnight muscle repair.`
           });
         }
       }
     } else {
-      // No workout time set — generic training day
       insights.push({
         icon: '💪', color: 'var(--accent3)',
         bg: 'rgba(77,168,255,0.08)', border: 'rgba(77,168,255,0.2)',
-        title: 'Training Day — set a workout time above for smarter guidance',
-        body: `General plan: ~${preWorkoutProtein}g pre-workout (1–2 hrs before), ~${postWorkoutProtein}g post-workout (within 60 min), ~${otherProtein}g across other meals. <strong>Add your workout time</strong> above and I'll give you exact timing cues throughout the day.`
-      });
-    }
-
-    // Always show protein progress on training days
-    if (totalP > 0 && proteinLeft > 0 && !(mins !== null && mins > 0 && mins <= 60)) {
-      const perMeal = remainingCount > 0 ? Math.ceil(proteinLeft / remainingCount) : proteinLeft;
-      insights.push({
-        icon: '📊', color: 'var(--yellow)',
-        bg: 'rgba(255,212,96,0.07)', border: 'rgba(255,212,96,0.2)',
-        title: `${totalP}g logged — ${proteinLeft}g to go`,
-        body: `<strong>${remainingCount} meal slot${remainingCount !== 1 ? 's' : ''}</strong> remaining. Aim for ~<strong>${perMeal}g protein</strong> per meal. ${proteinLeft > 60 ? 'Stay consistent — big gaps between protein meals slow muscle recovery.' : 'Almost there — one more solid source gets you home.'}`
-      });
-    } else if (totalP >= state.goalProtein) {
-      insights.push({
-        icon: '🏆', color: 'var(--accent)',
-        bg: 'rgba(0,229,160,0.08)', border: 'rgba(0,229,160,0.2)',
-        title: 'Protein goal hit! 🎉',
-        body: `<strong>${totalP}g</strong> — goal reached on a training day. That's how muscle gets built. Keep calories in check and hydrate well through the rest of the day.`
+        title: 'Training Day — add your workout time for exact timing cues',
+        body: `Plan: ~${preP}g pre-workout, ~${postP}g post-workout, ~${otherP}g across other meals.`
       });
     }
   }
 
   // ── RECOVERY DAY ──
-  else if (dayPlan === 'recover') {
+  if (isRecovery) {
     insights.push({
       icon: '🔧', color: 'var(--purple)',
       bg: 'rgba(180,127,255,0.08)', border: 'rgba(180,127,255,0.2)',
-      title: 'Recovery Day — Muscle Repair Mode',
-      body: `Rest days are when muscle actually gets <em>built</em>. Keep protein high at <strong>${state.goalProtein}g</strong> — your body needs amino acids to repair yesterday's training. You can drop calories slightly (aim for ${state.goalCal - 200}–${state.goalCal} kcal) since you're less active.`
-    });
-
-    if (proteinLeft > 0 && remainingCount > 0) {
-      const perMeal = Math.ceil(proteinLeft / remainingCount);
-      insights.push({
-        icon: '🥣', color: 'var(--accent3)',
-        bg: 'rgba(77,168,255,0.07)', border: 'rgba(77,168,255,0.2)',
-        title: `Spread ${proteinLeft}g over ${remainingCount} more meals`,
-        body: `Recovery tip: smaller, evenly-spaced protein meals (${perMeal}g each) keep muscle protein synthesis elevated all day. Cottage cheese before bed = overnight repair boost.`
-      });
-    }
-
-    insights.push({
-      icon: '💤', color: 'var(--muted)',
-      bg: 'rgba(90,106,128,0.08)', border: 'rgba(90,106,128,0.2)',
-      title: 'Sleep is part of the plan',
-      body: 'Aim for 7–9 hours tonight. Growth hormone peaks during deep sleep — that\'s when the muscle you worked for actually forms. Casein protein (cottage cheese) before bed feeds repair all night.'
+      title: 'Recovery Day — muscle repair mode',
+      body: `Rest days are when muscle actually gets built. Keep protein at <strong>${state.goalProtein}g</strong>. Calories can drop slightly (${state.goalCal - 200}–${state.goalCal} kcal). Casein before bed = overnight repair.${isInjection ? ' If appetite is suppressed, lean on Oikos Pro and cottage cheese.' : ''}`
     });
   }
 
   // ── LIGHT ACTIVITY ──
-  else if (dayPlan === 'light') {
+  if (isLight) {
     insights.push({
       icon: '🚶', color: 'var(--accent)',
       bg: 'rgba(0,229,160,0.08)', border: 'rgba(0,229,160,0.2)',
-      title: 'Light Day — Stay on Protein, Ease on Calories',
-      body: `No hard training = less calorie demand, but protein stays at <strong>${state.goalProtein}g</strong>. Consider dropping calories to ${state.goalCal - 300}–${state.goalCal - 100} kcal today. Light activity like walking actually helps recovery — keep moving!`
+      title: 'Light Activity Day',
+      body: `Less calorie demand today — aim for ${state.goalCal - 300}–${state.goalCal - 100} kcal but keep protein at ${state.goalProtein}g. Walking helps recovery — keep moving!`
     });
+  }
 
-    if (proteinLeft > 0 && remainingCount > 0) {
+  // ── ENERGY-AWARE COACHING ──
+  if (state.energy !== null) {
+    if (state.energy <= 3) {
       insights.push({
-        icon: '📋', color: 'var(--yellow)',
+        icon: '😴', color: 'var(--muted)',
+        bg: 'rgba(90,106,128,0.08)', border: 'rgba(90,106,128,0.2)',
+        title: `Low energy (${state.energy}/10) — easy protein mode`,
+        body: `When energy is this low, don't fight it with complex meals. Oikos Pro drink = 23g with zero effort. Cottage cheese = 13g, no prep. These two alone can carry your protein goal today.`
+      });
+    } else if (state.energy >= 8) {
+      insights.push({
+        icon: '🚀', color: 'var(--yellow)',
         bg: 'rgba(255,212,96,0.07)', border: 'rgba(255,212,96,0.2)',
-        title: `${proteinLeft}g protein left in ${remainingCount} meals`,
-        body: `Easy options for light days: Oikos Pro (23g, zero effort), cheese sticks + cottage cheese combo, or a Marie Callender meal + extra Tyson chicken. High protein, low stress.`
+        title: `High energy (${state.energy}/10) — capitalize on it`,
+        body: `You're fired up today. This is the day to nail every macro, hit your water goal, and train hard. Don't waste a high-energy day with sloppy nutrition.`
       });
     }
   }
 
-  // ── INJECTION DAY ──
-  else if (dayPlan === 'injection') {
+  // ── MOOD-AWARE ──
+  if (state.mood === 1) { // Nauseous
     insights.push({
-      icon: '💉', color: 'var(--accent2)',
-      bg: 'rgba(255,107,53,0.08)', border: 'rgba(255,107,53,0.2)',
-      title: 'Injection Day — Appetite Will Drop, Plan Ahead',
-      body: `Tirzepatide suppresses appetite most in the 24–48 hrs after injection. <strong>Pre-log your protein</strong> now while you feel okay — Oikos Pro drinks and cheese sticks are your best friends when hunger disappears.`
+      icon: '🤢', color: 'var(--accent2)',
+      bg: 'rgba(255,107,53,0.07)', border: 'rgba(255,107,53,0.2)',
+      title: 'Feeling nauseous — soft protein strategy',
+      body: `Skip solid foods if needed. Oikos Pro drink, cottage cheese, and broth are your best options. Small sips of water throughout the day. Don't skip protein entirely — even 2 Oikos Pros gets you 46g.`
     });
+  }
 
+  // ── PROTEIN PROGRESS (always shown when there's data) ──
+  if (totalP >= state.goalProtein) {
     insights.push({
-      icon: '🥛', color: 'var(--accent3)',
-      bg: 'rgba(77,168,255,0.07)', border: 'rgba(77,168,255,0.2)',
-      title: 'Injection Day Survival Strategy',
-      body: `Liquid &amp; soft proteins are easiest when nauseous:<br><br>
-        • Oikos Pro drink = 23g, no chewing required<br>
-        • Kemps cottage cheese = 13g per ½ cup, very mild<br>
-        • Cheese sticks = 6g each, easy snacking<br><br>
-        <strong>Goal: Hit ${state.goalProtein}g even if you eat nothing "real"</strong> — 4–5 Oikos Pros = 92g alone.`
+      icon: '🏆', color: 'var(--accent)',
+      bg: 'rgba(0,229,160,0.08)', border: 'rgba(0,229,160,0.2)',
+      title: 'Protein goal hit! 🎉',
+      body: `<strong>${totalP}g</strong> — crushed it. Keep hydration up and calories in check for the rest of the day.`
     });
+  } else if (totalP > 0) {
+    const perMeal = remainingCount > 0 ? Math.ceil(proteinLeft / remainingCount) : proteinLeft;
+    insights.push({
+      icon: '📊', color: 'var(--yellow)',
+      bg: 'rgba(255,212,96,0.07)', border: 'rgba(255,212,96,0.2)',
+      title: `${totalP}g logged — ${proteinLeft}g left`,
+      body: `<strong>${remainingCount} meal${remainingCount !== 1 ? 's' : ''}</strong> remaining. ~<strong>${perMeal}g per meal</strong> gets you there. ${proteinLeft > 80 ? 'Stay consistent — spread it out.' : proteinLeft > 40 ? 'Almost halfway done.' : 'One solid source finishes the job.'}`
+    });
+  }
 
-    if (totalP > 0) {
-      insights.push({
-        icon: '💧', color: 'var(--accent)',
-        bg: 'rgba(0,229,160,0.08)', border: 'rgba(0,229,160,0.2)',
-        title: 'Hydrate extra today',
-        body: `Tirzepatide can cause nausea and GI effects — water helps significantly. You're at <strong>${state.water}oz</strong> of your 80oz goal. Sip throughout the day, especially after your injection.`
-      });
-    }
+  // ── WATER ──
+  if (state.water < 40 && (isTraining || isInjection)) {
+    insights.push({
+      icon: '💧', color: 'var(--accent)',
+      bg: 'rgba(0,229,160,0.07)', border: 'rgba(0,229,160,0.2)',
+      title: `Hydration: ${state.water}oz / 80oz${isInjection ? ' — extra important today' : ''}`,
+      body: isInjection
+        ? 'Water helps manage tirzepatide side effects significantly. Sip steadily throughout the day.'
+        : 'Dehydration tanks strength and endurance. Get ahead of it before your workout.'
+    });
   }
 
   el.innerHTML = insights.map(insightHTML).join('');
@@ -2139,7 +2181,7 @@ function buildExportPayload() {
     mealLog: state.mealLog,
     water: state.water,
     training: JSON.parse(localStorage.getItem('fs-training') || '{}'),
-    dayPlan,
+    dayPlans,
     workoutTime,
   };
 }
@@ -2151,7 +2193,8 @@ function applyImportedData(data) {
   if (data.mealLog)      { state.mealLog = data.mealLog; localStorage.setItem('fs-meals', JSON.stringify(state.mealLog)); }
   if (data.water != null){ state.water = data.water; localStorage.setItem('fs-water', state.water); }
   if (data.training)     { localStorage.setItem('fs-training', JSON.stringify(data.training)); }
-  if (data.dayPlan)      { dayPlan = data.dayPlan; localStorage.setItem('fs-dayplan', dayPlan); }
+  if (data.dayPlans)     { dayPlans = data.dayPlans; localStorage.setItem('fs-dayplans', JSON.stringify(dayPlans)); }
+  else if (data.dayPlan) { dayPlans = [data.dayPlan]; localStorage.setItem('fs-dayplans', JSON.stringify(dayPlans)); }
   if (data.workoutTime)  { workoutTime = data.workoutTime; localStorage.setItem('fs-workouttime', workoutTime); }
   renderHistory(); renderEvoltHistory(); renderFoodList(getAllFoods());
   renderMealLog(); updateTotals(); initWater(); updateInsights();
@@ -2177,16 +2220,9 @@ function init() {
     document.getElementById('energy-slider').value = state.energy;
     updateEnergy(state.energy);
   }
-  // Restore saved day plan
-  if (dayPlan) {
-    document.querySelectorAll('.day-plan-btn').forEach(b => {
-      const active = b.dataset.plan === dayPlan;
-      b.classList.toggle('btn-primary', active);
-      b.classList.toggle('btn-ghost', !active);
-    });
-    if (dayPlan === 'workout') {
-      document.getElementById('workout-time-row').style.display = 'block';
-    }
+  // Restore saved day plans
+  if (dayPlans.length) {
+    syncDayPlanButtons();
   }
   // Restore saved workout time
   if (workoutTime) {
@@ -2194,11 +2230,9 @@ function init() {
     updateWorkoutTimeStatus();
   }
   updateInsights();
-  // Refresh insights every minute so time-based cues stay current
-  setInterval(() => {
-    updateWorkoutTimeStatus();
-    updateInsights();
-  }, 60000);
+  updateTimingTab();
+  // Refresh workout time status every minute
+  setInterval(() => { updateWorkoutTimeStatus(); }, 60000);
   // Restore Drive UI
   initDriveUI();
   if (localStorage.getItem('fs-drive-connected')) {
