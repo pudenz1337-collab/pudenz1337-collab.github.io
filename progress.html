@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FuelStrong — Progress</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root {
+  --bg:#0b0e13; --surface:#111520; --card:#161c27; --card2:#1c2333;
+  --border:#222c3c; --accent:#00e5a0; --accent2:#ff6b35; --accent3:#4da8ff;
+  --yellow:#ffd460; --purple:#b47fff; --text:#dce8f5; --muted:#5a6a80;
+  --danger:#ff4560; --radius:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;font-size:14px}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:3px;color:var(--accent)}
+.logo span{color:var(--text)}
+.hbadge{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;background:rgba(0,229,160,.12);color:var(--accent);border:1px solid rgba(0,229,160,.25)}
+.tabs{background:var(--surface);border-bottom:1px solid var(--border);display:flex;padding:0 24px;overflow-x:auto}
+.tab{padding:14px 20px;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:hover:not(.active){color:var(--text)}
+.panel{display:none;padding:24px;max-width:1300px}
+.panel.active{display:block}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.ctitle{font-size:11px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:16px}
+.stile{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px}
+.slabel{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px}
+.sval{font-family:'Bebas Neue',sans-serif;font-size:36px;line-height:1}
+.sunit{font-size:13px;color:var(--muted);margin-left:4px}
+.schg{font-size:12px;margin-top:4px;font-family:'DM Mono',monospace}
+.good{color:var(--accent)} .bad{color:var(--danger)} .neu{color:var(--muted)}
+.btn{padding:10px 20px;border-radius:8px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;font-size:13px;transition:all .2s}
+.btn-p{background:var(--accent);color:#000} .btn-p:hover{background:#00ffb2}
+.btn-g{background:var(--card2);border:1px solid var(--border);color:var(--text)} .btn-g:hover{border-color:var(--accent);color:var(--accent)}
+.btn-d{background:rgba(255,69,96,.15);border:1px solid rgba(255,69,96,.3);color:var(--danger)}
+.btn-sm{padding:6px 14px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.uzone{border:2px dashed var(--border);border-radius:var(--radius);padding:40px 32px;text-align:center;cursor:pointer;transition:all .3s;background:var(--card2)}
+.uzone:hover,.uzone.over{border-color:var(--accent);background:rgba(0,229,160,.05)}
+.pbar-wrap{margin-bottom:12px}
+.pbar-label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px}
+.pbar-track{background:var(--border);border-radius:99px;height:8px;overflow:hidden}
+.pbar-fill{height:100%;border-radius:99px;transition:width .6s}
+.plog{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:14px;font-family:'DM Mono',monospace;font-size:11px;max-height:240px;overflow-y:auto;line-height:1.9}
+.lok{color:var(--accent)} .lwarn{color:var(--yellow)} .lerr{color:var(--danger)} .linfo{color:var(--muted)}
+.insight{background:linear-gradient(135deg,rgba(0,229,160,.08),rgba(77,168,255,.05));border:1px solid rgba(0,229,160,.2);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.logitem{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.mono{font-family:'DM Mono',monospace}
+.coachout{background:var(--card2);border:1px solid rgba(0,229,160,.2);border-radius:var(--radius);padding:24px;font-size:14px;line-height:1.85;white-space:pre-wrap;color:var(--text)}
+textarea.ainput{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;font-family:'DM Sans',sans-serif;font-size:13px;resize:vertical;outline:none;min-height:80px;line-height:1.6}
+textarea.ainput:focus{border-color:var(--accent)}
+input.ainput{background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 12px;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;width:100%}
+input.ainput:focus{border-color:var(--accent)}
+#toast{position:fixed;bottom:24px;right:24px;background:var(--accent);color:#000;padding:12px 20px;border-radius:8px;font-weight:600;font-size:13px;z-index:999;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none}
+#toast.show{opacity:1;transform:translateY(0)}
+#toast.err{background:var(--danger);color:#fff}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(0,229,160,.3);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--surface)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
+@media(max-width:900px){.g3,.g4{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.g2,.g3,.g4{grid-template-columns:1fr}.tabs{gap:0}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Fuel<span>Strong</span> <span style="font-size:16px;letter-spacing:2px;color:var(--muted)">PROGRESS</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="hbadge" id="data-status">No data</span>
+    <button class="btn btn-g btn-sm" onclick="syncAll()">☁️ Backup to GitHub</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('dashboard',this)">📊 Dashboard</div>
+  <div class="tab" onclick="showTab('upload',this)">📂 Upload</div>
+  <div class="tab" onclick="showTab('workouts',this)">💪 Workouts</div>
+  <div class="tab" onclick="showTab('coaching',this)">🧠 Coaching</div>
+  <div class="tab" onclick="showTab('data',this)">🗄 Data</div>
+  <div class="tab" onclick="showTab('settings',this)">⚙️ Settings</div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="panel-dashboard" class="panel active">
+  <div id="dash-empty" style="text-align:center;padding:80px 20px;color:var(--muted)">
+    <div style="font-size:48px;margin-bottom:16px">📊</div>
+    <div style="font-size:16px;color:var(--text);margin-bottom:8px">No data yet</div>
+    <div>Go to <strong style="color:var(--accent)">Upload</strong> and drop your Evolt ZIP to get started.</div>
+  </div>
+  <div id="dash-content" style="display:none">
+    <div class="g4" style="margin-bottom:20px" id="summary-tiles"></div>
+    <div class="insight" id="headline" style="margin-bottom:20px"></div>
+    <div class="g2" style="margin-bottom:16px">
+      <div class="card"><div class="ctitle">⚖️ Weight (lbs)</div><canvas id="c-weight" height="180"></canvas></div>
+      <div class="card"><div class="ctitle">🔥 Body Fat %</div><canvas id="c-bf" height="180"></canvas></div>
+    </div>
+    <div class="g2" style="margin-bottom:16px">
+      <div class="card"><div class="ctitle">💪 Skeletal Muscle Mass (lbs)</div><canvas id="c-muscle" height="180"></canvas></div>
+      <div class="card"><div class="ctitle">🫀 Visceral Fat Area (cm²)</div><canvas id="c-vfa" height="180"></canvas></div>
+    </div>
+    <div class="g2" style="margin-bottom:16px">
+      <div class="card"><div class="ctitle">⭐ BWI® Score (/10)</div><canvas id="c-bwi" height="180"></canvas></div>
+      <div class="card"><div class="ctitle">🧬 Body Composition (lbs)</div><canvas id="c-comp" height="180"></canvas></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="ctitle">🦾 Segmental Lean Mass — Latest vs First Scan</div>
+      <div id="segmental"></div>
+    </div>
+    <div class="card">
+      <div class="ctitle">📋 All Scans</div>
+      <div id="scan-table" style="overflow-x:auto"></div>
+    </div>
+  </div>
+</div>
+
+<!-- UPLOAD -->
+<div id="panel-upload" class="panel">
+  <div style="margin-bottom:20px">
+    <div style="font-size:18px;font-weight:600;margin-bottom:6px">Upload Your Data</div>
+    <div style="color:var(--muted);font-size:13px">Drop ZIPs, PDFs, or images. Fitbod screenshots are read by Claude AI — Worker URL must be set in Settings.</div>
+  </div>
+  <div class="g2" style="margin-bottom:20px">
+    <div>
+      <div style="font-size:11px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📋 Evolt Body Scans</div>
+      <div class="uzone" id="z-evolt" ondragover="dOver(event,'z-evolt')" ondragleave="dLeave('z-evolt')" ondrop="dDrop(event,'evolt')" onclick="document.getElementById('f-evolt').click()">
+        <div style="font-size:36px;margin-bottom:8px">📋</div>
+        <div style="font-weight:600;margin-bottom:4px">Drop Evolt PDFs or ZIP</div>
+        <div style="font-size:12px;color:var(--muted)">Accepts .pdf or .zip containing PDFs</div>
+      </div>
+      <input type="file" id="f-evolt" multiple accept=".pdf,.zip" style="display:none" onchange="handleFiles(this.files,'evolt')">
+    </div>
+    <div>
+      <div style="font-size:11px;color:var(--accent3);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">💪 Fitbod Workouts</div>
+      <div class="uzone" id="z-fitbod" ondragover="dOver(event,'z-fitbod')" ondragleave="dLeave('z-fitbod')" ondrop="dDrop(event,'fitbod')" onclick="document.getElementById('f-fitbod').click()">
+        <div style="font-size:36px;margin-bottom:8px">📸</div>
+        <div style="font-weight:600;margin-bottom:4px">Drop Fitbod screenshots or ZIP</div>
+        <div style="font-size:12px;color:var(--muted)">Accepts .jpg .png .zip or .csv</div>
+      </div>
+      <input type="file" id="f-fitbod" multiple accept=".jpg,.jpeg,.png,.zip,.csv" style="display:none" onchange="handleFiles(this.files,'fitbod')">
+    </div>
+  </div>
+  <div style="margin-bottom:20px">
+    <div style="font-size:11px;color:var(--yellow);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🥗 FuelStrong Nutrition Export</div>
+    <div class="uzone" id="z-fs" style="max-width:500px" ondragover="dOver(event,'z-fs')" ondragleave="dLeave('z-fs')" ondrop="dDrop(event,'fuelstrong')" onclick="document.getElementById('f-fs').click()">
+      <div style="font-size:36px;margin-bottom:8px">📤</div>
+      <div style="font-weight:600;margin-bottom:4px">Drop FuelStrong JSON export</div>
+      <div style="font-size:12px;color:var(--muted)">Export from the FuelStrong app then drop here</div>
+    </div>
+    <input type="file" id="f-fs" accept=".json" style="display:none" onchange="handleFiles(this.files,'fuelstrong')">
+  </div>
+  <div id="proc-section" style="display:none">
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">Processing Log</div>
+    <div class="plog" id="proc-log"></div>
+    <div style="margin-top:12px">
+      <div class="pbar-label"><span id="prog-label">Processing...</span><span id="prog-pct">0%</span></div>
+      <div class="pbar-track"><div class="pbar-fill" id="prog-bar" style="width:0%;background:var(--accent)"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- WORKOUTS -->
+<div id="panel-workouts" class="panel">
+  <div id="wo-empty" style="text-align:center;padding:80px;color:var(--muted)">
+    <div style="font-size:48px;margin-bottom:16px">💪</div>
+    <div>Upload Fitbod screenshots to see workout analysis here.</div>
+  </div>
+  <div id="wo-content" style="display:none">
+    <div class="g4" style="margin-bottom:20px" id="wo-tiles"></div>
+    <div class="g2" style="margin-bottom:16px">
+      <div class="card"><div class="ctitle">📈 Volume Over Time</div><canvas id="c-vol" height="200"></canvas></div>
+      <div class="card"><div class="ctitle">🎯 Muscle Group Distribution</div><canvas id="c-mgroups" height="200"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="ctitle">📋 Workout History</div>
+      <div id="wo-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- COACHING -->
+<div id="panel-coaching" class="panel">
+  <div class="g2" style="margin-bottom:20px;align-items:start">
+    <div>
+      <div style="font-size:18px;font-weight:600;margin-bottom:8px">🧠 AI Coaching</div>
+      <div style="color:var(--muted);font-size:13px;line-height:1.7">Powered by Claude. Analyzes your Evolt scans, workouts, and nutrition together for specific data-driven coaching.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-p" onclick="runCoaching('')" id="coach-btn">✨ Full Analysis</button>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:20px">
+    <div class="ctitle">💬 Ask a Question</div>
+    <textarea class="ainput" id="coach-q" placeholder="e.g. Why did my muscle drop in November? Am I making good progress? Should I eat more calories?"></textarea>
+    <button class="btn btn-g btn-sm" style="margin-top:10px" onclick="runCoaching(document.getElementById('coach-q').value)">Ask →</button>
+  </div>
+  <div id="coach-loading" style="display:none;text-align:center;padding:60px">
+    <div class="spin" style="width:36px;height:36px;border-width:3px"></div>
+    <div style="margin-top:16px;color:var(--muted)">Claude is analyzing your data...</div>
+  </div>
+  <div class="card" id="coach-card" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="ctitle" style="margin:0">Coaching Response</div>
+      <span id="coach-time" style="font-size:11px;color:var(--muted)" class="mono"></span>
+    </div>
+    <div class="coachout" id="coach-out"></div>
+  </div>
+</div>
+
+<!-- DATA -->
+<div id="panel-data" class="panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    <div style="font-size:18px;font-weight:600">🗄 Stored Data</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-g btn-sm" onclick="loadFromWorker()">🔄 Refresh</button>
+      <button class="btn btn-g btn-sm" onclick="exportJSON()">📥 Export JSON</button>
+      <button class="btn btn-d btn-sm" onclick="clearType('evolt')">🗑 Clear Evolt</button>
+      <button class="btn btn-d btn-sm" onclick="clearType('fitbod')">🗑 Clear Fitbod</button>
+      <button class="btn btn-d btn-sm" onclick="clearAll()">🗑 Clear All</button>
+    </div>
+  </div>
+  <div id="data-sections"></div>
+</div>
+
+<!-- SETTINGS -->
+<div id="panel-settings" class="panel">
+  <div style="font-size:18px;font-weight:600;margin-bottom:20px">⚙️ Settings</div>
+  <div class="card" style="max-width:600px;margin-bottom:16px">
+    <div class="ctitle">☁️ Cloudflare Worker URL</div>
+    <div style="color:var(--muted);font-size:12px;margin-bottom:10px">Required for AI coaching and cloud storage. No trailing slash.</div>
+    <input class="ainput" id="worker-url" placeholder="https://fuelstrong-progress.yourname.workers.dev">
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn btn-p btn-sm" onclick="saveSettings()">Save</button>
+      <button class="btn btn-g btn-sm" onclick="testWorker()">Test Connection</button>
+    </div>
+    <div id="test-result" style="font-size:12px;margin-top:8px" class="mono"></div>
+  </div>
+  <div class="card" style="max-width:600px">
+    <div class="ctitle">📦 Storage Stats</div>
+    <div id="storage-stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// PDF.js
+// ══════════════════════════════════════════════════════
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+let WORKER_URL = localStorage.getItem('fs-worker-url') || '';
+let data = { evolt: [], fitbod: [], fuelstrong: [] };
+let charts = {};
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+async function init() {
+  document.getElementById('worker-url').value = WORKER_URL;
+  if (WORKER_URL) {
+    await loadFromWorker();
+  } else {
+    loadCache();
+    renderAll();
+  }
+}
+
+function loadCache() {
+  try { data = JSON.parse(localStorage.getItem('fs-data') || '{"evolt":[],"fitbod":[],"fuelstrong":[]}'); } catch {}
+}
+function saveCache() { localStorage.setItem('fs-data', JSON.stringify(data)); }
+
+// ══════════════════════════════════════════════════════
+// WORKER
+// ══════════════════════════════════════════════════════
+async function wFetch(path, opts = {}) {
+  if (!WORKER_URL) throw new Error('Worker URL not set — go to Settings tab.');
+  const url = WORKER_URL.replace(/\/$/, '') + path;
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  if (!res.ok) {
+    let msg = `Worker error ${res.status}`;
+    try { const b = await res.json(); msg = b.error || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+async function loadFromWorker() {
+  try {
+    const d = await wFetch('/api/data');
+    data.evolt      = d.evolt      || [];
+    data.fitbod     = d.fitbod     || [];
+    data.fuelstrong = d.fuelstrong || [];
+    saveCache();
+    renderAll();
+    updateStatus();
+    toast('☁️ Data loaded');
+  } catch (e) {
+    loadCache();
+    renderAll();
+    if (WORKER_URL) toast('⚠️ Worker: ' + e.message, true);
+  }
+}
+
+async function saveToWorker(type, entries) {
+  return wFetch('/api/data', { method: 'POST', body: JSON.stringify({ type, data: entries }) });
+}
+
+async function syncAll() {
+  if (!WORKER_URL) { toast('Set Worker URL in Settings first', true); return; }
+  try {
+    await wFetch('/api/backup', { method: 'POST', body: '{}' });
+    toast('✅ Backed up to GitHub!');
+  } catch (e) { toast('Backup failed: ' + e.message, true); }
+}
+
+// ══════════════════════════════════════════════════════
+// FILE HANDLING
+// ══════════════════════════════════════════════════════
+function dOver(e, id) { e.preventDefault(); document.getElementById(id).classList.add('over'); }
+function dLeave(id) { document.getElementById(id).classList.remove('over'); }
+function dDrop(e, type) {
+  e.preventDefault();
+  const zoneId = type === 'fuelstrong' ? 'z-fs' : type === 'evolt' ? 'z-evolt' : 'z-fitbod';
+  document.getElementById(zoneId).classList.remove('over');
+  handleFiles(e.dataTransfer.files, type);
+}
+
+async function handleFiles(fileList, type) {
+  const files = Array.from(fileList);
+  if (!files.length) return;
+  document.getElementById('proc-section').style.display = 'block';
+  document.getElementById('proc-log').innerHTML = '';
+  const parsed = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    setProgress(Math.round(i / files.length * 100), `Processing ${file.name}...`);
+    plog(`Processing: ${file.name}`, 'linfo');
+    try {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext === 'zip') {
+        const inner = await unzip(file);
+        plog(`  ZIP: ${inner.length} files extracted`, 'linfo');
+        for (const f of inner) {
+          const r = await processFile(f, type);
+          if (Array.isArray(r)) { parsed.push(...r); plog(`  ✓ ${f.name} (${r.length} entries)`, 'lok'); }
+          else if (r) { parsed.push(r); plog(`  ✓ ${f.name}`, 'lok'); }
+          else plog(`  ⚠ Skipped ${f.name}`, 'lwarn');
+        }
+      } else {
+        const r = await processFile(file, type);
+        if (Array.isArray(r)) { parsed.push(...r); plog(`✓ ${file.name} (${r.length} entries)`, 'lok'); }
+        else if (r) { parsed.push(r); plog(`✓ ${file.name}`, 'lok'); }
+        else plog(`⚠ Skipped ${file.name}`, 'lwarn');
+      }
+    } catch (e) {
+      plog(`✗ ${file.name}: ${e.message}`, 'lerr');
+      console.error(e);
+    }
+  }
+
+  setProgress(100, `Done — ${parsed.length} entries`);
+  plog(`\nDone! ${parsed.length} entries parsed.`, 'lok');
+
+  if (parsed.length > 0) {
+    const existing = data[type] || [];
+    const merged = [...existing];
+    for (const entry of parsed) {
+      const key = entry.id || entry.date;
+      if (!merged.some(e => (e.id || e.date) === key)) merged.push(entry);
+    }
+    merged.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    data[type] = merged;
+    saveCache();
+
+    if (WORKER_URL) {
+      try {
+        await saveToWorker(type, parsed);
+        plog(`☁️ Saved to cloud`, 'lok');
+      } catch (e) {
+        plog(`⚠ Cloud save failed: ${e.message}`, 'lwarn');
+      }
+    }
+
+    renderAll();
+    updateStatus();
+    toast(`✅ Added ${parsed.length} ${type} entries!`);
+  }
+}
+
+async function processFile(file, type) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (type === 'evolt' && ext === 'pdf') return parseEvoltPDF(file);
+  if (type === 'fitbod' && ['jpg','jpeg','png'].includes(ext)) return parseFitbodImage(file);
+  if (type === 'fitbod' && ext === 'csv') return parseFitbodCSV(file);
+  if (type === 'fuelstrong' && ext === 'json') return parseFuelStrongJSON(file);
+  return null;
+}
+
+// ══════════════════════════════════════════════════════
+// EVOLT PDF PARSER
+// ══════════════════════════════════════════════════════
+async function parseEvoltPDF(file) {
+  const ab  = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+  let text = '';
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    text += content.items.map(i => i.str).join(' ') + '\n';
+  }
+  return parseEvoltText(text, file.name);
+}
+
+function parseEvoltText(text, filename) {
+  // Works with both PDF.js (space-joined) and line-based text extraction
+
+  // ── Date  "01-21-2026" ──
+  const dm = text.match(/(\d{2})-(\d{2})-(\d{4})/);
+  const date = dm ? `${dm[3]}-${dm[1]}-${dm[2]}` : null;
+
+  // ── Weight  "158.1 lb 50 Female" ──
+  const wm = text.match(/([\d.]+)\s*lb\s+\d+\s+(?:Female|Male)/i);
+  const weight = wm ? +wm[1] : null;
+
+  if (!date || !weight) {
+    console.warn('parseEvoltText: missing date/weight in', filename);
+    return null;
+  }
+
+  // ── LBM / Body Fat Mass / Visceral Fat Level ──
+  // "104.1 / Optimal [89.1 - 108.9] 54.0 / High [26.5 - 39.7] 12 / Over Range"
+  const r1 = text.match(/([\d.]+)\s*\/\s*(?:Optimal|High|Under|Over)\s*\[[\d.\s-]+\]\s*([\d.]+)\s*\/\s*(?:Optimal|High|Under|Over)\s*\[[\d.\s-]+\]\s*(\d+)\s*\/\s*(?:Optimal|High|Over)/);
+  const leanBodyMass     = r1 ? +r1[1] : null;
+  const bodyFatMass      = r1 ? +r1[2] : null;
+  const visceralFatLevel = r1 ? +r1[3] : null;
+
+  // ── Bio Age: 2-digit number just before skeletal muscle value ──
+  // Space-joined: "INTRACELLULAR FLUID (ICF) KG/LBS 51 57.1 / Optimal..."
+  // Line-based: line after "SKELETAL MUSCLE MASS" header is standalone "51"
+  let bioAge = null;
+  const bam = text.match(/\b(\d{2})\s+\d{2,3}\.\d\s*\/\s*(?:Optimal|High|Under)\s*\[[\d.]+\s*-\s*[\d.]+\]\s*[\d.]+\s*\[/);
+  if (bam) { bioAge = +bam[1]; }
+  else {
+    for (let li = 0; li < textLines.length - 1; li++) {
+      if (textLines[li].includes('SKELETAL MUSCLE MASS') && /^\d{2}$/.test(textLines[li+1])) {
+        bioAge = +textLines[li+1]; break;
+      }
+    }
+  }
+
+  // ── Skeletal Muscle Mass: first value followed by subcut-fat bracket ──
+  // "57.1 / Optimal [49.6 - 60.6] 47.2 [ 29.9% ]"
+  const sm = text.match(/([\d.]+)\s*\/\s*(?:Optimal|High|Under)\s*\[[\d.]+\s*-\s*[\d.]+\]\s*[\d.]+\s*\[\s*[\d.]+%\s*\]/);
+  const skeletalMuscleMass = sm ? +sm[1] : null;
+
+  // ── Visceral Fat Mass: value on the line AFTER the "PROTEIN ... VISCERAL FAT MASS" header ──
+  // Header line: "3. PROTEIN KG/LBS 8. VISCERAL FAT MASS KG/LBS/% 13. EXTRACELLULAR..."
+  // Data line:   "20.3 / Optimal [17.4 - 21.4]  6.8 [ 4.3% ]  24.9 [ 33% ]"
+  // VFM is the number after the protein range bracket: ] 6.8 [ X.X% ]
+  let visceralFatMass = null;
+  const textLines = text.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
+  for (let li = 0; li < textLines.length - 1; li++) {
+    if (textLines[li].includes('VISCERAL FAT MASS') && textLines[li].includes('PROTEIN')) {
+      const vfmM = textLines[li+1].match(/\/\s*(?:Optimal|High|Under)\s*\[[\d.\s-]+\]\s*([\d.]+)\s*\[\s*[\d.]+%/);
+      if (vfmM) { visceralFatMass = +vfmM[1]; break; }
+    }
+  }
+
+  // ── Mineral row: Visceral Fat Area + BMR + BWI ──
+  // "8.8 / High [6.6 - 7.9] 93 / High [40 - 80] 1389 kCal 6.2"
+  const mr = text.match(/[\d.]+\s*\/\s*(?:Optimal|High|Under)\s*\[[\d.\s-]+\]\s*(\d+)\s*\/\s*(?:Optimal|High|Under)\s*\[[\d.\s-]+\]\s*(\d{3,4})\s*kCal\s+([\d.]+)/);
+  const visceralFatArea = mr ? +mr[1] : null;
+  const bmr             = mr ? +mr[2] : null;
+  const bwiScore        = mr ? +mr[3] : null;
+
+  // ── Water / BF% / TEE row ──
+  // "75.0 / Optimal [65.0 - 79.6] 34.2% / High [20 - 30] 2139 kCal"
+  const wr = text.match(/([\d.]+)\s*\/\s*(?:Optimal|High|Under)\s*\[[\d.]+\s*-\s*[\d.]+\]\s*([\d.]+)%\s*\/\s*(?:Optimal|High|Under)\s*\[[\d.\s-]+\]\s*(\d{3,4})\s*kCal/);
+  const totalBodyWater = wr ? +wr[1] : null;
+  const bodyFatPct     = wr ? +wr[2] : null;
+  const tee            = wr ? +wr[3] : null;
+
+  // ── Abdominal circ + waist-hip ──
+  const abm = text.match(/([\d.]+)\s*in\s*\(Less than.*?([\d.]+)\s*\/\s*(?:Optimal|High)/);
+  const abdominalCirc  = abm ? +abm[1] : null;
+  const waistHipRatio  = abm ? +abm[2] : null;
+
+  // ── Segmental: works in both line and space-joined formats ──
+  // Arms: "5.09 / Optimal [...] 3.48 / High [...] 5.14 / Optimal [...] 3.28"
+  // after LEFT ARM RIGHT ARM header
+  let leftArmLean=null, rightArmLean=null, torsoLean=null, leftLegLean=null, rightLegLean=null;
+
+  const armSection = text.match(/LEFT ARM\s+RIGHT ARM[\s\S]*?(?=LEAN MASS KG\/LBS FAT MASS KG\/LBS TORSO|18\.|$)/);
+  if (armSection) {
+    const armNums = [...armSection[0].matchAll(/([\d.]+)\s*\/\s*(?:Optimal|High|Under)/g)].map(m => +m[1]);
+    if (armNums.length >= 3) { leftArmLean = armNums[0]; rightArmLean = armNums[2]; }
+  }
+
+  const torsoSection = text.match(/TORSO\s+[\d.]+\s*in[\s\S]*?([\d.]+)\s*\/\s*(?:Optimal|High|Under)/);
+  if (torsoSection) torsoLean = +torsoSection[1];
+  // Fallback torso
+  if (!torsoLean) {
+    const ts = text.match(/(?:TORSO|LEFT ARM RIGHT ARM[\s\S]{0,200}?FAT MASS KG\/LBS TORSO)[\s\S]*?([\d.]+)\s*\/\s*High\s*\[36/);
+    if (ts) torsoLean = +ts[1];
+  }
+
+  const legSection = text.match(/LEFT LEG\s+RIGHT LEG[\s\S]*?(?=YOUR NUTRITION|21\.|$)/);
+  if (legSection) {
+    const legNums = [...legSection[0].matchAll(/([\d.]+)\s*\/\s*(?:Optimal|High|Under)/g)].map(m => +m[1]);
+    if (legNums.length >= 3) { leftLegLean = legNums[0]; rightLegLean = legNums[2]; }
+  }
+
+  const subcutaneousFat = (bodyFatMass != null && visceralFatMass != null)
+    ? parseFloat((bodyFatMass - visceralFatMass).toFixed(1)) : null;
+
+  console.log('Evolt parsed:', { date, weight, bodyFatPct, skeletalMuscleMass, leanBodyMass, bwiScore, visceralFatMass, visceralFatArea });
+
+  return {
+    id: `evolt_${date}`, date, weight,
+    bodyFatPct, skeletalMuscleMass, leanBodyMass,
+    bodyFatMass, subcutaneousFat, visceralFatMass,
+    visceralFatArea, visceralFatLevel, totalBodyWater,
+    bmr, tee, bioAge, bwiScore, abdominalCirc, waistHipRatio,
+    segmental: { leftArmLean, rightArmLean, torsoLean, leftLegLean, rightLegLean },
+    sourceFile: filename,
+  };
+}
+
+// ══════════════════════════════════════════════════════
+// FITBOD IMAGE PARSER (via Worker + Claude)
+// ══════════════════════════════════════════════════════
+async function parseFitbodImage(file) {
+  if (!WORKER_URL) { plog('  ⚠ No Worker URL — cannot parse images', 'lwarn'); return null; }
+  const b64 = (await fileToB64(file)).split(',')[1];
+  const result = await wFetch('/api/parse', {
+    method: 'POST',
+    body: JSON.stringify({ imageBase64: b64, mimeType: file.type || 'image/jpeg', filename: file.name, fileType: 'fitbod' }),
+  });
+  if (result.error) { plog(`  ⚠ ${result.error}`, 'lwarn'); return null; }
+  return result;
+}
+
+async function parseFitbodCSV(file) {
+  const text = await file.text();
+  const lines = text.split('\n').filter(l => l.trim());
+  const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
+  const rows = lines.slice(1).map(l => {
+    const v = l.split(',').map(x => x.replace(/"/g,'').trim());
+    const o = {}; headers.forEach((h,i) => o[h] = v[i]||''); return o;
+  }).filter(r => r[headers[0]]);
+
+  const byDate = {};
+  rows.forEach(r => {
+    const dateKey = (r.Date||r.date||'').slice(0,10);
+    if (!dateKey) return;
+    if (!byDate[dateKey]) byDate[dateKey] = { date: dateKey, exercises: {}, totalVolume: 0, muscleGroupsWorked: new Set() };
+    const ex = r.Exercise||r.exercise||'Unknown';
+    const reps = parseFloat(r.Reps||r.reps||0);
+    const wt   = parseFloat(r.Weight||r.weight||0);
+    if (!byDate[dateKey].exercises[ex]) byDate[dateKey].exercises[ex] = { name: ex, sets: [], totalVolume: 0, maxWeight: 0 };
+    byDate[dateKey].exercises[ex].sets.push({ reps, weight: wt });
+    byDate[dateKey].exercises[ex].totalVolume += reps * wt;
+    byDate[dateKey].exercises[ex].maxWeight = Math.max(byDate[dateKey].exercises[ex].maxWeight, wt);
+    byDate[dateKey].totalVolume += reps * wt;
+  });
+
+  return Object.values(byDate).map(d => ({
+    ...d, id: `fitbod_${d.date}`,
+    exercises: Object.values(d.exercises),
+    muscleGroupsWorked: [...d.muscleGroupsWorked],
+  }));
+}
+
+async function parseFuelStrongJSON(file) {
+  const d = JSON.parse(await file.text());
+  if (!d.history) return null;
+  return d.history.map(h => ({
+    id: `fs_${h.date||Math.random()}`, date: h.date,
+    protein: h.protein, calories: h.cal, water: h.water,
+    energy: h.energy, mood: h.mood, trained: h.trained, muscles: h.muscles,
+  }));
+}
+
+// ══════════════════════════════════════════════════════
+// ZIP
+// ══════════════════════════════════════════════════════
+async function unzip(file) {
+  const zip = await JSZip.loadAsync(file);
+  const files = [];
+  const jobs = [];
+  zip.forEach((path, entry) => {
+    if (entry.dir) return;
+    const name = path.split('/').pop();
+    if (!name) return;
+    jobs.push(entry.async('arraybuffer').then(buf => {
+      const mime = mimeOf(name);
+      files.push(new File([buf], name, { type: mime }));
+    }));
+  });
+  await Promise.all(jobs);
+  return files;
+}
+
+function mimeOf(name) {
+  const e = name.split('.').pop().toLowerCase();
+  return { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png',
+           pdf:'application/pdf', json:'application/json', csv:'text/csv' }[e] || 'application/octet-stream';
+}
+
+function fileToB64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER DASHBOARD
+// ══════════════════════════════════════════════════════
+function renderAll() {
+  renderDashboard();
+  renderWorkouts();
+  renderDataTab();
+  updateStorageStats();
+}
+
+function renderDashboard() {
+  const evolt = data.evolt;
+  const empty = document.getElementById('dash-empty');
+  const content = document.getElementById('dash-content');
+  if (!evolt.length) { empty.style.display = 'block'; content.style.display = 'none'; return; }
+  empty.style.display = 'none'; content.style.display = 'block';
+
+  const first = evolt[0], last = evolt[evolt.length - 1];
+
+  // Summary tiles
+  const tiles = [
+    { label: 'Weight',          val: last.weight,             unit: 'lbs', key: 'weight',            color: 'var(--yellow)',  good: 'down' },
+    { label: 'Body Fat %',      val: last.bodyFatPct,         unit: '%',   key: 'bodyFatPct',         color: 'var(--accent2)', good: 'down' },
+    { label: 'Skeletal Muscle', val: last.skeletalMuscleMass, unit: 'lbs', key: 'skeletalMuscleMass', color: 'var(--accent3)', good: 'up'   },
+    { label: 'BWI® Score',      val: last.bwiScore,           unit: '/10', key: 'bwiScore',           color: 'var(--accent)',  good: 'up'   },
+  ];
+  document.getElementById('summary-tiles').innerHTML = tiles.map(t => {
+    const ch = evolt.length > 1 ? +(last[t.key] - first[t.key]).toFixed(1) : null;
+    const good = ch !== null && (t.good === 'down' ? ch < 0 : ch > 0);
+    const cls = ch === null ? '' : good ? 'good' : 'bad';
+    const arrow = ch > 0 ? '▲' : '▼';
+    return `<div class="stile">
+      <div class="slabel">${t.label}</div>
+      <div><span class="sval" style="color:${t.color}">${t.val ?? '—'}</span><span class="sunit">${t.unit}</span></div>
+      ${ch !== null ? `<div class="schg ${cls}">${arrow} ${Math.abs(ch)}${t.unit} since ${first.date?.slice(5)}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  // Headline
+  const wLost  = first.weight && last.weight ? (first.weight - last.weight).toFixed(1) : '?';
+  const fLost  = first.bodyFatMass && last.bodyFatMass ? (first.bodyFatMass - last.bodyFatMass).toFixed(1) : '?';
+  const mDiff  = first.skeletalMuscleMass && last.skeletalMuscleMass ? (last.skeletalMuscleMass - first.skeletalMuscleMass).toFixed(1) : '?';
+  const days   = daysBetween(first.date, last.date);
+  document.getElementById('headline').innerHTML = `
+    <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:center">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:40px;color:var(--accent)">−${wLost} lbs</div>
+      <div style="font-size:13px;line-height:2;color:var(--muted)">
+        <span style="color:var(--text)"><strong>Fat lost:</strong> −${fLost} lbs</span> &nbsp;·&nbsp;
+        <span style="color:var(--text)"><strong>Muscle:</strong> ${+mDiff >= 0 ? '+' : ''}${mDiff} lbs</span> &nbsp;·&nbsp;
+        <span style="color:var(--accent)"><strong>${evolt.length} scans</strong> over ${days} days</span><br>
+        <span style="color:var(--yellow)">⚠️ Scale weight is the worst metric for you. Fat down + muscle held = recomposition win.</span>
+      </div>
+    </div>`;
+
+  const labels = evolt.map(s => fmtDate(s.date));
+
+  // Line charts
+  lineChart('c-weight', labels, evolt.map(s => s.weight),             'Weight (lbs)',           '#ffd460');
+  lineChart('c-bf',     labels, evolt.map(s => s.bodyFatPct),          'Body Fat %',             '#ff6b35');
+  lineChart('c-muscle', labels, evolt.map(s => s.skeletalMuscleMass), 'Skeletal Muscle (lbs)',  '#4da8ff');
+  lineChart('c-vfa',    labels, evolt.map(s => s.visceralFatArea),    'Visceral Fat Area (cm²)','#b47fff');
+  lineChart('c-bwi',    labels, evolt.map(s => s.bwiScore),            'BWI® Score',             '#00e5a0');
+
+  // Stacked composition chart
+  stackedChart('c-comp', labels, [
+    { label: 'Skeletal Muscle', data: evolt.map(s => s.skeletalMuscleMass || 0),   color: '#4da8ff99' },
+    { label: 'Other Lean',      data: evolt.map(s => s.leanBodyMass && s.skeletalMuscleMass ? +(s.leanBodyMass - s.skeletalMuscleMass).toFixed(1) : 0), color: '#00e5a066' },
+    { label: 'Subcut. Fat',     data: evolt.map(s => s.subcutaneousFat || 0),      color: '#ff6b3599' },
+    { label: 'Visceral Fat',    data: evolt.map(s => s.visceralFatMass || 0),      color: '#b47fff99' },
+  ]);
+
+  // Segmental
+  renderSegmental(last, first);
+
+  // Scan table
+  const cols = ['Date','Weight','BF%','Muscle','LBM','Visc Area','BWI','BMR','Bio Age'];
+  document.getElementById('scan-table').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr>${cols.map(c => `<th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);color:var(--muted);font-weight:500">${c}</th>`).join('')}</tr></thead>
+      <tbody>${evolt.map(s => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 12px;color:var(--accent)" class="mono">${s.date}</td>
+        <td style="padding:8px 12px;color:var(--yellow)">${s.weight}</td>
+        <td style="padding:8px 12px;color:var(--accent2)">${s.bodyFatPct}%</td>
+        <td style="padding:8px 12px;color:var(--accent3)">${s.skeletalMuscleMass}</td>
+        <td style="padding:8px 12px">${s.leanBodyMass}</td>
+        <td style="padding:8px 12px;color:var(--purple)">${s.visceralFatArea}</td>
+        <td style="padding:8px 12px;color:var(--accent)">${s.bwiScore}</td>
+        <td style="padding:8px 12px">${s.bmr}</td>
+        <td style="padding:8px 12px">${s.bioAge}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+}
+
+function renderSegmental(last, first) {
+  const el = document.getElementById('segmental');
+  const s = last?.segmental;
+  if (!s || !s.torsoLean) { el.innerHTML = '<div style="color:var(--muted)">Segmental data parses from Evolt PDFs automatically.</div>'; return; }
+
+  const segs = [
+    { name: 'Left Arm',  key: 'leftArmLean',  color: 'var(--accent3)' },
+    { name: 'Right Arm', key: 'rightArmLean', color: 'var(--accent3)' },
+    { name: 'Torso',     key: 'torsoLean',    color: 'var(--accent)'  },
+    { name: 'Left Leg',  key: 'leftLegLean',  color: 'var(--yellow)'  },
+    { name: 'Right Leg', key: 'rightLegLean', color: 'var(--yellow)'  },
+  ].filter(sg => s[sg.key] != null);
+
+  const max = Math.max(...segs.map(sg => s[sg.key]));
+  const fs = first?.segmental;
+
+  el.innerHTML = `<div class="g2">
+    <div>
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Latest — ${last.date}</div>
+      ${segs.map(sg => `<div class="pbar-wrap">
+        <div class="pbar-label"><span>${sg.name}</span><span class="mono" style="color:${sg.color}">${s[sg.key].toFixed(2)} lbs</span></div>
+        <div class="pbar-track"><div class="pbar-fill" style="width:${((s[sg.key]/max)*100).toFixed(0)}%;background:${sg.color}"></div></div>
+      </div>`).join('')}
+    </div>
+    ${fs ? `<div>
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Change Since ${first.date}</div>
+      ${segs.map(sg => {
+        const diff = fs[sg.key] != null ? +(s[sg.key] - fs[sg.key]).toFixed(2) : null;
+        if (diff === null) return '';
+        const color = diff >= 0 ? 'var(--accent)' : 'var(--danger)';
+        return `<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px">
+          <span style="color:var(--muted)">${sg.name}</span>
+          <span class="mono" style="color:${color}">${diff >= 0 ? '▲' : '▼'} ${Math.abs(diff)} lbs</span>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════
+// CHARTS
+// ══════════════════════════════════════════════════════
+const chartDefaults = () => ({
+  responsive: true,
+  interaction: { intersect: false, mode: 'index' },
+  plugins: {
+    legend: { labels: { color: '#5a6a80', font: { family: 'DM Sans', size: 12 } } },
+    tooltip: { backgroundColor: '#161c27', borderColor: '#222c3c', borderWidth: 1, titleColor: '#dce8f5', bodyColor: '#5a6a80', padding: 12 },
+  },
+  scales: {
+    x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#5a6a80', font: { family: 'DM Mono', size: 11 } } },
+    y: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#5a6a80', font: { family: 'DM Mono', size: 11 } } },
+  },
+});
+
+function lineChart(id, labels, chartData, label, color) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (charts[id]) charts[id].destroy();
+  // Filter out nulls
+  const pts = labels.map((l, i) => ({ x: l, y: chartData[i] })).filter(p => p.y != null);
+  charts[id] = new Chart(ctx, {
+    type: 'line',
+    data: { datasets: [{ label, data: pts, borderColor: color, backgroundColor: color + '22', fill: true, tension: 0.4, pointBackgroundColor: color, pointRadius: 5, pointHoverRadius: 7 }] },
+    options: { ...chartDefaults(), scales: { ...chartDefaults().scales, x: { ...chartDefaults().scales.x, type: 'category' } } },
+  });
+}
+
+function stackedChart(id, labels, datasets) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (charts[id]) charts[id].destroy();
+  const opts = chartDefaults();
+  opts.scales.x.stacked = true;
+  opts.scales.y.stacked = true;
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: datasets.map(d => ({ label: d.label, data: d.data, backgroundColor: d.color, stack: 'a' })) },
+    options: opts,
+  });
+}
+
+function barChart(id, labels, chartData, label, color) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ label, data: chartData, backgroundColor: color + '99', borderColor: color, borderWidth: 1 }] },
+    options: chartDefaults(),
+  });
+}
+
+function doughnutChart(id, labels, chartData) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (charts[id]) charts[id].destroy();
+  const colors = ['#00e5a0','#4da8ff','#ffd460','#ff6b35','#b47fff','#ff4560'];
+  charts[id] = new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: chartData, backgroundColor: colors.slice(0, labels.length) }] },
+    options: { plugins: { legend: { labels: { color: '#5a6a80', font: { family: 'DM Sans', size: 12 } } } } },
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// WORKOUTS
+// ══════════════════════════════════════════════════════
+function renderWorkouts() {
+  const fitbod = data.fitbod;
+  document.getElementById('wo-empty').style.display  = fitbod.length ? 'none' : 'block';
+  document.getElementById('wo-content').style.display = fitbod.length ? 'block' : 'none';
+  if (!fitbod.length) return;
+
+  const totalVol = fitbod.reduce((a, w) => a + (w.totalVolume || 0), 0);
+  const muscles  = {};
+  fitbod.forEach(w => (w.muscleGroupsWorked || []).forEach(m => muscles[m] = (muscles[m] || 0) + 1));
+  const topM = Object.entries(muscles).sort((a,b) => b[1]-a[1])[0];
+  const uniqEx = new Set(fitbod.flatMap(w => (w.exercises||[]).map(e => e.name))).size;
+
+  document.getElementById('wo-tiles').innerHTML = [
+    { label: 'Workouts',   val: fitbod.length,                        unit: '',         color: 'var(--accent3)' },
+    { label: 'Total Vol',  val: Math.round(totalVol/1000)+'K',        unit: 'lbs',      color: 'var(--yellow)'  },
+    { label: 'Top Muscle', val: topM ? topM[0] : '—',                 unit: '',         color: 'var(--accent)'  },
+    { label: 'Exercises',  val: uniqEx,                                unit: 'unique',   color: 'var(--purple)'  },
+  ].map(t => `<div class="stile"><div class="slabel">${t.label}</div><div><span class="sval" style="color:${t.color}">${t.val}</span><span class="sunit">${t.unit}</span></div></div>`).join('');
+
+  const sorted = [...fitbod].sort((a,b) => new Date(a.date)-new Date(b.date));
+  barChart('c-vol', sorted.map(w => fmtDate(w.date)), sorted.map(w => Math.round(w.totalVolume||0)), 'Volume (lbs)', '#4da8ff');
+  if (Object.keys(muscles).length) doughnutChart('c-mgroups', Object.keys(muscles), Object.values(muscles));
+
+  document.getElementById('wo-list').innerHTML = [...sorted].reverse().slice(0,20).map(w => `
+    <div class="logitem">
+      <div>
+        <div style="font-size:11px;color:var(--accent)" class="mono">${w.date}</div>
+        <div style="font-size:13px;font-weight:500;margin:3px 0">${w.workoutName || 'Workout'}</div>
+        <div style="font-size:12px;color:var(--muted)">${(w.muscleGroupsWorked||[]).join(', ')} · ${(w.exercises||[]).length} exercises · ${Math.round(w.totalVolume||0).toLocaleString()} lbs</div>
+      </div>
+      <button class="btn btn-d btn-sm" onclick="deleteEntry('fitbod','${w.id}')">✕</button>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// COACHING
+// ══════════════════════════════════════════════════════
+async function runCoaching(question) {
+  if (!WORKER_URL) { toast('Set Worker URL in Settings first', true); return; }
+  const loading = document.getElementById('coach-loading');
+  const card    = document.getElementById('coach-card');
+  const btn     = document.getElementById('coach-btn');
+  loading.style.display = 'block';
+  card.style.display    = 'none';
+  btn.disabled = true;
+
+  try {
+    const r = await wFetch('/api/coach', { method: 'POST', body: JSON.stringify({ question: question || '' }) });
+    document.getElementById('coach-out').textContent  = r.coaching;
+    document.getElementById('coach-time').textContent = 'Generated: ' + new Date(r.generatedAt).toLocaleString();
+    card.style.display = 'block';
+  } catch (e) {
+    toast('❌ ' + e.message, true);
+    console.error(e);
+  }
+  loading.style.display = 'none';
+  btn.disabled = false;
+}
+
+// ══════════════════════════════════════════════════════
+// DATA TAB
+// ══════════════════════════════════════════════════════
+function renderDataTab() {
+  const el = document.getElementById('data-sections');
+  el.innerHTML = ['evolt','fitbod','fuelstrong'].map(type => {
+    const entries = data[type] || [];
+    if (!entries.length) return `<div class="card" style="margin-bottom:12px;opacity:.5"><div class="ctitle">${typeLabel(type)} — No data</div></div>`;
+    return `<div class="card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="ctitle" style="margin:0">${typeLabel(type)} — ${entries.length} entries</div>
+      </div>
+      <div style="max-height:300px;overflow-y:auto">
+        ${[...entries].reverse().map(e => `
+          <div class="logitem" style="margin-bottom:6px">
+            <div>
+              <div style="font-size:11px;color:var(--accent)" class="mono">${e.date||'?'}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px">${entryPreview(type,e)}</div>
+            </div>
+            <button class="btn btn-d btn-sm" onclick="deleteEntry('${type}','${e.id||e.date}')">✕</button>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function typeLabel(t) {
+  return { evolt:'📋 Evolt Scans', fitbod:'💪 Fitbod Workouts', fuelstrong:'🥗 FuelStrong Nutrition' }[t] || t;
+}
+function entryPreview(type, e) {
+  if (type === 'evolt')      return `Weight: ${e.weight} · BF: ${e.bodyFatPct}% · Muscle: ${e.skeletalMuscleMass} lbs · BWI: ${e.bwiScore}`;
+  if (type === 'fitbod')     return `${e.workoutName||'Workout'} · ${(e.muscleGroupsWorked||[]).join(', ')} · ${Math.round(e.totalVolume||0).toLocaleString()} lbs`;
+  if (type === 'fuelstrong') return `Protein: ${e.protein}g · Cal: ${e.calories} · Water: ${e.water}oz`;
+  return '';
+}
+
+async function deleteEntry(type, id) {
+  data[type] = (data[type]||[]).filter(e => (e.id||e.date) !== id);
+  saveCache();
+  if (WORKER_URL) wFetch(`/api/data/${type}/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+  renderAll(); toast('Entry deleted');
+}
+
+async function clearType(type) {
+  if (!confirm(`Clear all ${type} data?`)) return;
+  data[type] = [];
+  saveCache();
+  if (WORKER_URL) {
+    try { await wFetch('/api/data', { method: 'POST', body: JSON.stringify({ type, data: [] }) }); } catch {}
+  }
+  renderAll(); updateStatus(); toast(`${type} data cleared`);
+}
+
+async function clearAll() {
+  if (!confirm('Clear ALL data?')) return;
+  data = { evolt: [], fitbod: [], fuelstrong: [] };
+  saveCache();
+  renderAll(); updateStatus(); toast('All data cleared');
+}
+
+// ══════════════════════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════════════════════
+function saveSettings() {
+  WORKER_URL = document.getElementById('worker-url').value.trim().replace(/\/$/, '');
+  localStorage.setItem('fs-worker-url', WORKER_URL);
+  toast('Settings saved!');
+}
+
+async function testWorker() {
+  const el = document.getElementById('test-result');
+  el.style.color = 'var(--muted)'; el.textContent = 'Testing...';
+  try {
+    const d = await wFetch('/api/health');
+    el.style.color = 'var(--accent)'; el.textContent = `✓ Connected — Worker live (${d.time})`;
+  } catch (e) {
+    el.style.color = 'var(--danger)'; el.textContent = `✗ ${e.message}`;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════
+function showTab(id, el) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  if (el) el.classList.add('active');
+}
+
+function updateStatus() {
+  const total = data.evolt.length + data.fitbod.length + data.fuelstrong.length;
+  document.getElementById('data-status').textContent = total
+    ? `${data.evolt.length} scans · ${data.fitbod.length} workouts`
+    : 'No data';
+}
+
+function updateStorageStats() {
+  document.getElementById('storage-stats').innerHTML = [
+    { label: 'Evolt scans',   n: data.evolt.length,      color: 'var(--accent)'  },
+    { label: 'Workouts',      n: data.fitbod.length,     color: 'var(--accent3)' },
+    { label: 'Nutrition days',n: data.fuelstrong.length, color: 'var(--yellow)'  },
+  ].map(s => `<div style="text-align:center;padding:12px 20px;background:var(--card2);border-radius:8px">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:${s.color}">${s.n}</div>
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">${s.label}</div>
+  </div>`).join('');
+}
+
+function setProgress(pct, label) {
+  document.getElementById('prog-bar').style.width = pct + '%';
+  document.getElementById('prog-label').textContent = label;
+  document.getElementById('prog-pct').textContent   = pct + '%';
+}
+
+function plog(msg, cls = 'linfo') {
+  const el = document.getElementById('proc-log');
+  const d  = document.createElement('div');
+  d.className = cls; d.textContent = msg;
+  el.appendChild(d); el.scrollTop = el.scrollHeight;
+}
+
+function fmtDate(d) {
+  if (!d) return '?';
+  const parts = d.split('-');
+  return parts.length === 3 ? `${parts[1]}-${parts[2]}` : d;
+}
+
+function daysBetween(d1, d2) {
+  if (!d1 || !d2) return '?';
+  return Math.round((new Date(d2) - new Date(d1)) / 86400000);
+}
+
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: `fuelstrong-${new Date().toISOString().slice(0,10)}.json`,
+  });
+  a.click(); URL.revokeObjectURL(a.href); toast('Exported!');
+}
+
+let _toastTimer;
+function toast(msg, isErr = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(_toastTimer); _toastTimer = setTimeout(() => t.className = '', 3000);
+}
+
+// ══════════════════════════════════════════════════════
+// GO
+// ══════════════════════════════════════════════════════
+init();
+</script>
+</body>
+</html>
