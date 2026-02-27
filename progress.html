@@ -935,20 +935,37 @@ async function deleteEntry(type, id) {
 }
 
 async function clearType(type) {
-  if (!confirm(`Clear all ${type} data?`)) return;
+  if (!confirm(`Clear all ${type} data? This also wipes cloud storage.`)) return;
   data[type] = [];
   saveCache();
   if (WORKER_URL) {
-    try { await wFetch('/api/data', { method: 'POST', body: JSON.stringify({ type, data: [] }) }); } catch {}
+    try {
+      await wFetch('/api/data', { method: 'POST', body: JSON.stringify({ type, data: [] }) });
+      toast(`✅ ${type} cleared from cloud`);
+    } catch (e) {
+      toast(`⚠️ Local cleared but cloud failed: ${e.message}`, true);
+      return; // Don't proceed silently if cloud clear failed
+    }
   }
-  renderAll(); updateStatus(); toast(`${type} data cleared`);
+  renderAll(); updateStatus();
 }
 
 async function clearAll() {
-  if (!confirm('Clear ALL data?')) return;
+  if (!confirm('Clear ALL data from browser AND cloud? This cannot be undone.')) return;
   data = { evolt: [], fitbod: [], fuelstrong: [] };
   saveCache();
-  renderAll(); updateStatus(); toast('All data cleared');
+  if (WORKER_URL) {
+    try {
+      await Promise.all(['evolt','fitbod','fuelstrong'].map(type =>
+        wFetch('/api/data', { method: 'POST', body: JSON.stringify({ type, data: [] }) })
+      ));
+      toast('✅ All data cleared from cloud');
+    } catch (e) {
+      toast(`⚠️ Local cleared but cloud failed: ${e.message}`, true);
+      return;
+    }
+  }
+  renderAll(); updateStatus();
 }
 
 // ══════════════════════════════════════════════════════

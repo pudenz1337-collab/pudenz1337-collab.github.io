@@ -76,12 +76,17 @@ async function saveData(request, env) {
     return reply({ error: 'Invalid data type' }, 400);
   }
 
+  // Empty array = clear operation — overwrite KV, do not merge
+  if (Array.isArray(data) && data.length === 0) {
+    await env.FUELSTRONG_KV.put(type, '[]');
+    return reply({ success: true, total: 0, added: 0, cleared: true });
+  }
+
   const existing = JSON.parse(await env.FUELSTRONG_KV.get(type).catch(() => null) || '[]');
   const incoming = Array.isArray(data) ? data : [data];
   const merged   = [...existing];
 
   for (const entry of incoming) {
-    // Deduplicate by id (or date for evolt)
     const key = entry.id || entry.date;
     const dup = merged.some(e => (e.id || e.date) === key);
     if (!dup) merged.push({ ...entry, savedAt: new Date().toISOString() });
