@@ -455,6 +455,8 @@ function parseEvoltText(text, filename) {
   // ── Bio Age: 2-digit number just before skeletal muscle value ──
   // Space-joined: "INTRACELLULAR FLUID (ICF) KG/LBS 51 57.1 / Optimal..."
   // Line-based: line after "SKELETAL MUSCLE MASS" header is standalone "51"
+  const textLines = text.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
+
   let bioAge = null;
   const bam = text.match(/\b(\d{2})\s+\d{2,3}\.\d\s*\/\s*(?:Optimal|High|Under)\s*\[[\d.]+\s*-\s*[\d.]+\]\s*[\d.]+\s*\[/);
   if (bam) { bioAge = +bam[1]; }
@@ -476,7 +478,6 @@ function parseEvoltText(text, filename) {
   // Data line:   "20.3 / Optimal [17.4 - 21.4]  6.8 [ 4.3% ]  24.9 [ 33% ]"
   // VFM is the number after the protein range bracket: ] 6.8 [ X.X% ]
   let visceralFatMass = null;
-  const textLines = text.split(/[\n\r]+/).map(l => l.trim()).filter(Boolean);
   for (let li = 0; li < textLines.length - 1; li++) {
     if (textLines[li].includes('VISCERAL FAT MASS') && textLines[li].includes('PROTEIN')) {
       const vfmM = textLines[li+1].match(/\/\s*(?:Optimal|High|Under)\s*\[[\d.\s-]+\]\s*([\d.]+)\s*\[\s*[\d.]+%/);
