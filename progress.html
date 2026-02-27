@@ -71,6 +71,28 @@ input.ainput:focus{border-color:var(--accent)}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 @media(max-width:900px){.g3,.g4{grid-template-columns:1fr 1fr}}
 @media(max-width:600px){.g2,.g3,.g4{grid-template-columns:1fr}.tabs{gap:0}}
+/* goal options */
+.goal-opt{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:6px 0;color:var(--text)}
+.goal-opt input{accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+.muscle-check{background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:5px 10px}
+/* coach tabs */
+.ctab{transition:all .2s;white-space:nowrap}
+.ctab:hover:not(.active){color:var(--text)!important}
+/* rep range bars */
+.rr-row{margin-bottom:14px}
+.rr-name{font-size:12px;font-weight:500;margin-bottom:6px;display:flex;justify-content:space-between}
+.rr-bars{display:flex;gap:3px;height:16px;border-radius:4px;overflow:hidden}
+.rr-seg{height:100%;transition:width .5s}
+/* recovery grid */
+.rec-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.rec-item:last-child{border-bottom:none}
+.rec-badge{padding:2px 10px;border-radius:99px;font-size:11px;font-weight:600}
+/* PR grid */
+.pr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.pr-tile{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px}
+.pr-ex{font-size:12px;color:var(--muted);margin-bottom:4px}
+.pr-val{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--yellow)}
+.pr-date{font-size:11px;color:var(--muted);margin-top:2px}
 </style>
 </head>
 <body>
@@ -191,30 +213,80 @@ input.ainput:focus{border-color:var(--accent)}
 
 <!-- COACHING -->
 <div id="panel-coaching" class="panel">
-  <div class="g2" style="margin-bottom:20px;align-items:start">
-    <div>
-      <div style="font-size:18px;font-weight:600;margin-bottom:8px">🧠 AI Coaching</div>
-      <div style="color:var(--muted);font-size:13px;line-height:1.7">Powered by Claude. Analyzes your Evolt scans, workouts, and nutrition together for specific data-driven coaching.</div>
+  <div style="font-size:18px;font-weight:600;margin-bottom:4px">🧠 AI Coaching</div>
+  <div style="color:var(--muted);font-size:13px;margin-bottom:20px">Powered by Claude. Analyzes your scans, workouts, and context together.</div>
+
+  <!-- COACH TABS -->
+  <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px">
+    <div class="ctab active" data-ctab="full"    onclick="showCoachTab('full',this)"   style="padding:10px 20px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid var(--accent);color:var(--accent)">✨ Full Analysis</div>
+    <div class="ctab"        data-ctab="body"    onclick="showCoachTab('body',this)"   style="padding:10px 20px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid transparent;color:var(--muted)">📋 Body Composition</div>
+    <div class="ctab"        data-ctab="training" onclick="showCoachTab('training',this)" style="padding:10px 20px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid transparent;color:var(--muted)">💪 Training</div>
+    <div class="ctab"        data-ctab="ask"     onclick="showCoachTab('ask',this)"    style="padding:10px 20px;cursor:pointer;font-size:13px;font-weight:500;border-bottom:2px solid transparent;color:var(--muted)">💬 Ask</div>
+  </div>
+
+  <!-- FULL ANALYSIS -->
+  <div id="ctab-full">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:13px;color:var(--muted)">Synthesis of all your data — body composition, training, and nutrition together.</div>
+      <button class="btn btn-p" onclick="runCoaching('full')" id="coach-btn-full">✨ Run Full Analysis</button>
     </div>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <button class="btn btn-p" onclick="runCoaching('')" id="coach-btn">✨ Full Analysis</button>
+    <div id="coach-load-full" style="display:none;text-align:center;padding:60px"><div class="spin" style="width:36px;height:36px;border-width:3px"></div><div style="margin-top:16px;color:var(--muted)">Analyzing everything...</div></div>
+    <div class="card" id="coach-card-full" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="ctitle" style="margin:0">Full Analysis</div>
+        <span id="coach-time-full" style="font-size:11px;color:var(--muted)" class="mono"></span>
+      </div>
+      <div class="coachout" id="coach-out-full"></div>
     </div>
   </div>
-  <div class="card" style="margin-bottom:20px">
-    <div class="ctitle">💬 Ask a Question</div>
-    <textarea class="ainput" id="coach-q" placeholder="e.g. Why did my muscle drop in November? Am I making good progress? Should I eat more calories?"></textarea>
-    <button class="btn btn-g btn-sm" style="margin-top:10px" onclick="runCoaching(document.getElementById('coach-q').value)">Ask →</button>
-  </div>
-  <div id="coach-loading" style="display:none;text-align:center;padding:60px">
-    <div class="spin" style="width:36px;height:36px;border-width:3px"></div>
-    <div style="margin-top:16px;color:var(--muted)">Claude is analyzing your data...</div>
-  </div>
-  <div class="card" id="coach-card" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div class="ctitle" style="margin:0">Coaching Response</div>
-      <span id="coach-time" style="font-size:11px;color:var(--muted)" class="mono"></span>
+
+  <!-- BODY COMPOSITION COACHING -->
+  <div id="ctab-body" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:13px;color:var(--muted)">Deep dive into your Evolt scan trends — what the numbers mean and what to do about them.</div>
+      <button class="btn btn-p" onclick="runCoaching('body')" id="coach-btn-body">📋 Analyze Body Composition</button>
     </div>
-    <div class="coachout" id="coach-out"></div>
+    <div id="coach-load-body" style="display:none;text-align:center;padding:60px"><div class="spin" style="width:36px;height:36px;border-width:3px"></div><div style="margin-top:16px;color:var(--muted)">Analyzing body composition...</div></div>
+    <div class="card" id="coach-card-body" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="ctitle" style="margin:0">Body Composition Coaching</div>
+        <span id="coach-time-body" style="font-size:11px;color:var(--muted)" class="mono"></span>
+      </div>
+      <div class="coachout" id="coach-out-body"></div>
+    </div>
+  </div>
+
+  <!-- TRAINING COACHING -->
+  <div id="ctab-training" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:13px;color:var(--muted)">Are your exercises right for your goals? Rep ranges, progressive overload, muscle balance, recovery.</div>
+      <button class="btn btn-p" onclick="runCoaching('training')" id="coach-btn-training">💪 Analyze Training</button>
+    </div>
+    <div id="coach-load-training" style="display:none;text-align:center;padding:60px"><div class="spin" style="width:36px;height:36px;border-width:3px"></div><div style="margin-top:16px;color:var(--muted)">Analyzing training...</div></div>
+    <div class="card" id="coach-card-training" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="ctitle" style="margin:0">Training Coaching</div>
+        <span id="coach-time-training" style="font-size:11px;color:var(--muted)" class="mono"></span>
+      </div>
+      <div class="coachout" id="coach-out-training"></div>
+    </div>
+  </div>
+
+  <!-- ASK -->
+  <div id="ctab-ask" style="display:none">
+    <div class="card" style="margin-bottom:16px">
+      <div class="ctitle">💬 Ask Anything</div>
+      <textarea class="ainput" id="coach-q" placeholder="e.g. Why did my muscle drop in November? Am I training in the right rep range for muscle growth? Should I do more compound lifts? How is tirzepatide affecting my body composition?"></textarea>
+      <button class="btn btn-p btn-sm" style="margin-top:10px" onclick="runCoaching('ask')">Ask →</button>
+    </div>
+    <div id="coach-load-ask" style="display:none;text-align:center;padding:60px"><div class="spin" style="width:36px;height:36px;border-width:3px"></div><div style="margin-top:16px;color:var(--muted)">Thinking...</div></div>
+    <div class="card" id="coach-card-ask" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="ctitle" style="margin:0">Response</div>
+        <span id="coach-time-ask" style="font-size:11px;color:var(--muted)" class="mono"></span>
+      </div>
+      <div class="coachout" id="coach-out-ask"></div>
+    </div>
   </div>
 </div>
 
@@ -236,7 +308,9 @@ input.ainput:focus{border-color:var(--accent)}
 <!-- SETTINGS -->
 <div id="panel-settings" class="panel">
   <div style="font-size:18px;font-weight:600;margin-bottom:20px">⚙️ Settings</div>
-  <div class="card" style="max-width:600px;margin-bottom:16px">
+
+  <!-- WORKER URL -->
+  <div class="card" style="max-width:700px;margin-bottom:16px">
     <div class="ctitle">☁️ Cloudflare Worker URL</div>
     <div style="color:var(--muted);font-size:12px;margin-bottom:10px">Required for AI coaching and cloud storage. No trailing slash.</div>
     <input class="ainput" id="worker-url" placeholder="https://fuelstrong-progress.yourname.workers.dev">
@@ -246,7 +320,83 @@ input.ainput:focus{border-color:var(--accent)}
     </div>
     <div id="test-result" style="font-size:12px;margin-top:8px" class="mono"></div>
   </div>
-  <div class="card" style="max-width:600px">
+
+  <!-- FITNESS GOALS -->
+  <div class="card" style="max-width:700px;margin-bottom:16px">
+    <div class="ctitle">🎯 Fitness Goals</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Primary Goal</div>
+        <div style="display:flex;flex-direction:column;gap:6px" id="goal-primary">
+          <label class="goal-opt"><input type="radio" name="goal-primary" value="recomp"> Body Recomposition (build muscle + lose fat simultaneously)</label>
+          <label class="goal-opt"><input type="radio" name="goal-primary" value="muscle"> Build Muscle (prioritize lean mass gain)</label>
+          <label class="goal-opt"><input type="radio" name="goal-primary" value="fat"> Fat Loss (prioritize fat reduction)</label>
+          <label class="goal-opt"><input type="radio" name="goal-primary" value="maintain"> Maintain (hold current composition)</label>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Training Focus</div>
+        <div style="display:flex;flex-direction:column;gap:6px" id="goal-training">
+          <label class="goal-opt"><input type="radio" name="goal-training" value="hypertrophy"> Hypertrophy — 6–12 reps, moderate weight (best for visible muscle)</label>
+          <label class="goal-opt"><input type="radio" name="goal-training" value="strength"> Strength — 1–5 reps, heavy weight</label>
+          <label class="goal-opt"><input type="radio" name="goal-training" value="endurance"> Endurance — 13+ reps, lighter weight</label>
+          <label class="goal-opt"><input type="radio" name="goal-training" value="mixed"> Mixed — variety across all ranges</label>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Training Frequency Target</div>
+        <select id="goal-freq" class="ainput" style="width:100%">
+          <option value="">Select...</option>
+          <option value="2">2x per week</option>
+          <option value="3">3x per week</option>
+          <option value="4">4x per week</option>
+          <option value="5">5x per week</option>
+          <option value="6">6x per week</option>
+        </select>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Medication</div>
+        <select id="goal-med" class="ainput" style="width:100%">
+          <option value="">Select...</option>
+          <option value="tirzepatide">Tirzepatide (Mounjaro/Zepbound)</option>
+          <option value="semaglutide">Semaglutide (Ozempic/Wegovy)</option>
+          <option value="other_glp1">Other GLP-1</option>
+          <option value="none">None</option>
+          <option value="prefer_not">Prefer not to say</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">Priority Muscle Groups (select all you want to focus on)</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" id="goal-muscles">
+        <label class="goal-opt muscle-check"><input type="checkbox" value="Chest"> Chest</label>
+        <label class="goal-opt muscle-check"><input type="checkbox" value="Back"> Back</label>
+        <label class="goal-opt muscle-check"><input type="checkbox" value="Legs"> Legs</label>
+        <label class="goal-opt muscle-check"><input type="checkbox" value="Shoulders"> Shoulders</label>
+        <label class="goal-opt muscle-check"><input type="checkbox" value="Arms"> Arms</label>
+        <label class="goal-opt muscle-check"><input type="checkbox" value="Core"> Core</label>
+        <label class="goal-opt muscle-check"><input type="checkbox" value="Glutes"> Glutes</label>
+      </div>
+    </div>
+    <button class="btn btn-p btn-sm" onclick="saveGoals()">Save Goals</button>
+    <span id="goals-saved" style="font-size:12px;color:var(--accent);margin-left:10px;display:none">✓ Saved</span>
+  </div>
+
+  <!-- COACH CONTEXT -->
+  <div class="card" style="max-width:700px;margin-bottom:16px">
+    <div class="ctitle">🧠 Coach Context Notes</div>
+    <div style="color:var(--muted);font-size:12px;margin-bottom:10px;line-height:1.6">Stored in the cloud and sent to Claude with every coaching request. Include anything that gives context: how you feel about your progress, why you train the way you do, injury history, tirzepatide schedule, patterns you've noticed, or anything you want the coach to remember.</div>
+    <textarea class="ainput" id="coach-context" style="min-height:120px" placeholder="e.g. I started tirzepatide in Oct 2024. I inject every Tuesday. I tend to feel nauseous Wed-Thu so I schedule lighter workouts or rest. I want to build visible muscle, especially in my arms and legs. I've noticed I have more energy on weekends..."></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+      <button class="btn btn-p btn-sm" onclick="saveCoachContext()">Save to Cloud</button>
+      <span id="context-saved" style="font-size:12px;color:var(--accent);display:none">✓ Saved</span>
+    </div>
+  </div>
+
+  <!-- STORAGE STATS -->
+  <div class="card" style="max-width:700px">
     <div class="ctitle">📦 Storage Stats</div>
     <div id="storage-stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px"></div>
   </div>
@@ -273,11 +423,16 @@ let charts = {};
 // ══════════════════════════════════════════════════════
 async function init() {
   document.getElementById('worker-url').value = WORKER_URL;
+  restoreGoals();
   if (WORKER_URL) {
     await loadFromWorker();
+    await loadCoachContext();
   } else {
     loadCache();
     renderAll();
+    const local = localStorage.getItem('fs-coach-context') || '';
+    const el = document.getElementById('coach-context');
+    if (el) el.value = local;
   }
 }
 
@@ -720,7 +875,7 @@ function renderDashboard() {
         <td style="padding:8px 12px;color:var(--purple)">${s.visceralFatArea}</td>
         <td style="padding:8px 12px;color:var(--accent)">${s.bwiScore}</td>
         <td style="padding:8px 12px">${s.bmr}</td>
-        <td style="padding:8px 12px">${s.bioAge}</td>
+        <td style="padding:8px 12px">${s.bioAge ?? '—'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
 }
@@ -833,63 +988,431 @@ function doughnutChart(id, labels, chartData) {
 // ══════════════════════════════════════════════════════
 // WORKOUTS
 // ══════════════════════════════════════════════════════
+
+// Compound exercise list (big muscle-builders worth prioritizing)
+const COMPOUNDS = new Set([
+  'squat','deadlift','bench press','row','pull-up','pullup','chin-up','chinup',
+  'overhead press','hip thrust','lunge','rdl','romanian deadlift','leg press',
+  'incline bench','dumbbell press','barbell','cable row','seated row',
+  'lat pulldown','chest press','shoulder press','hack squat','goblet squat',
+  'split squat','bulgarian','trap bar'
+]);
+
+function isCompound(name) {
+  const n = (name || '').toLowerCase();
+  return [...COMPOUNDS].some(c => n.includes(c));
+}
+
+function repZone(reps) {
+  if (reps <= 5)  return 'strength';
+  if (reps <= 12) return 'hypertrophy';
+  return 'endurance';
+}
+
+// Pre-compute workout analytics once
+function buildWorkoutAnalytics(fitbod) {
+  const sorted = [...fitbod].sort((a,b) => new Date(a.date)-new Date(b.date));
+
+  // Per-exercise history: { name -> [{date, maxWeight, totalVol, avgReps, sets}] }
+  const exHistory = {};
+  // Per-muscle-group data
+  const muscleVol = {}; // { muscle -> total volume }
+  const muscleDates = {}; // { muscle -> [dates] }
+  // Rep zone totals per muscle
+  const muscleZones = {}; // { muscle -> {strength, hypertrophy, endurance} }
+  // Weekly workout counts
+  const weeklyMap = {};
+  // Compound vs isolation counts
+  let compoundSets = 0, isolationSets = 0;
+
+  sorted.forEach(w => {
+    // Weekly consistency
+    const wk = weekKey(w.date);
+    weeklyMap[wk] = (weeklyMap[wk] || 0) + 1;
+
+    // Muscle group dates for recovery tracking
+    (w.muscleGroupsWorked || []).forEach(m => {
+      if (!muscleDates[m]) muscleDates[m] = [];
+      muscleDates[m].push(w.date);
+      muscleVol[m] = (muscleVol[m] || 0) + (w.totalVolume || 0);
+    });
+
+    (w.exercises || []).forEach(ex => {
+      if (!exHistory[ex.name]) exHistory[ex.name] = [];
+      const sets = ex.sets || [];
+      const totalVol = sets.reduce((a,s) => a + (s.reps||0)*(s.weight||0), 0);
+      const maxW = sets.reduce((a,s) => Math.max(a, s.weight||0), 0);
+      const avgReps = sets.length ? sets.reduce((a,s) => a+(s.reps||0),0)/sets.length : (ex.maxWeight ? 0 : 0);
+
+      exHistory[ex.name].push({ date: w.date, maxWeight: maxW || ex.maxWeight, totalVol, sets: sets.length || 1, avgReps });
+
+      // Rep zones per muscle
+      const mg = ex.muscleGroup || 'Other';
+      if (!muscleZones[mg]) muscleZones[mg] = { strength:0, hypertrophy:0, endurance:0, total:0 };
+      sets.forEach(s => {
+        const zone = repZone(s.reps || 10);
+        muscleZones[mg][zone]++;
+        muscleZones[mg].total++;
+      });
+      if (!sets.length) { // no set data — treat as hypertrophy
+        muscleZones[mg].hypertrophy++;
+        muscleZones[mg].total++;
+      }
+
+      // Compound vs isolation
+      if (isCompound(ex.name)) compoundSets += (sets.length || 1);
+      else isolationSets += (sets.length || 1);
+    });
+  });
+
+  return { sorted, exHistory, muscleVol, muscleDates, muscleZones, weeklyMap, compoundSets, isolationSets };
+}
+
+function weekKey(dateStr) {
+  if (!dateStr) return '?';
+  const d = new Date(dateStr);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const mon = new Date(d.setDate(diff));
+  return mon.toISOString().slice(0,10);
+}
+
+let _analytics = null;
+
 function renderWorkouts() {
   const fitbod = data.fitbod;
-  document.getElementById('wo-empty').style.display  = fitbod.length ? 'none' : 'block';
+  document.getElementById('wo-empty').style.display   = fitbod.length ? 'none'  : 'block';
   document.getElementById('wo-content').style.display = fitbod.length ? 'block' : 'none';
   if (!fitbod.length) return;
 
-  const totalVol = fitbod.reduce((a, w) => a + (w.totalVolume || 0), 0);
-  const muscles  = {};
-  fitbod.forEach(w => (w.muscleGroupsWorked || []).forEach(m => muscles[m] = (muscles[m] || 0) + 1));
-  const topM = Object.entries(muscles).sort((a,b) => b[1]-a[1])[0];
-  const uniqEx = new Set(fitbod.flatMap(w => (w.exercises||[]).map(e => e.name))).size;
+  _analytics = buildWorkoutAnalytics(fitbod);
+  const { sorted, exHistory, muscleVol, muscleDates, muscleZones, weeklyMap, compoundSets, isolationSets } = _analytics;
+
+  // ── KPI tiles ──────────────────────────────────────────────────────────────
+  const totalVol = fitbod.reduce((a,w) => a+(w.totalVolume||0), 0);
+  const topM = Object.entries(muscleVol).sort((a,b) => b[1]-a[1])[0];
+  const uniqEx = Object.keys(exHistory).length;
+  // Avg workouts/week
+  const weeks = Object.keys(weeklyMap).length || 1;
+  const avgPerWeek = (fitbod.length / weeks).toFixed(1);
 
   document.getElementById('wo-tiles').innerHTML = [
-    { label: 'Workouts',   val: fitbod.length,                        unit: '',         color: 'var(--accent3)' },
-    { label: 'Total Vol',  val: Math.round(totalVol/1000)+'K',        unit: 'lbs',      color: 'var(--yellow)'  },
-    { label: 'Top Muscle', val: topM ? topM[0] : '—',                 unit: '',         color: 'var(--accent)'  },
-    { label: 'Exercises',  val: uniqEx,                                unit: 'unique',   color: 'var(--purple)'  },
+    { label: 'Total Workouts', val: fitbod.length,           unit: '',       color: 'var(--accent3)' },
+    { label: 'Avg/Week',       val: avgPerWeek,              unit: '/wk',    color: 'var(--accent)'  },
+    { label: 'Total Volume',   val: Math.round(totalVol/1000)+'K', unit: 'lbs', color: 'var(--yellow)' },
+    { label: 'Exercises',      val: uniqEx,                  unit: 'unique', color: 'var(--purple)'  },
   ].map(t => `<div class="stile"><div class="slabel">${t.label}</div><div><span class="sval" style="color:${t.color}">${t.val}</span><span class="sunit">${t.unit}</span></div></div>`).join('');
 
-  const sorted = [...fitbod].sort((a,b) => new Date(a.date)-new Date(b.date));
-  barChart('c-vol', sorted.map(w => fmtDate(w.date)), sorted.map(w => Math.round(w.totalVolume||0)), 'Volume (lbs)', '#4da8ff');
-  if (Object.keys(muscles).length) doughnutChart('c-mgroups', Object.keys(muscles), Object.values(muscles));
+  // ── Consistency chart ──────────────────────────────────────────────────────
+  const wkSorted = Object.entries(weeklyMap).sort((a,b) => a[0]<b[0]?-1:1).slice(-16);
+  barChart('c-consistency', wkSorted.map(([k]) => k.slice(5)), wkSorted.map(([,v]) => v), 'Workouts', '#4da8ff');
 
-  document.getElementById('wo-list').innerHTML = [...sorted].reverse().slice(0,20).map(w => `
-    <div class="logitem">
-      <div>
-        <div style="font-size:11px;color:var(--accent)" class="mono">${w.date}</div>
-        <div style="font-size:13px;font-weight:500;margin:3px 0">${w.workoutName || 'Workout'}</div>
-        <div style="font-size:12px;color:var(--muted)">${(w.muscleGroupsWorked||[]).join(', ')} · ${(w.exercises||[]).length} exercises · ${Math.round(w.totalVolume||0).toLocaleString()} lbs</div>
+  // ── Muscle group balance ───────────────────────────────────────────────────
+  const mvEntries = Object.entries(muscleVol).sort((a,b) => b[1]-a[1]);
+  const mvMax = mvEntries[0]?.[1] || 1;
+  const muscleColors = {
+    Chest:'var(--accent3)', Back:'var(--accent)', Legs:'var(--yellow)',
+    Shoulders:'var(--purple)', Arms:'var(--accent2)', Core:'#ffd460',
+    'Full Body':'var(--text)', Glutes:'#ff6b35', Other:'var(--muted)'
+  };
+  document.getElementById('muscle-balance').innerHTML = mvEntries.map(([m, v]) => `
+    <div class="pbar-wrap">
+      <div class="pbar-label">
+        <span style="color:${muscleColors[m]||'var(--text)'}">${m}</span>
+        <span class="mono">${Math.round(v/1000)}K lbs</span>
       </div>
-      <button class="btn btn-d btn-sm" onclick="deleteEntry('fitbod','${w.id}')">✕</button>
+      <div class="pbar-track"><div class="pbar-fill" style="width:${((v/mvMax)*100).toFixed(0)}%;background:${muscleColors[m]||'var(--accent)'}"></div></div>
     </div>`).join('');
+
+  // ── Rep range analysis ─────────────────────────────────────────────────────
+  // Populate filter
+  const sel = document.getElementById('rr-filter');
+  const existing = [...sel.options].map(o => o.value);
+  Object.keys(muscleZones).forEach(m => {
+    if (!existing.includes(m)) {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      sel.appendChild(opt);
+    }
+  });
+  renderRepRanges();
+
+  // ── Compound vs Isolation ──────────────────────────────────────────────────
+  const total = compoundSets + isolationSets || 1;
+  const cpct = Math.round(compoundSets/total*100);
+  const ipct = 100 - cpct;
+  doughnutChart('c-compound', ['Compound', 'Isolation'], [compoundSets, isolationSets]);
+
+  let tip = '';
+  if (cpct >= 60) tip = `✅ ${cpct}% compound sets — excellent foundation for muscle building. Compounds drive the most overall growth.`;
+  else if (cpct >= 40) tip = `⚡ ${cpct}% compound sets — good mix. Consider pushing toward 60%+ compound for maximum muscle stimulus.`;
+  else tip = `⚠️ Only ${cpct}% compound sets. Isolation work has its place, but compound movements (rows, presses, squats, deadlifts) are the biggest drivers of muscle growth. Try to add more.`;
+  document.getElementById('compound-tip').textContent = tip;
+
+  // ── Recovery gaps ──────────────────────────────────────────────────────────
+  const today = new Date().toISOString().slice(0,10);
+  const recHtml = Object.entries(muscleDates).sort((a,b) => {
+    const la = a[1][a[1].length-1]; const lb = b[1][b[1].length-1];
+    return la < lb ? 1 : -1;
+  }).map(([muscle, dates]) => {
+    const last = dates[dates.length-1];
+    const days = Math.round((new Date(today) - new Date(last)) / 86400000);
+    const freq = dates.length;
+    let badge, bcolor;
+    if (days <= 2)       { badge = 'Just trained'; bcolor = 'rgba(0,229,160,.15);color:var(--accent)'; }
+    else if (days <= 4)  { badge = `${days}d ago — ready`; bcolor = 'rgba(77,168,255,.15);color:var(--accent3)'; }
+    else if (days <= 7)  { badge = `${days}d ago — overdue`; bcolor = 'rgba(255,212,96,.15);color:var(--yellow)'; }
+    else                 { badge = `${days}d ago — stale`; bcolor = 'rgba(255,69,96,.15);color:var(--danger)'; }
+    return `<div class="rec-item">
+      <div>
+        <div style="font-weight:500">${muscle}</div>
+        <div style="font-size:11px;color:var(--muted)">${freq} sessions total · last: ${last}</div>
+      </div>
+      <div class="rec-badge" style="background:${bcolor}">${badge}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('recovery-gaps').innerHTML = recHtml || '<div style="color:var(--muted);font-size:13px">No muscle group data yet</div>';
+
+  // ── Exercise progression dropdown ──────────────────────────────────────────
+  const exSel = document.getElementById('ex-select');
+  const exOpts = [...exSel.options].map(o => o.value);
+  // Sort by # sessions descending
+  Object.entries(exHistory).sort((a,b) => b[1].length-a[1].length).forEach(([name, hist]) => {
+    if (!exOpts.includes(name) && hist.length >= 2) {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = `${name} (${hist.length} sessions)`;
+      exSel.appendChild(opt);
+    }
+  });
+
+  // ── Personal Records ───────────────────────────────────────────────────────
+  const prs = Object.entries(exHistory).map(([name, hist]) => {
+    const best = hist.reduce((a,b) => (b.maxWeight > a.maxWeight ? b : a), hist[0]);
+    return { name, maxWeight: best.maxWeight, date: best.date };
+  }).filter(p => p.maxWeight > 0).sort((a,b) => b.maxWeight - a.maxWeight).slice(0, 12);
+
+  document.getElementById('prs').innerHTML = `<div class="pr-grid">${prs.map(p => `
+    <div class="pr-tile">
+      <div class="pr-ex">${p.name}</div>
+      <div class="pr-val">${p.maxWeight} <span style="font-size:16px;color:var(--muted)">lbs</span></div>
+      <div class="pr-date">${p.date}</div>
+    </div>`).join('')}</div>`;
+
+  // ── Recent workout list ────────────────────────────────────────────────────
+  document.getElementById('wo-list').innerHTML = [...sorted].reverse().slice(0,15).map(w => {
+    const exList = (w.exercises||[]).slice(0,4).map(e => {
+      const tag = isCompound(e.name)
+        ? `<span style="font-size:9px;background:rgba(0,229,160,.15);color:var(--accent);padding:1px 5px;border-radius:3px;margin-left:4px">COMPOUND</span>`
+        : '';
+      const setStr = (e.sets||[]).slice(0,3).map(s => `${s.reps}×${s.weight}`).join(', ');
+      return `<div style="font-size:12px;color:var(--muted);padding:2px 0">${e.name}${tag}${setStr ? ' — ' + setStr : ''}</div>`;
+    }).join('');
+    return `<div class="logitem" style="flex-direction:column;align-items:flex-start;gap:6px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
+        <div>
+          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent)">${w.date}</span>
+          <span style="font-size:13px;font-weight:600;margin-left:10px">${w.workoutName || 'Workout'}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--muted)">${Math.round(w.totalVolume||0).toLocaleString()} lbs · ${(w.muscleGroupsWorked||[]).join(', ')}</span>
+          <button class="btn btn-d btn-sm" onclick="deleteEntry('fitbod','${w.id}')">✕</button>
+        </div>
+      </div>
+      <div>${exList}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderRepRanges() {
+  if (!_analytics) return;
+  const { muscleZones } = _analytics;
+  const filter = document.getElementById('rr-filter')?.value || 'all';
+  const muscles = filter === 'all' ? Object.entries(muscleZones) : Object.entries(muscleZones).filter(([m]) => m === filter);
+  const goals = loadGoals();
+  const targetZone = goals.training || 'hypertrophy';
+
+  const html = muscles.map(([m, z]) => {
+    const tot = z.total || 1;
+    const sp = ((z.strength/tot)*100).toFixed(0);
+    const hp = ((z.hypertrophy/tot)*100).toFixed(0);
+    const ep = ((z.endurance/tot)*100).toFixed(0);
+    const dominantZone = z.strength >= z.hypertrophy && z.strength >= z.endurance ? 'strength'
+      : z.hypertrophy >= z.endurance ? 'hypertrophy' : 'endurance';
+    const aligned = dominantZone === targetZone || targetZone === 'mixed';
+    const flag = aligned ? `<span style="color:var(--accent);font-size:11px">✓ aligned</span>`
+      : `<span style="color:var(--yellow);font-size:11px">⚡ ${dominantZone} dominant, goal is ${targetZone}</span>`;
+    return `<div class="rr-row">
+      <div class="rr-name"><span>${m} <span style="font-weight:400;color:var(--muted)">(${z.total} sets)</span></span>${flag}</div>
+      <div class="rr-bars">
+        ${+sp > 0 ? `<div class="rr-seg" style="width:${sp}%;background:#b47fff" title="Strength ${sp}%"></div>` : ''}
+        ${+hp > 0 ? `<div class="rr-seg" style="width:${hp}%;background:#4da8ff" title="Hypertrophy ${hp}%"></div>` : ''}
+        ${+ep > 0 ? `<div class="rr-seg" style="width:${ep}%;background:#00e5a0" title="Endurance ${ep}%"></div>` : ''}
+      </div>
+      <div style="display:flex;gap:12px;margin-top:4px;font-size:11px;color:var(--muted)">
+        <span>💜 ${sp}% strength</span><span>💙 ${hp}% hypertrophy</span><span>💚 ${ep}% endurance</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('rep-ranges').innerHTML = html || '<div style="color:var(--muted)">No rep-level set data yet. Upload Fitbod screenshots for detailed analysis.</div>';
+}
+
+function renderExProgression() {
+  if (!_analytics) return;
+  const name = document.getElementById('ex-select').value;
+  const el   = document.getElementById('ex-progression');
+  if (!name) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">Select an exercise above</div>';
+    return;
+  }
+  const hist = _analytics.exHistory[name];
+  if (!hist || hist.length < 2) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">Need at least 2 sessions to show progression</div>';
+    return;
+  }
+
+  const first = hist[0], last = hist[hist.length-1];
+  const wDiff  = last.maxWeight - first.maxWeight;
+  const wColor = wDiff >= 0 ? 'var(--accent)' : 'var(--danger)';
+  const trend  = wDiff > 0 ? `▲ +${wDiff} lbs since ${first.date}` : wDiff < 0 ? `▼ ${wDiff} lbs since ${first.date}` : 'Flat — no weight change';
+
+  // Draw inline chart using canvas
+  const canvasId = 'c-exprog';
+  el.innerHTML = `
+    <div style="display:flex;gap:20px;margin-bottom:16px;flex-wrap:wrap">
+      <div class="stile" style="flex:1;min-width:120px;text-align:center">
+        <div class="slabel">Best Set</div>
+        <div class="sval" style="color:var(--yellow)">${last.maxWeight}</div>
+        <div class="sunit">lbs</div>
+      </div>
+      <div class="stile" style="flex:1;min-width:120px;text-align:center">
+        <div class="slabel">Progress</div>
+        <div class="sval" style="color:${wColor};font-size:24px">${wDiff >= 0 ? '+' : ''}${wDiff}</div>
+        <div class="sunit">lbs</div>
+      </div>
+      <div class="stile" style="flex:1;min-width:120px;text-align:center">
+        <div class="slabel">Sessions</div>
+        <div class="sval" style="color:var(--accent3)">${hist.length}</div>
+      </div>
+      <div class="stile" style="flex:2;min-width:200px;display:flex;align-items:center;padding:12px 16px">
+        <div style="font-size:13px;color:${wColor};font-weight:600">${trend}</div>
+      </div>
+    </div>
+    <canvas id="${canvasId}" height="160"></canvas>`;
+
+  lineChart(canvasId,
+    hist.map(h => fmtDate(h.date)),
+    hist.map(h => h.maxWeight),
+    `${name} — max weight`,
+    '#ffd460'
+  );
 }
 
 // ══════════════════════════════════════════════════════
 // COACHING
 // ══════════════════════════════════════════════════════
-async function runCoaching(question) {
+function showCoachTab(tab, el) {
+  document.querySelectorAll('.ctab').forEach(t => {
+    t.style.borderBottomColor = 'transparent';
+    t.style.color = 'var(--muted)';
+  });
+  el.style.borderBottomColor = 'var(--accent)';
+  el.style.color = 'var(--accent)';
+  ['full','body','training','ask'].forEach(id => {
+    document.getElementById('ctab-' + id).style.display = id === tab ? 'block' : 'none';
+  });
+}
+
+async function runCoaching(mode) {
   if (!WORKER_URL) { toast('Set Worker URL in Settings first', true); return; }
-  const loading = document.getElementById('coach-loading');
-  const card    = document.getElementById('coach-card');
-  const btn     = document.getElementById('coach-btn');
-  loading.style.display = 'block';
-  card.style.display    = 'none';
-  btn.disabled = true;
+
+  const question = mode === 'ask' ? document.getElementById('coach-q').value.trim() : '';
+  if (mode === 'ask' && !question) { toast('Enter a question first', true); return; }
+
+  const loadEl = document.getElementById('coach-load-' + mode);
+  const cardEl = document.getElementById('coach-card-' + mode);
+  const btnEl  = document.getElementById('coach-btn-' + mode);
+  if (loadEl) loadEl.style.display = 'block';
+  if (cardEl) cardEl.style.display = 'none';
+  if (btnEl)  btnEl.disabled = true;
 
   try {
-    const r = await wFetch('/api/coach', { method: 'POST', body: JSON.stringify({ question: question || '' }) });
-    document.getElementById('coach-out').textContent  = r.coaching;
-    document.getElementById('coach-time').textContent = 'Generated: ' + new Date(r.generatedAt).toLocaleString();
-    card.style.display = 'block';
+    // Build workout analytics summary to send to worker
+    const woSummary = buildWorkoutSummaryForCoach();
+    const goals = loadGoals();
+    const context = localStorage.getItem('fs-coach-context') || '';
+
+    const r = await wFetch('/api/coach', {
+      method: 'POST',
+      body: JSON.stringify({ mode, question, workoutSummary: woSummary, goals, context })
+    });
+
+    const outEl  = document.getElementById('coach-out-' + mode);
+    const timeEl = document.getElementById('coach-time-' + mode);
+    if (outEl)  outEl.textContent  = r.coaching;
+    if (timeEl) timeEl.textContent = 'Generated: ' + new Date(r.generatedAt).toLocaleString();
+    if (cardEl) cardEl.style.display = 'block';
   } catch (e) {
     toast('❌ ' + e.message, true);
     console.error(e);
   }
-  loading.style.display = 'none';
-  btn.disabled = false;
+  if (loadEl) loadEl.style.display = 'none';
+  if (btnEl)  btnEl.disabled = false;
+}
+
+function buildWorkoutSummaryForCoach() {
+  const fitbod = data.fitbod || [];
+  if (!fitbod.length) return null;
+
+  const analytics = _analytics || buildWorkoutAnalytics(fitbod);
+  const { muscleZones, muscleVol, muscleDates, compoundSets, isolationSets, weeklyMap, exHistory } = analytics;
+
+  // Weekly consistency
+  const wkArr = Object.entries(weeklyMap).sort((a,b)=>a[0]<b[0]?-1:1);
+  const avgPerWeek = wkArr.length ? (fitbod.length / wkArr.length).toFixed(1) : '?';
+  const recentWeeks = wkArr.slice(-6).map(([k,v]) => `${k}: ${v} workouts`).join(', ');
+
+  // Rep zones summary
+  const zoneSummary = Object.entries(muscleZones).map(([m, z]) => {
+    const tot = z.total || 1;
+    return `${m}: ${Math.round(z.strength/tot*100)}% strength / ${Math.round(z.hypertrophy/tot*100)}% hypertrophy / ${Math.round(z.endurance/tot*100)}% endurance`;
+  }).join('
+');
+
+  // Muscle balance
+  const balanceSummary = Object.entries(muscleVol).sort((a,b)=>b[1]-a[1])
+    .map(([m,v]) => `${m}: ${Math.round(v/1000)}K lbs volume`).join(', ');
+
+  // Compound ratio
+  const total = compoundSets + isolationSets || 1;
+  const cpct = Math.round(compoundSets/total*100);
+
+  // Top PRs
+  const prs = Object.entries(exHistory).map(([name, hist]) => {
+    const best = hist.reduce((a,b) => b.maxWeight > a.maxWeight ? b : a, hist[0]);
+    return { name, maxWeight: best.maxWeight };
+  }).filter(p => p.maxWeight > 0).sort((a,b) => b.maxWeight - a.maxWeight).slice(0,10)
+    .map(p => `${p.name}: ${p.maxWeight}lbs`).join(', ');
+
+  // Recovery status
+  const today = new Date().toISOString().slice(0,10);
+  const recovery = Object.entries(muscleDates).map(([m, dates]) => {
+    const last = dates[dates.length-1];
+    const days = Math.round((new Date(today) - new Date(last)) / 86400000);
+    return `${m}: ${days} days since last trained`;
+  }).join(', ');
+
+  return {
+    totalWorkouts: fitbod.length,
+    avgWorkoutsPerWeek: avgPerWeek,
+    recentWeeks,
+    compoundPct: cpct,
+    isolationPct: 100 - cpct,
+    muscleBalance: balanceSummary,
+    repZones: zoneSummary,
+    topPRs: prs,
+    recoveryStatus: recovery,
+  };
 }
 
 // ══════════════════════════════════════════════════════
@@ -987,6 +1510,81 @@ async function testWorker() {
   } catch (e) {
     el.style.color = 'var(--danger)'; el.textContent = `✗ ${e.message}`;
   }
+}
+
+function loadGoals() {
+  try { return JSON.parse(localStorage.getItem('fs-goals') || '{}'); } catch { return {}; }
+}
+
+function saveGoals() {
+  const goals = {
+    primary:  document.querySelector('input[name="goal-primary"]:checked')?.value || '',
+    training: document.querySelector('input[name="goal-training"]:checked')?.value || '',
+    freq:     document.getElementById('goal-freq')?.value || '',
+    med:      document.getElementById('goal-med')?.value || '',
+    muscles:  [...document.querySelectorAll('#goal-muscles input:checked')].map(i => i.value),
+  };
+  localStorage.setItem('fs-goals', JSON.stringify(goals));
+  // Also save to KV so coach always has latest
+  if (WORKER_URL) {
+    wFetch('/api/goals', { method: 'POST', body: JSON.stringify(goals) }).catch(() => {});
+  }
+  const s = document.getElementById('goals-saved');
+  s.style.display = 'inline';
+  setTimeout(() => s.style.display = 'none', 2000);
+}
+
+function restoreGoals() {
+  const g = loadGoals();
+  if (g.primary) {
+    const el = document.querySelector(`input[name="goal-primary"][value="${g.primary}"]`);
+    if (el) el.checked = true;
+  }
+  if (g.training) {
+    const el = document.querySelector(`input[name="goal-training"][value="${g.training}"]`);
+    if (el) el.checked = true;
+  }
+  if (g.freq) { const el = document.getElementById('goal-freq'); if (el) el.value = g.freq; }
+  if (g.med)  { const el = document.getElementById('goal-med');  if (el) el.value = g.med;  }
+  if (g.muscles) {
+    g.muscles.forEach(m => {
+      const el = document.querySelector(`#goal-muscles input[value="${m}"]`);
+      if (el) el.checked = true;
+    });
+  }
+}
+
+async function saveCoachContext() {
+  const ctx = document.getElementById('coach-context')?.value || '';
+  localStorage.setItem('fs-coach-context', ctx);
+  // Save to KV for persistence across devices
+  if (WORKER_URL) {
+    try {
+      await wFetch('/api/context', { method: 'POST', body: JSON.stringify({ context: ctx }) });
+    } catch (e) { toast('⚠️ Saved locally only: ' + e.message, true); return; }
+  }
+  const s = document.getElementById('context-saved');
+  s.style.display = 'inline';
+  setTimeout(() => s.style.display = 'none', 2000);
+  toast('✅ Context saved to cloud!');
+}
+
+async function loadCoachContext() {
+  // Try cloud first, fall back to local
+  if (WORKER_URL) {
+    try {
+      const r = await wFetch('/api/context');
+      if (r.context) {
+        localStorage.setItem('fs-coach-context', r.context);
+        const el = document.getElementById('coach-context');
+        if (el) el.value = r.context;
+        return;
+      }
+    } catch {}
+  }
+  const local = localStorage.getItem('fs-coach-context') || '';
+  const el = document.getElementById('coach-context');
+  if (el) el.value = local;
 }
 
 // ══════════════════════════════════════════════════════
