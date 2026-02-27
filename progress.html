@@ -535,6 +535,7 @@ async function handleFiles(fileList, type) {
       }
     } catch (e) {
       appendLog(`✗ ${file.name}: ${e.message}`, 'err');
+      console.error('handleFiles error:', e);
     }
   }
 
@@ -571,6 +572,7 @@ async function handleFiles(fileList, type) {
 
 async function processFile(file, type) {
   const ext = file.name.split('.').pop().toLowerCase();
+  appendLog(`    processFile: type=${type} ext=${ext} name=${file.name}`, 'info');
 
   if (type === 'evolt' && ext === 'pdf') {
     return parseEvoltPDF(file);
@@ -588,6 +590,7 @@ async function processFile(file, type) {
     return parseFuelStrongJSON(file);
   }
 
+  appendLog(`    ⚠ No handler for type=${type} ext=${ext}`, 'warn');
   return null;
 }
 
@@ -753,11 +756,19 @@ async function parseFuelStrongJSON(file) {
 
 // ─── ZIP Extractor (JSZip) ──────────────────────────────────────────────────────
 async function extractZip(file) {
+  if (typeof JSZip === 'undefined') {
+    appendLog('  ✗ JSZip library not loaded — check internet connection', 'err');
+    throw new Error('JSZip not available');
+  }
+  appendLog(`  Loading ZIP (${(file.size/1024/1024).toFixed(1)} MB)...`, 'info');
   const zip   = await JSZip.loadAsync(file);
   const files = [];
   const jobs  = [];
+  let fileCount = 0;
 
   zip.forEach((relativePath, zipEntry) => {
+    fileCount++;
+    appendLog(`  Found in ZIP: ${relativePath} (dir:${zipEntry.dir})`, 'info');
     if (zipEntry.dir) return;
     const name = relativePath.split('/').pop();
     if (!name) return;
@@ -766,10 +777,12 @@ async function extractZip(file) {
         const mime = mimeFromName(name);
         const blob = new Blob([buf], { type: mime });
         files.push(new File([blob], name, { type: mime }));
-      })
+        appendLog(`  Extracted: ${name} (${(buf.byteLength/1024).toFixed(0)} KB)`, 'info');
+      }).catch(e => appendLog(`  Failed to extract ${relativePath}: ${e.message}`, 'err'))
     );
   });
 
+  appendLog(`  ZIP contains ${fileCount} total entries`, 'info');
   await Promise.all(jobs);
   return files;
 }
