@@ -49,11 +49,11 @@ a{color:var(--blue)}
 .hbtn{font-size:11px;font-weight:600;padding:4px 11px;border-radius:99px;
   border:1px solid var(--b1);background:var(--s1);color:var(--t2);transition:all .15s}
 .hbtn:hover,.hbtn.on{border-color:var(--green);color:var(--green)}
-.drive-chip{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;
+.sync-chip{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;
   border:1px solid var(--b1);background:var(--s1);font-size:11px;color:var(--t2);
   cursor:pointer;transition:all .15s;white-space:nowrap}
-.drive-chip:hover{border-color:var(--blue);color:var(--blue)}
-.drive-chip.linked{border-color:rgba(0,229,160,.3);color:var(--green)}
+.sync-chip:hover{border-color:var(--blue);color:var(--blue)}
+.sync-chip.linked{border-color:rgba(0,229,160,.3);color:var(--green)}
 
 /* ─── TABS ─── */
 .tab-bar{
@@ -443,8 +443,8 @@ body.simple .full-only{display:none!important}
   <div class="hright">
     <div class="hchip" id="hdate">—</div>
     <button class="hbtn" id="mode-btn" onclick="toggleMode()">Simple</button>
-    <button class="drive-chip" id="drive-chip" onclick="handleDriveAuth()">
-      <span id="drive-icon">☁️</span><span id="drive-lbl">Sync</span>
+    <button class="sync-chip" id="kv-chip" onclick="kvSync()">
+      <span id="kv-icon">☁️</span><span id="kv-lbl">Sync</span>
     </button>
   </div>
 </header>
@@ -843,31 +843,31 @@ body.simple .full-only{display:none!important}
     </details>
   </div>
 
-  <!-- Google Drive -->
+  <!-- Cloud Sync (KV) -->
   <div class="card">
-    <div class="ct">☁️ Google Drive Sync</div>
+    <div class="ct">☁️ Cloud Sync</div>
     <div class="ssec">
-      <span class="slbl">Google Client ID</span>
-      <input type="text" class="inp" id="s-cid"
-        placeholder="xxxxx.apps.googleusercontent.com"
-        onchange="localStorage.setItem('fs3-cid',this.value.trim())"
-        style="margin-bottom:9px">
-      <div style="display:flex;gap:7px;flex-wrap:wrap">
-        <button class="btn btn-g btn-sm" onclick="handleDriveAuth()">☁️ Connect</button>
-        <button class="btn btn-g btn-sm" id="drive-sync-btn" style="display:none" onclick="syncToDrive()">🔄 Sync Now</button>
-        <button class="btn btn-g btn-sm" id="drive-load-btn" style="display:none" onclick="loadFromDrive()">📥 Load</button>
-        <button class="btn btn-g btn-sm" id="drive-disc-btn" style="display:none" onclick="disconnectDrive()">Disconnect</button>
+      <div style="font-size:12px;color:var(--t3);margin-bottom:10px;line-height:1.7">
+        Your data syncs automatically to Cloudflare KV through your worker. 
+        Works across all devices — phone, PC, tablet — with no setup needed 
+        once your Worker URL is set above.
       </div>
-      <div style="font-size:11px;color:var(--t3);margin-top:7px" id="drive-status">Not connected</div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        <button class="btn btn-g btn-sm" onclick="kvSync()">☁️ Sync Now</button>
+        <button class="btn btn-g btn-sm" onclick="kvLoad()">📥 Load from Cloud</button>
+      </div>
+      <div style="font-size:11px;color:var(--t3);margin-top:7px" id="kv-status">Ready</div>
     </div>
     <details>
-      <summary style="font-size:12px;color:var(--blue);cursor:pointer;padding:7px 0;list-style:none;user-select:none">▸ How to get a Google Client ID (one-time setup)</summary>
+      <summary style="font-size:12px;color:var(--blue);cursor:pointer;padding:7px 0;list-style:none;user-select:none">▸ How cloud sync works</summary>
       <div style="font-size:12px;color:var(--t2);line-height:1.85;margin-top:9px;padding:12px;background:var(--s2);border-radius:var(--rsm);border:1px solid var(--b1)">
-        <strong style="color:var(--t1)">1.</strong> <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a> → create a project<br>
-        <strong style="color:var(--t1)">2.</strong> Enable the <strong>Google Drive API</strong><br>
-        <strong style="color:var(--t1)">3.</strong> APIs &amp; Services → Credentials → OAuth 2.0 Client ID<br>
-        <strong style="color:var(--t1)">4.</strong> Application type: Web → add your GitHub Pages URL to Authorized JavaScript Origins<br>
-        <strong style="color:var(--t1)">5.</strong> Copy the Client ID and paste it above
+        Your full FuelStrong state is saved to Cloudflare KV (a fast key-value database) 
+        every time you log food, check in, or tap "Sync Now". The data is tied to your 
+        Worker URL — any device that uses the same Worker URL shares the same data.<br><br>
+        <strong style="color:var(--t1)">Sync Now</strong> — pushes your current data to the cloud<br>
+        <strong style="color:var(--t1)">Load from Cloud</strong> — pulls the latest saved state (useful after switching devices)<br><br>
+        Your data also stays in localStorage as a fast local cache, so the app works 
+        even if you're offline.
       </div>
     </details>
   </div>
@@ -992,9 +992,8 @@ body.simple .full-only{display:none!important}
 </div>
 
 <!-- Photo/barcode inputs created dynamically in JS for cross-platform reliability -->
-
 <div id="toast"></div>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+
 
 <script>
 /* ═══════════════════════════════════════════════════════════════
@@ -1047,6 +1046,7 @@ let S = deepClone(DEFAULTS);
 function deepClone(o){ return JSON.parse(JSON.stringify(o)); }
 function save(){
   try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){}
+  scheduleKVSync();
 }
 function loadState(){
   try{
@@ -1129,13 +1129,13 @@ async function callAI(messages, maxTokens=600, systemPrompt=''){
     // We detect which format based on whether a worker API key is stored separately.
     const workerKey = localStorage.getItem('fs3-worker-key')||'';
     if(workerKey.startsWith('sk-ant-')){
-      // Old-format worker: send key + payload to /proxy endpoint
+      // Legacy format: POST to /proxy with { key, payload }
       url = ep.replace(/\/$/, '') + '/proxy';
       headers = {'Content-Type':'application/json'};
       bodyObj = { key: workerKey, payload };
     } else {
-      // New-format worker: send payload directly to worker root URL
-      url = ep.replace(/\/$/, '');
+      // New format: POST to /api/ai — Anthropic key stored as Cloudflare Worker Secret
+      url = ep.replace(/\/$/, '') + '/api/ai';
       headers = {'Content-Type':'application/json'};
       bodyObj = payload;
     }
@@ -2008,7 +2008,6 @@ function restoreSettings(){
   document.getElementById('s-pg').value=S.profile.goalP||'';
   document.getElementById('s-cg').value=S.profile.goalC||'';
   document.getElementById('s-api').value=localStorage.getItem('fs3-api')||'';
-  document.getElementById('s-cid').value=localStorage.getItem('fs3-cid')||'';
   const wkInp = document.getElementById('s-worker-key');
   if(wkInp) wkInp.value = localStorage.getItem('fs3-worker-key')||'';
   // Goal pills
@@ -2127,136 +2126,125 @@ function confirmClear(){
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   GOOGLE DRIVE
+   CLOUD SYNC (Cloudflare KV via Worker)
 ═══════════════════════════════════════════════════════════════ */
-const DRIVE_FOLDER='FuelStrong';
-const DRIVE_FILE='fuelstrong-data.json';
-let driveToken=null, driveFolderId=localStorage.getItem('fs3-folder')||null;
-let driveFileId=localStorage.getItem('fs3-file')||null;
 
-async function handleDriveAuth(){
-  const cid=localStorage.getItem('fs3-cid')||document.getElementById('s-cid')?.value?.trim();
-  if(!cid){ showToast('Add your Google Client ID in Settings first'); gotoTab('settings',document.querySelectorAll('.tab')[4]); return; }
+function getWorkerBase(){
+  const url = (localStorage.getItem('fs3-api')||'').trim().replace(/\/$/, '');
+  return url;
+}
+
+async function kvSync(){
+  const base = getWorkerBase();
+  if(!base){ showToast('Add your Worker URL in Settings → AI Coach first'); return; }
+  const chip = document.getElementById('kv-chip');
+  const icon = document.getElementById('kv-icon');
+  const lbl  = document.getElementById('kv-lbl');
+  const statusEl = document.getElementById('kv-status');
+  if(icon) icon.textContent = '⏳';
+  if(lbl)  lbl.textContent  = 'Syncing…';
   try{
-    const tc=google.accounts.oauth2.initTokenClient({
-      client_id:cid, scope:'https://www.googleapis.com/auth/drive.file',
-      callback:async resp=>{
-        if(resp.error){ showToast('Auth failed: '+resp.error); return; }
-        driveToken=resp.access_token;
-        localStorage.setItem('fs3-drive','1');
-        updateDriveUI(true);
-        await ensureDriveFolder();
-        await syncToDrive();
-        showToast('✓ Google Drive connected!');
-      }
+    // Build the full export — history (last 90 days to keep payload manageable),
+    // evolt scans, custom foods, and profile. Today's log is included too.
+    const payload = {
+      savedAt:     new Date().toISOString(),
+      version:     3,
+      profile:     S.profile,
+      history:     S.history.slice(-90),
+      evolt:       S.evolt,
+      customFoods: S.customFoods,
+      today:       S.today,
+      coach:       { narrative: S.coach.narrative },
+    };
+    const r = await fetch(base + '/api/fuelstrong', {
+      method:  'POST',
+      headers: {'Content-Type':'application/json'},
+      body:    JSON.stringify(payload),
     });
-    tc.requestAccessToken({prompt:''});
-  }catch(e){ showToast('Could not start auth — check Client ID in Settings'); }
-}
-function disconnectDrive(){
-  driveToken=null; localStorage.removeItem('fs3-drive');
-  updateDriveUI(false); showToast('Drive disconnected');
-}
-function updateDriveUI(on){
-  const chip=document.getElementById('drive-chip');
-  const icon=document.getElementById('drive-icon');
-  const lbl=document.getElementById('drive-lbl');
-  const syncBtn=document.getElementById('drive-sync-btn');
-  const loadBtn=document.getElementById('drive-load-btn');
-  const discBtn=document.getElementById('drive-disc-btn');
-  const statusEl=document.getElementById('drive-status');
-  if(on){
-    chip.classList.add('linked'); icon.textContent='✅'; lbl.textContent='Synced';
-    if(syncBtn) syncBtn.style.display='';
-    if(loadBtn) loadBtn.style.display='';
-    if(discBtn) discBtn.style.display='';
-    if(statusEl) statusEl.textContent='Connected';
-  }else{
-    chip.classList.remove('linked'); icon.textContent='☁️'; lbl.textContent='Sync';
-    if(syncBtn) syncBtn.style.display='none';
-    if(loadBtn) loadBtn.style.display='none';
-    if(discBtn) discBtn.style.display='none';
-    if(statusEl) statusEl.textContent='Not connected';
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const now = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    if(icon) icon.textContent = '✅';
+    if(lbl)  lbl.textContent  = 'Synced';
+    if(chip) chip.classList.add('linked');
+    if(statusEl) statusEl.textContent = 'Last synced ' + now;
+    // Also push today's nutrition entry to progress app's fuelstrong store
+    await kvPushTodayToProgress(base);
+    showToast('✓ Synced to cloud!');
+  }catch(e){
+    if(icon) icon.textContent = '☁️';
+    if(lbl)  lbl.textContent  = 'Sync';
+    showToast('Sync failed: ' + e.message);
   }
 }
-async function driveReq(url,opts={}){
-  const r=await fetch(url,{...opts,headers:{'Authorization':'Bearer '+driveToken,...(opts.headers||{})}});
-  if(!r.ok) throw new Error('Drive '+r.status);
-  return r.json();
-}
-async function ensureDriveFolder(){
-  if(driveFolderId) return;
-  const q=encodeURIComponent(`name='${DRIVE_FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-  const res=await driveReq(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
-  if(res.files&&res.files.length){ driveFolderId=res.files[0].id; }
-  else{
-    const c=await driveReq('https://www.googleapis.com/drive/v3/files',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:DRIVE_FOLDER,mimeType:'application/vnd.google-apps.folder'})
-    });
-    driveFolderId=c.id;
-  }
-  localStorage.setItem('fs3-folder',driveFolderId);
-}
-async function syncToDrive(){
-  if(!driveToken){ showToast('Connect Drive first'); return; }
+
+async function kvLoad(){
+  const base = getWorkerBase();
+  if(!base){ showToast('Add your Worker URL in Settings first'); return; }
+  const statusEl = document.getElementById('kv-status');
+  if(statusEl) statusEl.textContent = 'Loading…';
   try{
-    await ensureDriveFolder();
-    const payload=JSON.stringify({...buildExport(),today:S.today,coach:S.coach},null,2);
-    const blob=new Blob([payload],{type:'application/json'});
-    if(!driveFileId){
-      const q=encodeURIComponent(`name='${DRIVE_FILE}' and '${driveFolderId}' in parents and trashed=false`);
-      const res=await driveReq(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
-      if(res.files&&res.files.length) driveFileId=res.files[0].id;
+    const r = await fetch(base + '/api/fuelstrong');
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const state = d.state;
+    if(!state){ showToast('No cloud data found yet'); return; }
+    if(state.profile)     S.profile     = {...DEFAULTS.profile,...state.profile};
+    if(Array.isArray(state.history))     S.history     = state.history;
+    if(Array.isArray(state.evolt))       S.evolt       = state.evolt;
+    if(Array.isArray(state.customFoods)) S.customFoods = state.customFoods;
+    if(state.today && state.today.date === todayKey()){
+      S.today = {...DEFAULTS.today,...state.today};
+      S.today.ci   = {...DEFAULTS.today.ci,...(state.today.ci||{})};
+      S.today.food = Array.isArray(state.today.food) ? state.today.food : [];
+      S.today.hem  = Array.isArray(state.today.hem)  ? state.today.hem  : [];
     }
-    const form=new FormData();
-    if(driveFileId){
-      form.append('metadata',new Blob([JSON.stringify({name:DRIVE_FILE})],{type:'application/json'}));
-      form.append('file',blob);
-      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=multipart`,
-        {method:'PATCH',headers:{'Authorization':'Bearer '+driveToken},body:form});
-    }else{
-      form.append('metadata',new Blob([JSON.stringify({name:DRIVE_FILE,parents:[driveFolderId]})],{type:'application/json'}));
-      form.append('file',blob);
-      const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-        {method:'POST',headers:{'Authorization':'Bearer '+driveToken},body:form});
-      const d=await res.json();
-      driveFileId=d.id; localStorage.setItem('fs3-file',driveFileId);
-    }
-    const now=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    const statusEl=document.getElementById('drive-status');
-    if(statusEl) statusEl.textContent=`Last synced ${now}`;
-    document.getElementById('drive-icon').textContent='✅';
-    document.getElementById('drive-lbl').textContent='Synced';
-  }catch(e){ showToast('Sync failed: '+e.message); }
-}
-async function loadFromDrive(){
-  if(!driveToken){ showToast('Connect Drive first'); return; }
-  try{
-    await ensureDriveFolder();
-    if(!driveFileId){
-      const q=encodeURIComponent(`name='${DRIVE_FILE}' and '${driveFolderId}' in parents and trashed=false`);
-      const res=await driveReq(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
-      if(!res.files||!res.files.length){ showToast('No data file found on Drive'); return; }
-      driveFileId=res.files[0].id;
-      localStorage.setItem('fs3-file',driveFileId);
-    }
-    const r=await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`,
-      {headers:{'Authorization':'Bearer '+driveToken}});
-    const d=await r.json();
-    if(d.history)     S.history=d.history;
-    if(d.evolt)       S.evolt=d.evolt;
-    if(d.customFoods) S.customFoods=d.customFoods;
-    if(d.profile)     S.profile={...S.profile,...d.profile};
-    if(d.today&&d.today.date===todayKey()){
-      S.today={...DEFAULTS.today,...d.today};
-      S.today.ci={...DEFAULTS.today.ci,...d.today.ci};
-    }
-    save(); renderTimeline(); updateScoreboard(); renderWater();
+    save();
+    renderTimeline(); updateScoreboard(); renderWater();
     renderHistory(); renderEvoltList();
-    showToast('✓ Loaded from Drive!');
-  }catch(e){ showToast('Load failed: '+e.message); }
+    const now = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    if(statusEl) statusEl.textContent = 'Loaded at ' + now;
+    showToast('✓ Loaded from cloud!');
+  }catch(e){
+    if(statusEl) statusEl.textContent = 'Load failed';
+    showToast('Load failed: ' + e.message);
+  }
 }
+
+// Push today's completed nutrition data to the Progress app's fuelstrong store
+// so it shows up in Progress → Coaching → Nutrition context automatically
+async function kvPushTodayToProgress(base){
+  try{
+    const t = S.today;
+    if(!t.date || !t.food.length) return; // nothing worth pushing
+    const totals = { p:0, c:0 };
+    t.food.forEach(e=>{ totals.p+=e.protein||0; totals.c+=e.cal||0; });
+    const entry = {
+      id:       'fs_' + t.date,
+      date:     t.date,
+      protein:  Math.round(totals.p),
+      calories: Math.round(totals.c),
+      water:    t.water || 0,
+      energy:   t.ci.energy || 0,
+      mood:     t.ci.mood   || 0,
+      trained:  t.ci.trained || false,
+    };
+    await fetch(base + '/api/data', {
+      method:  'POST',
+      headers: {'Content-Type':'application/json'},
+      body:    JSON.stringify({ type: 'fuelstrong', data: [entry] }),
+    });
+  }catch(e){ /* non-critical — don't surface to user */ }
+}
+
+// Auto-sync after every save if worker is configured (debounced to avoid hammering)
+let _kvSyncTimer = null;
+function scheduleKVSync(){
+  const base = getWorkerBase();
+  if(!base) return;
+  clearTimeout(_kvSyncTimer);
+  _kvSyncTimer = setTimeout(kvSync, 8000); // 8 seconds after last change
+}
+
 function buildExport(){
   return { exportedAt:new Date().toISOString(), version:3,
     profile:S.profile, history:S.history, evolt:S.evolt, customFoods:S.customFoods };
@@ -2293,8 +2281,10 @@ function init(){
   renderChat();
   // Injection pill visibility
   if(S.profile.ctx.includes('glp1')) document.getElementById('inj-pill').style.display='';
-  // Drive UI
-  if(localStorage.getItem('fs3-drive')) updateDriveUI(true);
+  // Cloud sync — load latest from KV on startup (silent, falls back to localStorage)
+  if(getWorkerBase()){
+    kvLoad().catch(()=>{}); // non-blocking — already rendered from localStorage above
+  }
   // Countdown refresh every minute
   setInterval(()=>updateWorkoutCd(),60000);
   // Auto-detect injection day from schedule
