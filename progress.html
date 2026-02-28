@@ -66,6 +66,7 @@ input.ainput:focus{border-color:var(--accent)}
 #toast.err{background:var(--danger);color:#fff}
 .spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(0,229,160,.3);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:var(--surface)}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
@@ -100,6 +101,10 @@ input.ainput:focus{border-color:var(--accent)}
 <header>
   <div class="logo">Fuel<span>Strong</span> <span style="font-size:16px;letter-spacing:2px;color:var(--muted)">PROGRESS</span></div>
   <div style="display:flex;align-items:center;gap:12px">
+    <div id="worker-indicator" title="Worker connection status" style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;background:var(--card2);border:1px solid var(--border);cursor:pointer;font-size:11px;font-weight:600;letter-spacing:.5px;color:var(--muted)" onclick="retestWorker()">
+      <div id="worker-dot" style="width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0"></div>
+      <span id="worker-label">Connecting...</span>
+    </div>
     <span class="hbadge" id="data-status">No data</span>
     <button class="btn btn-g btn-sm" onclick="syncAll()">☁️ Backup to GitHub</button>
   </div>
@@ -425,9 +430,11 @@ async function init() {
   document.getElementById('worker-url').value = WORKER_URL;
   restoreGoals();
   if (WORKER_URL) {
+    setWorkerStatus('connecting');
     await loadFromWorker();
     await loadCoachContext();
   } else {
+    setWorkerStatus('none');
     loadCache();
     renderAll();
     const local = localStorage.getItem('fs-coach-context') || '';
@@ -456,7 +463,40 @@ async function wFetch(path, opts = {}) {
   return res.json();
 }
 
+function setWorkerStatus(state) {
+  const dot   = document.getElementById('worker-dot');
+  const label = document.getElementById('worker-label');
+  if (!dot || !label) return;
+  const states = {
+    connecting: { color: 'var(--yellow)',  text: 'Connecting…',  title: 'Checking worker…' },
+    connected:  { color: 'var(--accent)',  text: 'Connected',    title: 'Worker reachable — click to retest' },
+    offline:    { color: 'var(--danger)',  text: 'Offline',      title: 'Worker unreachable — check Settings' },
+    none:       { color: 'var(--muted)',   text: 'No URL set',   title: 'Paste your Worker URL in Settings' },
+  };
+  const s = states[state] || states.none;
+  dot.style.background = s.color;
+  // pulse animation when connecting
+  dot.style.animation = state === 'connecting' ? 'pulse 1s ease-in-out infinite' : 'none';
+  label.textContent = s.text;
+  document.getElementById('worker-indicator').title = s.title;
+  document.getElementById('worker-indicator').style.borderColor = state === 'connected' ? 'rgba(0,229,160,.3)' : state === 'offline' ? 'rgba(255,69,96,.3)' : 'var(--border)';
+}
+
+async function retestWorker() {
+  if (!WORKER_URL) { setWorkerStatus('none'); showTab('settings', document.querySelectorAll('.tab')[5]); return; }
+  setWorkerStatus('connecting');
+  try {
+    await wFetch('/api/health');
+    setWorkerStatus('connected');
+    toast('✅ Worker connected');
+  } catch (e) {
+    setWorkerStatus('offline');
+    toast('❌ Worker offline: ' + e.message, true);
+  }
+}
+
 async function loadFromWorker() {
+  setWorkerStatus('connecting');
   try {
     const d = await wFetch('/api/data');
     data.evolt      = d.evolt      || [];
@@ -465,10 +505,12 @@ async function loadFromWorker() {
     saveCache();
     renderAll();
     updateStatus();
+    setWorkerStatus('connected');
     toast('☁️ Data loaded');
   } catch (e) {
     loadCache();
     renderAll();
+    setWorkerStatus('offline');
     if (WORKER_URL) toast('⚠️ Worker: ' + e.message, true);
   }
 }
@@ -1498,6 +1540,8 @@ function saveSettings() {
   WORKER_URL = document.getElementById('worker-url').value.trim().replace(/\/$/, '');
   localStorage.setItem('fs-worker-url', WORKER_URL);
   toast('Settings saved!');
+  if (WORKER_URL) retestWorker();
+  else setWorkerStatus('none');
 }
 
 async function testWorker() {

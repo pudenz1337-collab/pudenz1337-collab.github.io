@@ -34,6 +34,9 @@ export default {
       if (path === '/api/parse'   && method === 'POST')   return parseFile(request, env);
       if (path === '/api/coach'   && method === 'POST')   return getCoaching(request, env);
       if (path === '/api/backup'  && method === 'POST')   return backupToGitHub(env);
+      if (path === '/api/goals'   && method === 'POST')   return saveKVKey(request, env, 'goals');
+      if (path === '/api/context' && method === 'POST')   return saveKVKey(request, env, 'coach_context');
+      if (path === '/api/context' && method === 'GET')    return getKVKey(env, 'coach_context');
       if (path.startsWith('/api/data/') && method === 'DELETE') return deleteEntry(request, env, path);
 
       return reply({ error: 'Not found' }, 404);
@@ -167,6 +170,19 @@ If this is NOT a Fitbod workout screenshot, return: { "error": "not_workout", "d
   return reply({ error: 'unknown_file_type' }, 400);
 }
 
+// ─── Generic KV helpers ─────────────────────────────────────────────────────────
+async function saveKVKey(request, env, key) {
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
+  const body = await request.json().catch(() => ({}));
+  await env.FUELSTRONG_KV.put(key, JSON.stringify(body));
+  return reply({ success: true });
+}
+async function getKVKey(env, key) {
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
+  const raw = await env.FUELSTRONG_KV.get(key).catch(() => null);
+  return reply(raw ? JSON.parse(raw) : {});
+}
+
 // ─── AI Coaching ────────────────────────────────────────────────────────────────
 async function getCoaching(request, env) {
   const body = await request.json().catch(() => ({}));
@@ -179,63 +195,113 @@ async function getCoaching(request, env) {
     return reply({ error: 'ANTHROPIC_API_KEY secret not set in Worker environment variables.' }, 500);
   }
 
-  const [evoltRaw, fitbodRaw, fuelstrongRaw] = await Promise.all([
+  const [evoltRaw, fitbodRaw, fuelstrongRaw, goalsRaw, contextRaw] = await Promise.all([
     env.FUELSTRONG_KV.get('evolt').catch(() => null),
     env.FUELSTRONG_KV.get('fitbod').catch(() => null),
     env.FUELSTRONG_KV.get('fuelstrong').catch(() => null),
+    env.FUELSTRONG_KV.get('goals').catch(() => null),
+    env.FUELSTRONG_KV.get('coach_context').catch(() => null),
   ]);
 
   const evolt      = JSON.parse(evoltRaw      || '[]');
   const fitbod     = JSON.parse(fitbodRaw     || '[]');
   const fuelstrong = JSON.parse(fuelstrongRaw || '[]');
+  const goals      = goalsRaw ? JSON.parse(goalsRaw) : (body.goals || {});
+  const savedCtx   = contextRaw ? JSON.parse(contextRaw) : {};
+  const context    = savedCtx.context || body.context || '';
+  const woSummary  = body.workoutSummary || null;
+  const mode       = body.mode || 'full';
 
+  // ── Format Evolt data ──
   const evoltLines = evolt.map(s =>
     `${s.date}: Weight=${s.weight}lbs | BF%=${s.bodyFatPct}% | SkeletalMuscle=${s.skeletalMuscleMass}lbs | ` +
     `LBM=${s.leanBodyMass}lbs | VisceralFatMass=${s.visceralFatMass}lbs | VisceralFatArea=${s.visceralFatArea}cm² | ` +
-    `BWI=${s.bwiScore} | BMR=${s.bmr}kcal | AbdCirc=${s.abdominalCirc}in | W:H=${s.waistHipRatio}`
+    `BWI=${s.bwiScore} | BMR=${s.bmr}kcal`
   ).join('\n');
 
-  const fitbodLines = fitbod.slice(-30).map(w =>
-    `${w.date}: ${w.workoutName || 'Workout'} | Muscles: ${(w.muscleGroupsWorked || []).join(', ')} | ` +
-    `Volume: ${w.totalVolume}lbs | Exercises: ${(w.exercises || []).map(e => `${e.name}(${e.maxWeight}lbs)`).join(', ')}`
-  ).join('\n');
+  const evoltDelta = evolt.length >= 2 ? (() => {
+    const f = evolt[0], l = evolt[evolt.length-1];
+    return `Change ${f.date}→${l.date}: Weight ${f.weight}→${l.weight}lbs (${(l.weight-f.weight).toFixed(1)}), ` +
+      `BF% ${f.bodyFatPct}→${l.bodyFatPct}% (${(l.bodyFatPct-f.bodyFatPct).toFixed(1)}%), ` +
+      `Muscle ${f.skeletalMuscleMass}→${l.skeletalMuscleMass}lbs (${(l.skeletalMuscleMass-f.skeletalMuscleMass).toFixed(1)}), ` +
+      `VisceralFatMass ${f.visceralFatMass}→${l.visceralFatMass}lbs, BWI ${f.bwiScore}→${l.bwiScore}`;
+  })() : 'Only one scan available.';
 
   const nutritionLines = fuelstrong.length > 0
-    ? fuelstrong.slice(-14).map(n =>
-        `${n.date}: Protein=${n.protein}g | Cal=${n.calories}kcal | Water=${n.water}oz`
-      ).join('\n')
-    : 'No nutrition data uploaded yet.';
+    ? fuelstrong.slice(-14).map(n => `${n.date}: Protein=${n.protein}g | Cal=${n.calories}kcal | Water=${n.water}oz`).join('\n')
+    : 'No nutrition data.';
 
-  const system = `You are a direct, data-driven fitness coach specializing in body recomposition — building muscle while losing fat. You coach a 50-year-old woman (Hanna) who:
-- Is 5'5", takes tirzepatide (GLP-1) which suppresses appetite
-- Has been seriously focused on protein and muscle building for only 2-3 months
-- Uses Evolt 360 BIA scans, Fitbod app, and FuelStrong nutrition tracker
-- GOAL: Build visible muscle while uncovering it through fat loss
+  // ── Format workout analytics ──
+  const woLines = woSummary ? `
+Total workouts: ${woSummary.totalWorkouts}
+Avg per week: ${woSummary.avgWorkoutsPerWeek}
+Recent weeks: ${woSummary.recentWeeks}
+Compound vs Isolation: ${woSummary.compoundPct}% compound / ${woSummary.isolationPct}% isolation
+Muscle balance (volume): ${woSummary.muscleBalance}
+Rep zone breakdown: ${woSummary.repZones}
+Top PRs: ${woSummary.topPRs}
+Recovery status: ${woSummary.recoveryStatus}` : fitbod.slice(-20).map(w =>
+    `${w.date}: ${w.workoutName||'Workout'} | ${(w.muscleGroupsWorked||[]).join(', ')} | ${w.totalVolume}lbs | ${(w.exercises||[]).map(e=>`${e.name}(${e.maxWeight}lbs max)`).join(', ')}`
+  ).join('\n') || 'No workout data.';
 
-Your coaching philosophy:
-1. LEAD with what IS working — always cite actual numbers
-2. The scale is the WORST metric for this person — consistently reframe toward body composition metrics
-3. Be specific and actionable — no vague advice, give exact numbers and behaviors to target
-4. Acknowledge the timeline honestly — muscle building takes 6-12+ months to become visually apparent
-5. Connect the dots between training data, nutrition, and body composition changes
-6. Short response: 3-4 focused paragraphs + a clear "Your Top 3 Priorities Right Now" section`;
+  // ── Goals context block ──
+  const goalsBlock = goals && Object.keys(goals).length ? `
+User's stated fitness goals:
+- Primary goal: ${goals.primary || 'not set'}
+- Training focus: ${goals.training || 'not set'} (${goals.training === 'hypertrophy' ? '6-12 rep range' : goals.training === 'strength' ? '1-5 rep range' : goals.training === 'endurance' ? '13+ reps' : 'mixed'})
+- Target training frequency: ${goals.freq || 'not set'}x/week
+- Medication: ${goals.med || 'not specified'}
+- Priority muscle groups: ${(goals.muscles||[]).join(', ') || 'not set'}` : '';
 
-  const userMsg = question
-    ? `My data:\n\nEvolt Scans:\n${evoltLines}\n\nWorkouts:\n${fitbodLines}\n\nNutrition:\n${nutritionLines}\n\nMy question: ${question}`
-    : `Give me a full coaching analysis. What do my numbers actually mean, what's working, and what should I focus on?\n\nEvolt Scans:\n${evoltLines}\n\nWorkouts:\n${fitbodLines}\n\nNutrition:\n${nutritionLines}`;
+  const contextBlock = context ? `\nCoach context notes from user:\n${context}` : '';
 
-  const resp    = await callClaude(env, {
+  // ── Base system prompt ──
+  const baseSystem = `You are a direct, data-driven fitness coach specializing in body recomposition — building visible muscle while losing fat. You coach a 50-year-old woman (Hanna) who:
+- Is 5'5", likely on tirzepatide (GLP-1) which suppresses appetite and affects muscle metabolism
+- Uses Evolt 360 BIA body composition scans, Fitbod for workouts, and FuelStrong for nutrition
+- GOAL: Build visible muscle while uncovering it through fat loss — the "body recomp" approach
+${goalsBlock}${contextBlock}
+
+Your coaching rules:
+1. LEAD with what IS working — always cite actual data numbers
+2. The scale is the WORST metric here — reframe toward body composition changes
+3. Be specific and actionable — give exact numbers and concrete behaviors
+4. Tirzepatide context: it suppresses appetite (hitting protein goals harder), can reduce lean mass if calories too low, requires strategic protein timing
+5. Connect training data to body comp results — this is the key insight most coaches miss
+6. Be honest about timelines — visible muscle takes 6-12+ months`;
+
+  // ── Mode-specific prompt ──
+  let userMsg, systemAddition = '';
+
+  if (mode === 'body') {
+    systemAddition = '\nFocus: Deep analysis of body composition trends only. What do the Evolt numbers actually mean? What is the trajectory? What specific nutrition and training behaviors are driving the changes? End with: "Your Top 3 Body Composition Priorities."';
+    userMsg = `Analyze my body composition data in depth. What does my trajectory actually look like? What's concerning, what's promising, and what should I specifically change?\n\nEvolt Scans (chronological):\n${evoltLines}\n\nOverall delta: ${evoltDelta}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+
+  } else if (mode === 'training') {
+    systemAddition = '\nFocus: Deep analysis of training quality and effectiveness for muscle building. Analyze rep ranges, exercise selection (compound vs isolation), consistency, recovery, and progressive overload. Are they training optimally for visible muscle? What exercises should they prioritize or drop? End with: "Your Top 3 Training Adjustments."';
+    userMsg = `Analyze my training data in depth. Am I training optimally for building visible muscle? Are my exercise choices, rep ranges, and consistency right for my goals?\n\nWorkout Analytics:\n${woLines}\n\nBody Composition Impact:\n${evoltDelta}\n\nFor context — my Evolt scans show my muscle trend:\n${evolt.slice(-6).map(s=>`${s.date}: ${s.skeletalMuscleMass}lbs muscle`).join(', ')}`;
+
+  } else if (mode === 'ask') {
+    systemAddition = '\nAnswer the specific question using the data provided. Be direct and specific.';
+    userMsg = `My data:\n\nEvolt Scans:\n${evoltLines}\nDelta: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition:\n${nutritionLines}\n\nMy question: ${question}`;
+
+  } else {
+    // full
+    systemAddition = '\nFull synthesis: Connect ALL three data sources. What story do the numbers tell together? Where is she winning? What is the most important thing to fix? End with: "Your Top 3 Priorities Right Now."';
+    userMsg = `Full coaching analysis — connect everything together.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+  }
+
+  const resp = await callClaude(env, {
     model: 'claude-sonnet-4-6',
-    max_tokens: 1500,
-    system,
+    max_tokens: 1800,
+    system: baseSystem + systemAddition,
     messages: [{ role: 'user', content: userMsg }]
   });
 
   const coaching = resp.content?.[0]?.text || 'Could not generate coaching.';
 
   await env.FUELSTRONG_KV.put('last_coaching', JSON.stringify({
-    text: coaching,
-    question: question || null,
+    text: coaching, mode, question: question || null,
     generatedAt: new Date().toISOString()
   }));
 
@@ -296,7 +362,17 @@ async function callClaude(env, body) {
     },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`);
+  if (!res.ok) {
+    const STATUS_MESSAGES = {
+      401: 'Invalid Anthropic API key — check ANTHROPIC_API_KEY in Worker secrets.',
+      402: 'Anthropic account out of credits — add credits at console.anthropic.com/billing.',
+      429: 'Anthropic rate limit hit — wait a moment and try again.',
+      529: 'Anthropic API quota exceeded or account paused — check console.anthropic.com/billing.',
+      500: 'Anthropic API internal error — try again in a moment.',
+    };
+    const msg = STATUS_MESSAGES[res.status] || `Anthropic API error ${res.status}`;
+    throw new Error(msg);
+  }
   return res.json();
 }
 
