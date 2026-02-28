@@ -1376,8 +1376,7 @@ function buildWorkoutSummaryForCoach() {
   const zoneSummary = Object.entries(muscleZones).map(([m, z]) => {
     const tot = z.total || 1;
     return `${m}: ${Math.round(z.strength/tot*100)}% strength / ${Math.round(z.hypertrophy/tot*100)}% hypertrophy / ${Math.round(z.endurance/tot*100)}% endurance`;
-  }).join('
-');
+  }).join('\n');
 
   // Muscle balance
   const balanceSummary = Object.entries(muscleVol).sort((a,b)=>b[1]-a[1])
