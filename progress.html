@@ -759,32 +759,171 @@ async function parseFitbodImage(file) {
 async function parseFitbodCSV(file) {
   const text = await file.text();
   const lines = text.split('\n').filter(l => l.trim());
-  const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
-  const rows = lines.slice(1).map(l => {
-    const v = l.split(',').map(x => x.replace(/"/g,'').trim());
-    const o = {}; headers.forEach((h,i) => o[h] = v[i]||''); return o;
-  }).filter(r => r[headers[0]]);
+  if (lines.length < 2) return [];
 
+  // Parse headers — trim spaces and quotes
+  const headers = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
+
+  // Column index lookup (case-insensitive, handles "Weight(kg)" etc.)
+  function col(name) {
+    const exact = headers.indexOf(name);
+    if (exact !== -1) return exact;
+    const lower = name.toLowerCase();
+    return headers.findIndex(h => h.toLowerCase().startsWith(lower));
+  }
+
+  const iDate   = col('Date');
+  const iEx     = col('Exercise');
+  const iReps   = col('Reps');
+  const iWeight = col('Weight');   // matches "Weight(kg)"
+  const iMult   = col('multiplier');
+  const iWarmup = col('isWarmup');
+
+  // Muscle group map covering all Fitbod exercise names
+  const MUSCLE_MAP = {
+    // Chest
+    'Bench Press':true,'Dumbbell Bench Press':'Chest','Dumbbell Floor Press':'Chest',
+    'Dumbbell Fly':'Chest','Dumbbell Incline Bench Press':'Chest','Machine Bench Press':'Chest',
+    'Machine Fly':'Chest','Barbell Bench Press':'Chest','Barbell Incline Bench Press':'Chest',
+    'Cable Crossover Fly':'Chest','Close-Grip Bench Press':'Chest','Incline Push Up':'Chest',
+    'Push Up':'Chest','Smith Machine Bench Press':'Chest','Smith Machine Incline Bench Press':'Chest',
+    'Alternating Dumbbell Bench Press':'Chest',
+    // Back
+    'Cable Row':'Back','Dumbbell Row':'Back','Dumbbell Bent Over Row':'Back',
+    'Bent Over Barbell Row':'Back','Lat Pulldown':'Back','Machine Row':'Back',
+    'Hammerstrength Iso Row':'Back','Assisted Pull Up':'Back','Deadlift':'Back',
+    'Romanian Deadlift':'Back','Dumbbell Romanian Deadlift':'Back','Cable Pull Through':'Back',
+    'Incline Back Extension':'Back','Good Morning':'Back','Stiff-Legged Barbell Good Morning':'Back',
+    'Landmine Romanian Deadlift':'Back','Smith Machine Stiff-Legged Deadlift':'Back',
+    'Elbows Out Bent Over Dumbbell Row':'Back','Single Leg Kettlebell Deadlift':'Back',
+    // Legs
+    'Back Squat':'Legs','Front Squat':'Legs','Hack Squat':'Legs','Leg Press':'Legs',
+    'Leg Extension':'Legs','Dumbbell Squat':'Legs','Dumbbell Lunge':'Legs',
+    'Dumbbell Bulgarian Split Squat':'Legs','Bodyweight Bulgarian Split Squat':'Legs',
+    'Air Squats':'Legs','Jump Squat':'Legs','Box Jump':'Legs','Calf Raise':'Legs',
+    'Standing Dumbbell Calf Raise':'Legs','Single Leg Standing Calf Raise':'Legs',
+    'Dual Kettlebell Front Squat':'Legs','Kettlebell Goblet Squat':'Legs',
+    'Kettlebell Sumo Squat':'Legs','Single Dumbbell Sumo Squat':'Legs',
+    'Static Lunge':'Legs','Reverse Lunge':'Legs','Step Up':'Legs',
+    'Standing Leg Curl':'Legs','TRX Ice Skater':'Legs',
+    // Glutes
+    'Hip Thrust':'Glutes','Barbell Hip Thrust':'Glutes','Dumbbell Hip Thrust':'Glutes',
+    'Dumbbell Glute Bridge':'Glutes','Single Leg Hip Thrust':'Glutes',
+    'Booty Buster':'Glutes','Cable Hip Extension':'Glutes',
+    'Kettlebell Swing':'Glutes',
+    // Shoulders
+    'Dumbbell Shoulder Press':'Shoulders','Barbell Shoulder Press':'Shoulders',
+    'Seated Barbell Shoulder Press':'Shoulders','Smith Machine Overhead Shoulder Press':'Shoulders',
+    'Push Press':'Shoulders','Cable Lateral Raise':'Shoulders','Dumbbell Lateral Raise':'Shoulders',
+    'Dumbbell Front Raise':'Shoulders','Dumbbell Rear Delt Raise':'Shoulders',
+    'Cable Face Pull':'Shoulders',
+    // Arms — Biceps
+    'Cable Bicep Curl':'Arms','Dumbbell Bicep Curl':'Arms','Barbell Curl':'Arms',
+    'EZ-Bar Curl':'Arms','Hammer Curls':'Arms','Cross Body Hammer Curls':'Arms',
+    'Cable Rope Hammer Curls':'Arms','Concentration Curl':'Arms','Machine Preacher Curl':'Arms',
+    'Incline Dumbbell Curl':'Arms','Incline Hammer Curl':'Arms','Spider Curls':'Arms',
+    'Seated Dumbbell Curl':'Arms','Reverse Barbell Curl':'Arms',
+    'Dumbbell Standing Hammer Curl To Front Press':'Arms',
+    // Arms — Triceps
+    'Cable Tricep Pushdown':'Arms','Cable Rope Tricep Extension':'Arms',
+    'Cable One Arm Underhand Tricep Extension':'Arms','Dumbbell Tricep Extension':'Arms',
+    'Dumbbell Skullcrusher':'Arms','Bench Dip':'Arms','Assisted Dip':'Arms',
+    'Dumbbell Kickbacks':'Arms',
+    // Core
+    'Cable Crunch':'Core','Ab Rollout':'Core','Ab Crunch Machine':'Core','Ab Coaster':'Core',
+    'Plank':'Core','Plank With Dumbbell Pull Through':'Core','Leg Raise':'Core',
+    'Russian Twist':'Core','Bicycle Crunch':'Core','Scissor Kick':'Core',
+    'Mountain Climber':'Core','Windshield Wiper':'Core','Standing Oblique Crunch':'Core',
+    'Medicine Ball Slam':'Core',
+    // Cardio / Full Body
+    'Battle Ropes':'Full Body','Elliptical':'Full Body','Rowing':'Full Body',
+    'Stair Stepper':'Full Body','Walking':'Full Body','Jumping Jack':'Full Body',
+  };
+
+  function getMuscleGroup(exName) {
+    // Exact match first
+    if (MUSCLE_MAP[exName]) return MUSCLE_MAP[exName];
+    // Partial keyword match
+    const n = exName.toLowerCase();
+    if (n.includes('squat') || n.includes('lunge') || n.includes('leg') || n.includes('calf')) return 'Legs';
+    if (n.includes('deadlift') || n.includes('row') || n.includes('pulldown') || n.includes('pull up') || n.includes('pull-up')) return 'Back';
+    if (n.includes('curl') || n.includes('tricep') || n.includes('bicep') || n.includes('hammer')) return 'Arms';
+    if (n.includes('press') && (n.includes('shoulder') || n.includes('overhead'))) return 'Shoulders';
+    if (n.includes('bench') || n.includes('chest') || n.includes('fly') || n.includes('push up')) return 'Chest';
+    if (n.includes('hip') || n.includes('glute') || n.includes('booty')) return 'Glutes';
+    if (n.includes('crunch') || n.includes('plank') || n.includes('ab') || n.includes('core')) return 'Core';
+    if (n.includes('lateral') || n.includes('delt') || n.includes('face pull')) return 'Shoulders';
+    return 'Other';
+  }
+
+  // Group rows by workout session (same date = same workout)
   const byDate = {};
-  rows.forEach(r => {
-    const dateKey = (r.Date||r.date||'').slice(0,10);
-    if (!dateKey) return;
-    if (!byDate[dateKey]) byDate[dateKey] = { date: dateKey, exercises: {}, totalVolume: 0, muscleGroupsWorked: new Set() };
-    const ex = r.Exercise||r.exercise||'Unknown';
-    const reps = parseFloat(r.Reps||r.reps||0);
-    const wt   = parseFloat(r.Weight||r.weight||0);
-    if (!byDate[dateKey].exercises[ex]) byDate[dateKey].exercises[ex] = { name: ex, sets: [], totalVolume: 0, maxWeight: 0 };
-    byDate[dateKey].exercises[ex].sets.push({ reps, weight: wt });
-    byDate[dateKey].exercises[ex].totalVolume += reps * wt;
-    byDate[dateKey].exercises[ex].maxWeight = Math.max(byDate[dateKey].exercises[ex].maxWeight, wt);
-    byDate[dateKey].totalVolume += reps * wt;
+
+  lines.slice(1).forEach(line => {
+    const v = line.split(',').map(x => x.replace(/"/g,'').trim());
+    if (v.length < 3) return;
+
+    // Extract date — strip timestamp "2026-02-28 19:39:42 +0000" → "2026-02-28"
+    const rawDate = v[iDate] || '';
+    const dateKey = rawDate.slice(0, 10);
+    if (!dateKey || dateKey.length !== 10) return;
+
+    const exName   = v[iEx]     || 'Unknown';
+    const reps     = parseFloat(v[iReps])   || 0;
+    const weightKg = parseFloat(v[iWeight]) || 0;
+    const mult     = parseFloat(v[iMult])   || 1;
+
+    // Convert kg → lbs, apply multiplier for total load
+    const weightLbs = weightKg * 2.20462;
+    const totalLoad  = weightLbs * (mult || 1);   // e.g. 2× for dumbbells
+
+    if (!byDate[dateKey]) {
+      byDate[dateKey] = {
+        date: dateKey,
+        exercises: {},
+        totalVolume: 0,
+        muscleGroupsWorked: new Set(),
+      };
+    }
+
+    const wo = byDate[dateKey];
+    const muscle = getMuscleGroup(exName);
+    wo.muscleGroupsWorked.add(muscle);
+
+    if (!wo.exercises[exName]) {
+      wo.exercises[exName] = {
+        name: exName,
+        muscleGroup: muscle,
+        sets: [],
+        totalVolume: 0,
+        maxWeight: 0,
+      };
+    }
+
+    const ex = wo.exercises[exName];
+    ex.sets.push({ reps, weight: Math.round(totalLoad * 10) / 10, unit: 'lbs' });
+    const setVol = reps * totalLoad;
+    ex.totalVolume  += setVol;
+    ex.maxWeight     = Math.max(ex.maxWeight, totalLoad);
+    wo.totalVolume  += setVol;
   });
 
-  return Object.values(byDate).map(d => ({
-    ...d, id: `fitbod_${d.date}`,
-    exercises: Object.values(d.exercises),
-    muscleGroupsWorked: [...d.muscleGroupsWorked],
-  }));
+  // Build final array sorted by date ascending
+  return Object.values(byDate)
+    .sort((a, b) => a.date < b.date ? -1 : 1)
+    .map(wo => ({
+      id:                 `fitbod_${wo.date}`,
+      date:               wo.date,
+      workoutName:        `${wo.date} Workout`,
+      exercises:          Object.values(wo.exercises).map(e => ({
+                            ...e,
+                            totalVolume: Math.round(e.totalVolume),
+                            maxWeight:   Math.round(e.maxWeight * 10) / 10,
+                          })),
+      totalVolume:        Math.round(wo.totalVolume),
+      muscleGroupsWorked: [...wo.muscleGroupsWorked],
+      source:             'fitbod_csv',
+    }));
 }
 
 async function parseFuelStrongJSON(file) {
