@@ -210,7 +210,13 @@ async function getCoaching(request, env) {
   const savedCtx   = contextRaw ? JSON.parse(contextRaw) : {};
   const context    = savedCtx.context || body.context || '';
   const woSummary  = body.workoutSummary || null;
-  const mode       = body.mode || 'full';
+  const mode       = body.mode || 'dashboard';
+
+  // New context fields from Phase 1 rebuild
+  const supplements  = body.supplements  || '';
+  const tirzepatide  = body.tirzepatide  || {};
+  const measurements = body.measurements || [];
+  const sessionLogs  = body.sessionLogs  || [];
 
   // ── Format Evolt data ──
   const evoltLines = evolt.map(s =>
@@ -255,40 +261,71 @@ User's stated fitness goals:
 
   const contextBlock = context ? `\nCoach context notes from user:\n${context}` : '';
 
+  // ── Supplement/tirzepatide/measurement context ──
+  const suppBlock = supplements ? `\nSupplement stack: ${supplements}` : '';
+
+  let tirzBlock = '';
+  if (tirzepatide?.dose || tirzepatide?.day !== undefined) {
+    const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const injDay = tirzepatide.day !== '' ? parseInt(tirzepatide.day) : null;
+    const todayDow = new Date().getDay();
+    const daysAgo = injDay !== null ? ((todayDow - injDay) + 7) % 7 : null;
+    tirzBlock = `\nTirzepatide: ${tirzepatide.dose ? tirzepatide.dose+'mg' : ''}${injDay!==null?' injected '+dayNames[injDay]:''}${tirzepatide.weeks?' ('+tirzepatide.weeks+' weeks on current dose)':''}${daysAgo!==null?' — '+daysAgo+' days since last injection':''}`;
+  }
+
+  const measBlock = measurements.length
+    ? `\nRecent body measurements (inches): ${measurements.map(m =>
+        `${m.date}: waist=${m.waist}"${m.hips?' hips='+m.hips+'"':''}${m.arm?' arm='+m.arm+'"':''}`
+      ).join(' | ')}`
+    : '';
+
+  const sessionBlock = sessionLogs.length
+    ? `\nRecent session logs: ${sessionLogs.map(s =>
+        `${s.date}: feel=${s.feel||'?'}/5, RPE=${s.rpe||'?'}/10${s.note?' ('+s.note+')':''}`
+      ).join(' | ')}`
+    : '';
+
   // ── Base system prompt ──
   const baseSystem = `You are a direct, data-driven fitness coach specializing in body recomposition — building visible muscle while losing fat. You coach a 50-year-old woman (Hanna) who:
-- Is 5'5", likely on tirzepatide (GLP-1) which suppresses appetite and affects muscle metabolism
+- Is 5'5", on tirzepatide (GLP-1) which suppresses appetite and affects muscle metabolism
+- Has been taking creatine daily for ~3 months (creatine inflates BIA lean mass readings 2-5 lbs in first 8 weeks)
 - Uses Evolt 360 BIA body composition scans, Fitbod for workouts, and FuelStrong for nutrition
 - GOAL: Build visible muscle while uncovering it through fat loss — the "body recomp" approach
-${goalsBlock}${contextBlock}
+${goalsBlock}${contextBlock}${tirzBlock}${suppBlock}${measBlock}${sessionBlock}
 
 Your coaching rules:
 1. LEAD with what IS working — always cite actual data numbers
-2. The scale is the WORST metric here — reframe toward body composition changes
-3. Be specific and actionable — give exact numbers and concrete behaviors
-4. Tirzepatide context: it suppresses appetite (hitting protein goals harder), can reduce lean mass if calories too low, requires strategic protein timing
+2. Scale weight is the WORST metric — reframe toward skeletal muscle mass and body fat % trends
+3. Be specific and actionable — give exact numbers and concrete next steps
+4. Tirzepatide: suppresses appetite (protein goals harder), can cause muscle loss if calories too low, requires strategic protein timing
 5. Connect training data to body comp results — this is the key insight most coaches miss
-6. Be honest about timelines — visible muscle takes 6-12+ months`;
+6. Realistic timelines: visible muscle takes 6-12+ months, 0.25-0.5 lbs/month on tirzepatide in deficit is a WIN
+7. Use body measurements when available — waist changes are better fat loss proxies than scale weight
+8. Format your response with clear emoji-headed sections: 🧠 Overall Analysis, 💪 Training, 🥗 Nutrition, 🎯 Top 3 Priorities`;
 
   // ── Mode-specific prompt ──
   let userMsg, systemAddition = '';
 
-  if (mode === 'body') {
-    systemAddition = '\nFocus: Deep analysis of body composition trends only. What do the Evolt numbers actually mean? What is the trajectory? What specific nutrition and training behaviors are driving the changes? End with: "Your Top 3 Body Composition Priorities."';
-    userMsg = `Analyze my body composition data in depth. What does my trajectory actually look like? What's concerning, what's promising, and what should I specifically change?\n\nEvolt Scans (chronological):\n${evoltLines}\n\nOverall delta: ${evoltDelta}\n\nNutrition (last 14 days):\n${nutritionLines}`;
-
-  } else if (mode === 'training') {
-    systemAddition = '\nFocus: Deep analysis of training quality and effectiveness for muscle building. Analyze rep ranges, exercise selection (compound vs isolation), consistency, recovery, and progressive overload. Are they training optimally for visible muscle? What exercises should they prioritize or drop? End with: "Your Top 3 Training Adjustments."';
-    userMsg = `Analyze my training data in depth. Am I training optimally for building visible muscle? Are my exercise choices, rep ranges, and consistency right for my goals?\n\nWorkout Analytics:\n${woLines}\n\nBody Composition Impact:\n${evoltDelta}\n\nFor context — my Evolt scans show my muscle trend:\n${evolt.slice(-6).map(s=>`${s.date}: ${s.skeletalMuscleMass}lbs muscle`).join(', ')}`;
+  if (mode === 'dashboard') {
+    systemAddition = '\nDashboard coaching: Give a comprehensive but scannable analysis across all three data sources. Use clear section headers (🧠 Overall Analysis, 💪 Training, 🥗 Nutrition, 🎯 Your Top 3 Priorities). Be specific — use actual numbers from the data. Connect what you see in training to what you see in body comp. This is the user\'s daily coaching hub, so make it actionable and motivating.';
+    userMsg = `Generate my comprehensive coaching dashboard.\n\nEvolt Scans (chronological):\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
 
   } else if (mode === 'ask') {
-    systemAddition = '\nAnswer the specific question using the data provided. Be direct and specific.';
+    systemAddition = '\nAnswer the specific question using the data provided. Be direct and specific. Use actual numbers from their data.';
     userMsg = `My data:\n\nEvolt Scans:\n${evoltLines}\nDelta: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition:\n${nutritionLines}\n\nMy question: ${question}`;
 
+  } else if (mode === 'body') {
+    systemAddition = '\nFocus: Deep dive into body composition trends only. What do the Evolt numbers mean? What is the trajectory? What specific behaviors are driving changes? End with: "Your Top 3 Body Composition Priorities."';
+    userMsg = `Analyze my body composition data in depth.\n\nEvolt Scans:\n${evoltLines}\nOverall delta: ${evoltDelta}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+
+  } else if (mode === 'training') {
+    systemAddition = '\nFocus: Deep analysis of training quality for muscle building. Analyze rep ranges, exercise selection, consistency, recovery, progressive overload. End with: "Your Top 3 Training Adjustments."';
+    userMsg = `Analyze my training data in depth.\n\nWorkout Analytics:\n${woLines}\n\nBody Composition Impact:\n${evoltDelta}\n\nMuscle trend:\n${evolt.slice(-6).map(s=>`${s.date}: ${s.skeletalMuscleMass}lbs muscle`).join(', ')}`;
+
   } else {
-    // full
+    // full (legacy)
     systemAddition = '\nFull synthesis: Connect ALL three data sources. What story do the numbers tell together? Where is she winning? What is the most important thing to fix? End with: "Your Top 3 Priorities Right Now."';
-    userMsg = `Full coaching analysis — connect everything together.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+    userMsg = `Full coaching analysis.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
   }
 
   const resp = await callClaude(env, {
