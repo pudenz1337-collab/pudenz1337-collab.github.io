@@ -15,9 +15,10 @@
   --bottom-bar: 64px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overscroll-behavior:none}
+html{height:100%;overscroll-behavior:none}
 body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;
-  display:flex;flex-direction:column;max-width:600px;margin:0 auto;position:relative;}
+  display:flex;flex-direction:column;max-width:600px;margin:0 auto;position:relative;
+  height:100dvh;height:100vh;overflow:hidden;}
 
 /* ── HEADER ── */
 .app-header{background:var(--surface);border-bottom:1px solid var(--border);
@@ -40,14 +41,14 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 .conn-pill.err .conn-dot{background:var(--danger);box-shadow:0 0 6px rgba(255,69,96,.4)}
 
 /* ── SCROLL CONTENT ── */
-.app-content{flex:1;overflow-y:auto;padding-bottom:calc(var(--bottom-bar) + 16px)}
+.app-content{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:calc(var(--bottom-bar) + 16px);-webkit-overflow-scrolling:touch}
 .panel{display:none;padding:16px}
 .panel.active{display:block}
 
 /* ── BOTTOM NAV ── */
-.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);
-  width:100%;max-width:600px;background:var(--surface);
-  border-top:1px solid var(--border);display:flex;z-index:100;height:var(--bottom-bar)}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;
+  width:100%;max-width:600px;margin:0 auto;background:var(--surface);
+  border-top:1px solid var(--border);display:flex;z-index:100;height:var(--bottom-bar);flex-shrink:0}
 .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:3px;cursor:pointer;color:var(--muted);transition:color .2s;border:none;background:none;
   padding:6px 0;font-family:'DM Sans',sans-serif}
@@ -248,6 +249,8 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 .lib-name{font-size:13px;font-weight:500}
 .lib-meta{font-size:11px;color:var(--muted)}
 .lib-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px}
+.lib-edit{background:none;border:none;cursor:pointer;font-size:15px;padding:0 4px;opacity:.7;transition:opacity .2s}
+.lib-edit:hover{opacity:1}
 
 /* ── HISTORY ── */
 .hist-entry{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px}
@@ -531,6 +534,17 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 
     <div class="card">
       <div class="card-title">🔧 Add Custom Food</div>
+      <!-- Photo scan trigger -->
+      <div style="margin-bottom:12px;display:flex;gap:8px">
+        <label id="photo-scan-btn" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:2px dashed var(--border);border-radius:10px;cursor:pointer;transition:all .2s;color:var(--muted);font-size:13px" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+          <span style="font-size:20px">📷</span>
+          <span>Scan Nutrition Label</span>
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="scanNutritionLabel(event)">
+        </label>
+      </div>
+      <div id="photo-scan-status" style="display:none;margin-bottom:10px;padding:8px 12px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.25);border-radius:8px;font-size:12px;color:var(--accent)">
+        <span id="photo-scan-text">📷 Reading label...</span>
+      </div>
       <div style="margin-bottom:8px">
         <div class="field-label">Food Name</div>
         <input class="field-input" id="lib-name" placeholder="e.g. Chipotle burrito bowl" oninput="clearEstimate()" style="width:100%">
@@ -545,7 +559,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
         <div><div class="field-label">Serving</div><input class="field-input" id="lib-serving" placeholder="e.g. 1 cup"></div>
       </div>
       <div class="btn-row">
-        <button class="btn btn-g btn-sm" onclick="estimateMacros()">✨ Estimate</button>
+        <button class="btn btn-g btn-sm" onclick="estimateMacros()">✨ Estimate by Name</button>
         <button class="btn btn-p btn-sm" onclick="saveCustomFood()">+ Add Food</button>
       </div>
     </div>
@@ -1524,15 +1538,18 @@ function renderLibrary() {
   const q = (document.getElementById('lib-search')?.value || '').toLowerCase();
   const all = getAllFoods().filter(f => !q || f.name.toLowerCase().includes(q));
   const el  = document.getElementById('library-list');
-  el.innerHTML = all.map(f => `
+  el.innerHTML = all.map(f => {
+    const isCustom = !!customFoods.find(c=>c.id===f.id);
+    return `
     <div class="lib-item">
       <span class="lib-pin" onclick="togglePin('${f.id}')" title="${f.pinned?'Unpin':'Pin to Quick Add'}">${f.pinned?'📌':'🔲'}</span>
       <div class="lib-info">
-        <div class="lib-name">${f.icon||'🍽'} ${f.name}</div>
+        <div class="lib-name">${f.icon||'🍽'} ${f.name}${isCustom?'<span style="font-size:9px;color:var(--muted);margin-left:5px;background:var(--card2);padding:1px 5px;border-radius:4px;border:1px solid var(--border)">custom</span>':''}</div>
         <div class="lib-meta">${f.cal}kcal · ${f.protein}g P · ${f.carbs||0}g C · ${f.fat||0}g F${f.fiber?' · '+f.fiber+'g fiber':''}</div>
       </div>
-      ${customFoods.find(c=>c.id===f.id) ? `<button class="lib-del" onclick="deleteCustomFood('${f.id}')">✕</button>` : ''}
-    </div>`).join('');
+      ${isCustom ? `<div style="display:flex;gap:4px"><button class="lib-edit" onclick="openEditFood('${f.id}')" title="Edit">✏️</button><button class="lib-del" onclick="deleteCustomFood('${f.id}')">✕</button></div>` : ''}
+    </div>`;
+  }).join('');
 }
 
 function renderPinnedSummary() {
@@ -1562,21 +1579,25 @@ async function estimateMacros() {
   txt.textContent = '✨ Estimating...';
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        model:'claude-sonnet-4-20250514', max_tokens:300,
-        messages:[{ role:'user', content:`Estimate nutrition for one standard serving of: "${name}"\nReturn ONLY JSON: {"cal":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"serving":"description","confidence":"high/medium/low"}` }]
+        model:'claude-sonnet-4-20250514', max_tokens:400,
+        system:'You are a nutrition database. Return only valid JSON with no other text, preamble, or markdown.',
+        messages:[{ role:'user', content:`Estimate nutrition facts for one standard serving of: "${name}". Return ONLY a JSON object like this: {"cal":120,"protein":15,"carbs":8,"fat":3,"fiber":2,"serving":"1 cup (240ml)","confidence":"high"}` }]
       })
     });
     const d = await r.json();
     const m = (d.content?.[0]?.text||'').match(/\{[\s\S]*\}/);
     if (!m) throw new Error('No JSON');
     const est = JSON.parse(m[0]);
-    ['cal','protein','carbs','fat','fiber'].forEach(k => {
-      const el = document.getElementById('lib-'+k);
-      if (el && !el.value) el.value = est[k];
+    // Map JSON keys to actual field IDs
+    const fieldMap = { cal:'lib-cal', protein:'lib-prot', carbs:'lib-carb', fat:'lib-fat', fiber:'lib-fiber' };
+    Object.entries(fieldMap).forEach(([k, id]) => {
+      const el = document.getElementById(id);
+      if (el && !el.value && est[k] != null) el.value = est[k];
     });
-    txt.textContent = `✨ Estimated for ${est.serving} · ${est.confidence} confidence`;
+    txt.innerHTML = `✨ <strong>${est.serving}</strong> — <span style="color:${est.confidence==='high'?'var(--accent)':est.confidence==='medium'?'var(--yellow)':'var(--accent2)'}">${est.confidence} confidence</span>`;
   } catch(e) {
     txt.style.color = 'var(--danger)'; txt.textContent = '⚠️ Estimate failed — enter manually';
   }
@@ -2239,8 +2260,145 @@ function toast(msg, isErr = false) {
   clearTimeout(_toast); _toast = setTimeout(()=> t.className='', 3000);
 }
 
+
+
+// ══════════════════════════════════════════════════
+// PHOTO NUTRITION LABEL SCAN
+// ══════════════════════════════════════════════════
+async function scanNutritionLabel(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = ''; // allow re-use
+
+  const statusDiv = document.getElementById('photo-scan-status');
+  const statusTxt = document.getElementById('photo-scan-text');
+  statusDiv.style.display = 'block';
+  statusTxt.textContent = '📷 Reading nutrition label...';
+
+  try {
+    // Convert image to base64
+    const base64 = await new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = e => res(e.target.result.split(',')[1]);
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+    });
+    const mtype = file.type || 'image/jpeg';
+
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514', max_tokens:500,
+        system:'You are a nutrition label reader. Extract the nutrition facts and return ONLY valid JSON. No markdown, no explanation.',
+        messages:[{
+          role:'user',
+          content:[
+            { type:'image', source:{ type:'base64', media_type:mtype, data:base64 } },
+            { type:'text', text:'Read the nutrition facts label in this image. Extract per-serving values. Return ONLY JSON: {"name":"product name or description","cal":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"serving":"serving size description","confidence":"high/medium/low"}' }
+          ]
+        }]
+      })
+    });
+
+    const d = await r.json();
+    const raw = d.content?.[0]?.text || '';
+    const m = raw.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('Could not read label');
+    const est = JSON.parse(m[0]);
+
+    // Fill form fields
+    if (est.name && !document.getElementById('lib-name').value) document.getElementById('lib-name').value = est.name;
+    if (est.cal     != null) document.getElementById('lib-cal').value   = est.cal;
+    if (est.protein != null) document.getElementById('lib-prot').value  = est.protein;
+    if (est.carbs   != null) document.getElementById('lib-carb').value  = est.carbs;
+    if (est.fat     != null) document.getElementById('lib-fat').value   = est.fat;
+    if (est.fiber   != null) document.getElementById('lib-fiber').value = est.fiber;
+    if (est.serving) document.getElementById('lib-serving').value = est.serving;
+
+    statusTxt.innerHTML = `✅ Label scanned! ${est.cal} kcal · ${est.protein}g P — review and tap Add Food. <span style="color:${est.confidence==='high'?'var(--accent)':est.confidence==='medium'?'var(--yellow)':'var(--accent2)'}">${est.confidence} confidence</span>`;
+  } catch(e) {
+    statusTxt.style.color = 'var(--danger)';
+    statusTxt.textContent = '⚠️ Could not read label — fill in manually or try a clearer photo.';
+  }
+}
+
+// ══════════════════════════════════════════════════
+// EDIT CUSTOM FOOD
+// ══════════════════════════════════════════════════
+let _editFoodId = null;
+
+function openEditFood(id) {
+  const food = customFoods.find(f => f.id === id);
+  if (!food) return;
+  _editFoodId = id;
+  document.getElementById('edit-name').value    = food.name    || '';
+  document.getElementById('edit-cal').value     = food.cal     || 0;
+  document.getElementById('edit-prot').value    = food.protein || 0;
+  document.getElementById('edit-carb').value    = food.carbs   || 0;
+  document.getElementById('edit-fat').value     = food.fat     || 0;
+  document.getElementById('edit-fiber').value   = food.fiber   || 0;
+  document.getElementById('edit-serving').value = food.serving || '';
+  const modal = document.getElementById('edit-food-modal');
+  modal.style.display = 'flex';
+}
+
+function closeEditFood() {
+  document.getElementById('edit-food-modal').style.display = 'none';
+  _editFoodId = null;
+}
+
+function saveEditFood() {
+  if (!_editFoodId) return;
+  const idx = customFoods.findIndex(f => f.id === _editFoodId);
+  if (idx === -1) return;
+  customFoods[idx] = {
+    ...customFoods[idx],
+    name:    document.getElementById('edit-name').value.trim()   || customFoods[idx].name,
+    cal:     parseFloat(document.getElementById('edit-cal').value)   || 0,
+    protein: parseFloat(document.getElementById('edit-prot').value)  || 0,
+    carbs:   parseFloat(document.getElementById('edit-carb').value)  || 0,
+    fat:     parseFloat(document.getElementById('edit-fat').value)   || 0,
+    fiber:   parseFloat(document.getElementById('edit-fiber').value) || 0,
+    serving: document.getElementById('edit-serving').value || '',
+  };
+  localStorage.setItem('fs2-custom', JSON.stringify(customFoods));
+  closeEditFood();
+  renderLibrary();
+  renderPinnedQuickAdd();
+  renderAllFoodsQuickAdd();
+  toast('✅ Food updated!');
+}
+
 // ══════════════════════════════════════════════════
 // BOOT
 // ══════════════════════════════════════════════════
 init();
+
 </script>
+
+<!-- EDIT FOOD MODAL -->
+<div id="edit-food-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:400;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;width:100%;max-width:400px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;color:var(--accent)">Edit Food</div>
+      <button onclick="closeEditFood()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">✕</button>
+    </div>
+    <div style="margin-bottom:8px">
+      <div class="field-label">Food Name</div>
+      <input class="field-input" id="edit-name" style="width:100%">
+    </div>
+    <div class="field-row" style="margin-bottom:12px">
+      <div><div class="field-label">Calories</div><input class="field-input" id="edit-cal" type="number"></div>
+      <div><div class="field-label">Protein (g)</div><input class="field-input" id="edit-prot" type="number"></div>
+      <div><div class="field-label">Carbs (g)</div><input class="field-input" id="edit-carb" type="number"></div>
+      <div><div class="field-label">Fat (g)</div><input class="field-input" id="edit-fat" type="number"></div>
+      <div><div class="field-label">Fiber (g)</div><input class="field-input" id="edit-fiber" type="number"></div>
+      <div><div class="field-label">Serving</div><input class="field-input" id="edit-serving"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-p" style="flex:1" onclick="saveEditFood()">Save Changes</button>
+      <button class="btn btn-g btn-sm" onclick="closeEditFood()">Cancel</button>
+    </div>
+  </div>
+</div>

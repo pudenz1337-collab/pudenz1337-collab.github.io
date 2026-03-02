@@ -33,6 +33,7 @@ export default {
       if (path === '/api/data'    && method === 'POST')   return saveData(request, env);
       if (path === '/api/parse'   && method === 'POST')   return parseFile(request, env);
       if (path === '/api/coach'   && method === 'POST')   return getCoaching(request, env);
+      if (path === '/api/coach'   && method === 'GET')    return getKVKey(env, 'last_coaching');
       if (path === '/api/backup'  && method === 'POST')   return backupToGitHub(env);
       if (path === '/api/goals'   && method === 'POST')   return saveKVKey(request, env, 'goals');
       if (path === '/api/context' && method === 'POST')   return saveKVKey(request, env, 'coach_context');
@@ -146,7 +147,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 If this is NOT a Fitbod workout screenshot, return: { "error": "not_workout", "description": "what you see" }`;
 
     const resp = await callClaude(env, {
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-6',
       max_tokens: 2000,
       messages: [{
         role: 'user',
@@ -286,28 +287,33 @@ User's stated fitness goals:
     : '';
 
   // ── Base system prompt ──
-  const baseSystem = `You are a direct, data-driven fitness coach specializing in body recomposition — building visible muscle while losing fat. You coach a 50-year-old woman (Hanna) who:
-- Is 5'5", on tirzepatide (GLP-1) which suppresses appetite and affects muscle metabolism
-- Has been taking creatine daily for ~3 months (creatine inflates BIA lean mass readings 2-5 lbs in first 8 weeks)
-- Uses Evolt 360 BIA body composition scans, Fitbod for workouts, and FuelStrong for nutrition
-- GOAL: Build visible muscle while uncovering it through fat loss — the "body recomp" approach
+  const baseSystem = `You are a direct, evidence-based fitness coach specializing in body recomposition — building visible muscle while simultaneously reducing body fat. You coach Hanna, a 50-year-old woman who:
+
+PROFILE:
+- 5'5", peri/post-menopausal (affects muscle building rate and fat distribution)
+- On tirzepatide (GLP-1/GIP agonist) — suppresses appetite significantly, can make hitting protein targets challenging
+- Takes creatine daily — NOTE: creatine causes 2-4 lb water retention in muscle tissue, which inflates BIA body fat % readings and inflates lean mass on scans. This is NOT actual muscle gain, it is intracellular water.
+- Uses Evolt 360 BIA scanner — BIA accuracy depends on hydration. Results fluctuate 2-4% based on time of day, hydration, recent eating. Compare TRENDS not individual scans.
+- Uses Fitbod (progressive overload workouts), FuelStrong (nutrition tracking)
+- GOAL: Preserve and build skeletal muscle while losing fat mass — "body recomp"
 ${goalsBlock}${contextBlock}${tirzBlock}${suppBlock}${measBlock}${sessionBlock}
 
-Your coaching rules:
-1. LEAD with what IS working — always cite actual data numbers
-2. Scale weight is the WORST metric — reframe toward skeletal muscle mass and body fat % trends
-3. Be specific and actionable — give exact numbers and concrete next steps
-4. Tirzepatide: suppresses appetite (protein goals harder), can cause muscle loss if calories too low, requires strategic protein timing
-5. Connect training data to body comp results — this is the key insight most coaches miss
-6. Realistic timelines: visible muscle takes 6-12+ months, 0.25-0.5 lbs/month on tirzepatide in deficit is a WIN
-7. Use body measurements when available — waist changes are better fat loss proxies than scale weight
-8. Format your response with clear emoji-headed sections: 🧠 Overall Analysis, 💪 Training, 🥗 Nutrition, 🎯 Top 3 Priorities`;
+EVIDENCE-BASED COACHING RULES (no myths, no broscience):
+1. PROTEIN: 0.7-1.0g per lb of bodyweight is evidence-supported for muscle retention during a deficit. Higher end (~1g/lb) when in caloric deficit and training hard.
+2. MUSCLE BUILDING REALITY: Women over 50 build muscle more slowly. 0.25-0.5 lbs of ACTUAL muscle per month is realistic and excellent. Do not set unrealistic expectations.
+3. SCALE WEIGHT is NOT a good metric for body recomp — reframe toward skeletal muscle mass % and fat mass lbs from scans, plus measurements
+4. TIRZEPATIDE + MUSCLE: GLP-1 agonists reduce appetite — this is useful for fat loss but can lead to inadequate protein intake and muscle loss if not managed. Priority: hit protein goal even when not hungry.
+5. CREATINE + BIA SCANS: When interpreting Evolt data, note that creatine causes water retention in muscle that inflates lean mass readings by 2-4 lbs and can temporarily show higher body fat % due to increased total mass. This is beneficial (fuller muscles, better performance) not negative.
+6. DEFICIT DEPTH: 300-500 kcal/day deficit is optimal for fat loss while preserving muscle. More aggressive = faster muscle loss, slower recovery, worse workouts.
+7. TRAINING SPECIFICITY: Progressive overload is the driver of muscle retention/growth — weight going up over time matters. Track this trend, not just whether she trained.
+8. AVOID MYTHS: Do not recommend "muscle turns to fat," "toning vs building," "cardio burns muscle," "eat less move more is all that matters," or "detoxes/cleanses." Use specific mechanisms.
+9. Format responses with clear emoji-headed sections: 🧠 Overall Analysis, 💪 Training, 🥗 Nutrition, 🎯 Top 3 Priorities`;
 
   // ── Mode-specific prompt ──
   let userMsg, systemAddition = '';
 
   if (mode === 'dashboard') {
-    systemAddition = '\nDashboard coaching: Give a comprehensive but scannable analysis across all three data sources. Use clear section headers (🧠 Overall Analysis, 💪 Training, 🥗 Nutrition, 🎯 Your Top 3 Priorities). Be specific — use actual numbers from the data. Connect what you see in training to what you see in body comp. This is the user\'s daily coaching hub, so make it actionable and motivating.';
+    systemAddition = '\nDashboard coaching: Give a comprehensive but scannable analysis across all three data sources. Use clear section headers (🧠 Overall Analysis, 💪 Training, 🥗 Nutrition, 🎯 Your Top 3 Priorities). Be specific — use actual numbers from the data. Connect what you see in training to what you see in body comp. This is the user\'s daily coaching hub, so make it actionable and motivating. IMPORTANT: Start directly with the first section header — do NOT add a date, preamble, "Generated:", or horizontal dividers (---) before the content.';
     userMsg = `Generate my comprehensive coaching dashboard.\n\nEvolt Scans (chronological):\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
 
   } else if (mode === 'fuelstrong_daily') {
@@ -351,7 +357,7 @@ TODAY'S STATUS:
 MEALS TODAY:
 ${mealSummary}
 
-H-E-M TIMELINE (H=Hydration, E=Energy, M=Mood, scale 1-3):
+H-E-M TIMELINE (H=Hunger 1=not hungry/2=moderate/3=very hungry, E=Energy 1-3, M=Mood 1-3):
 ${hemTimeline}
 
 TIRZEPATIDE:
@@ -459,7 +465,8 @@ async function callClaude(env, body) {
   });
   if (!res.ok) {
     const STATUS_MESSAGES = {
-      401: 'Invalid Anthropic API key — check ANTHROPIC_API_KEY in Worker secrets.',
+      400: 'Bad request to Anthropic — likely an invalid model name. Valid models: claude-sonnet-4-6, claude-opus-4-6, claude-haiku-4-5-20251001.',
+      401: 'Invalid Anthropic API key — check ANTHROPIC_API_KEY in Worker secrets. Make sure you set the secret (not just a variable) in the Cloudflare dashboard.',
       402: 'Anthropic account out of credits — add credits at console.anthropic.com/billing.',
       429: 'Anthropic rate limit hit — wait a moment and try again.',
       529: 'Anthropic API quota exceeded or account paused — check console.anthropic.com/billing.',
