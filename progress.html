@@ -16,19 +16,21 @@
   --danger:#ff4560; --radius:12px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;display:flex;flex-direction:column;min-height:100vh}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;display:flex;flex-direction:column}
 header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;flex-shrink:0}
 .logo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:3px;color:var(--accent)}
 .logo span{color:var(--text)}
 .hbadge{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;background:rgba(0,229,160,.12);color:var(--accent);border:1px solid rgba(0,229,160,.25)}
+/* ── SCROLL CONTAINER ── */
+.app-content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
 /* ── BOTTOM NAV ── */
-.bottom-nav{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:200;height:60px}
+.bottom-nav{background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:200;height:60px;flex-shrink:0}
 .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;color:var(--muted);transition:color .2s;border:none;background:none;padding:6px 0;font-family:'DM Sans',sans-serif}
 .nav-btn.active{color:var(--accent)}
 .nav-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .nav-btn span{font-size:10px;font-weight:500;letter-spacing:.3px}
-.panel{display:none;padding:20px 24px 80px;max-width:1400px}
+.panel{display:none;padding:20px 24px 24px;max-width:1400px}
 .panel.active{display:block}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
@@ -141,29 +143,8 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
   </div>
 </header>
 
-<!-- ══ BOTTOM NAV ══ -->
-<nav class="bottom-nav">
-  <button class="nav-btn active" id="nav-dashboard" onclick="showTab('dashboard',this)">
-    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-    <span>Dashboard</span>
-  </button>
-  <button class="nav-btn" id="nav-bodycomp" onclick="showTab('bodycomp',this)">
-    <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-    <span>Body Comp</span>
-  </button>
-  <button class="nav-btn" id="nav-workouts" onclick="showTab('workouts',this)">
-    <svg viewBox="0 0 24 24"><path d="M6 4v16M18 4v16M1 8h5M18 8h5M1 16h5M18 16h5"/></svg>
-    <span>Workouts</span>
-  </button>
-  <button class="nav-btn" id="nav-upload" onclick="showTab('upload',this)">
-    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-    <span>Upload</span>
-  </button>
-  <button class="nav-btn" id="nav-settings" onclick="showTab('settings',this)">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    <span>Settings</span>
-  </button>
-</nav>
+<!-- ══ SCROLL CONTENT ══ -->
+<div class="app-content">
 
 <!-- ══════════════════════ DASHBOARD ══════════════════════ -->
 <div id="panel-dashboard" class="panel active">
@@ -725,6 +706,32 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
   </div>
 </div>
 
+</div><!-- end app-content -->
+
+<!-- ══ BOTTOM NAV ══ -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" id="nav-dashboard" onclick="showTab('dashboard',this)">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    <span>Dashboard</span>
+  </button>
+  <button class="nav-btn" id="nav-bodycomp" onclick="showTab('bodycomp',this)">
+    <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+    <span>Body Comp</span>
+  </button>
+  <button class="nav-btn" id="nav-workouts" onclick="showTab('workouts',this)">
+    <svg viewBox="0 0 24 24"><path d="M6 4v16M18 4v16M1 8h5M18 8h5M1 16h5M18 16h5"/></svg>
+    <span>Workouts</span>
+  </button>
+  <button class="nav-btn" id="nav-upload" onclick="showTab('upload',this)">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <span>Upload</span>
+  </button>
+  <button class="nav-btn" id="nav-settings" onclick="showTab('settings',this)">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span>Settings</span>
+  </button>
+</nav>
+
 <div id="toast"></div>
 <script>
 // ══════════════════════════════════════════════════════
@@ -782,14 +789,17 @@ function showTab(id, el) {
 function setWorkerStatus(state) {
   const dot = document.getElementById('worker-dot');
   const lbl = document.getElementById('worker-label');
+  const ind = document.getElementById('worker-indicator');
   const states = {
-    ok:         { color: '#00e5a0', text: '🟢 Connected' },
-    connecting: { color: '#ffd460', text: 'Connecting...' },
-    error:      { color: '#ff4560', text: '🔴 Offline' },
+    ok:         { color: '#00e5a0', shadow: '0 0 6px rgba(0,229,160,.5)', text: '🟢 Connected', border: 'rgba(0,229,160,.3)' },
+    connecting: { color: '#ffd460', shadow: 'none',                        text: '⏳ Loading...',  border: 'var(--border)' },
+    error:      { color: '#ff4560', shadow: '0 0 6px rgba(255,69,96,.4)',  text: '🔴 Tap to retry', border: 'rgba(255,69,96,.3)' },
   };
   const s = states[state] || states.error;
-  dot.style.background = s.color;
-  lbl.textContent = s.text;
+  dot.style.background  = s.color;
+  dot.style.boxShadow   = s.shadow;
+  lbl.textContent       = s.text;
+  ind.style.borderColor = s.border;
 }
 
 async function wFetch(path, opts = {}) {
@@ -806,12 +816,18 @@ async function wFetch(path, opts = {}) {
 async function retestWorker() {
   setWorkerStatus('connecting');
   try {
-    await wFetch('/api/health');
+    const res = await wFetch('/api/data');
+    data.evolt      = res.evolt      || [];
+    data.fitbod     = res.fitbod     || [];
+    data.fuelstrong = res.fuelstrong || [];
     setWorkerStatus('ok');
-    toast('✓ Worker connected');
+    renderAll();
+    updateStatus();
+    const total = data.evolt.length + data.fitbod.length;
+    toast(total ? `✓ Loaded — ${data.evolt.length} scans, ${data.fitbod.length} workouts` : '✓ Connected — no data in KV yet');
   } catch(e) {
     setWorkerStatus('error');
-    toast('Worker offline: ' + e.message, true);
+    toast('Worker error: ' + e.message, true);
   }
 }
 
