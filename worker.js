@@ -310,6 +310,64 @@ Your coaching rules:
     systemAddition = '\nDashboard coaching: Give a comprehensive but scannable analysis across all three data sources. Use clear section headers (🧠 Overall Analysis, 💪 Training, 🥗 Nutrition, 🎯 Your Top 3 Priorities). Be specific — use actual numbers from the data. Connect what you see in training to what you see in body comp. This is the user\'s daily coaching hub, so make it actionable and motivating.';
     userMsg = `Generate my comprehensive coaching dashboard.\n\nEvolt Scans (chronological):\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
 
+  } else if (mode === 'fuelstrong_daily') {
+    // FuelStrong daily coaching — uses full context including H-E-M, Progress data, tirzepatide cycle
+    const hemEntries = body.hemLog || [];
+    const hemLatest  = body.hemLatest || {};
+    const mealTimes  = body.mealTimes || {};
+    const todayProtein  = body.protein || 0;
+    const todayCal      = body.calories || 0;
+    const todayWater    = body.water || 0;
+    const currentTime   = body.currentTime || '';
+    const todayPlan     = body.dayPlan || 'not set';
+    const wo            = body.workoutTime || null;
+
+    // Build H-E-M timeline string
+    const hemTimeline = hemEntries.length
+      ? hemEntries.map(e => `${e.time}: ${e.h?'H'+e.h:''} ${e.e?'E'+e.e:''} ${e.m?'M'+e.m:''}${e.note?' ('+e.note+')':''}`).join(' | ')
+      : 'No H-E-M logged yet';
+
+    // Meal timing summary
+    const mealSummary = Object.entries(mealTimes).map(([meal,d]) => `${meal}: ${d.protein}g protein at ${d.time}`).join(', ') || 'No meals logged';
+
+    // Historical averages from fuelstrong data if available
+    const recentDays = fuelstrong.slice(-14);
+    const avgP = recentDays.length ? Math.round(recentDays.reduce((a,d)=>a+d.protein,0)/recentDays.length) : null;
+    const avgCal = recentDays.length ? Math.round(recentDays.reduce((a,d)=>a+(d.calories||0),0)/recentDays.length) : null;
+
+    // Energy trend from HEM history (across days in fuelstrong)
+    const hemHistory = recentDays.filter(d=>d.hem?.e).map(d=>`${d.date}: E${d.hem.e}`).slice(-7).join(', ');
+
+    systemAddition = `\nYou are coaching Hanna in real-time today. Use the H-E-M timeline to detect how she's feeling and why. Connect energy/mood dips to meal gaps, tirzepatide cycle, and training load. Be specific about what to do RIGHT NOW based on the time of day. Use emoji section headers: 🧠 Right Now, 💉 Tirzepatide Context, 💪 Training & Nutrition, 🎯 Top 2 Actions.`;
+
+    userMsg = `Today's coaching check-in — ${currentTime}.
+
+TODAY'S STATUS:
+- Plan: ${todayPlan}${wo?' · Workout at '+wo:''}
+- Protein: ${todayProtein}g / ${goals.protein||150}g goal
+- Calories: ${todayCal} kcal
+- Water: ${todayWater}oz
+
+MEALS TODAY:
+${mealSummary}
+
+H-E-M TIMELINE (H=Hydration, E=Energy, M=Mood, scale 1-3):
+${hemTimeline}
+
+TIRZEPATIDE:
+- Dose: ${tirzepatide.dose||'unknown'}mg
+- Days since injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
+
+HISTORICAL CONTEXT (last 14 days):
+- Avg protein: ${avgP||'no data'}g
+- Avg calories: ${avgCal||'no data'} kcal
+- Energy history: ${hemHistory || 'no history'}
+
+EVOLT (body comp trend):
+${evoltLines}
+
+What's happening with her right now, and what should she do next?`;
+
   } else if (mode === 'ask') {
     systemAddition = '\nAnswer the specific question using the data provided. Be direct and specific. Use actual numbers from their data.';
     userMsg = `My data:\n\nEvolt Scans:\n${evoltLines}\nDelta: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition:\n${nutritionLines}\n\nMy question: ${question}`;
