@@ -1,0 +1,501 @@
+/**
+ * FuelStrong Progress — Cloudflare Worker
+ *
+ * Required Secrets (set in Cloudflare dashboard → Worker → Settings → Variables):
+ *   ANTHROPIC_API_KEY  — your Anthropic API key
+ *   GITHUB_TOKEN       — your GitHub personal access token
+ *
+ * Required KV Namespace binding (Cloudflare dashboard → Worker → Settings → Bindings):
+ *   FUELSTRONG_KV      — create a KV namespace called "fuelstrong-data" and bind it
+ */
+
+const GITHUB_REPO = 'pudenz1337-collab/pudenz1337-collab.github.io';
+const ALLOWED_ORIGIN = 'https://pudenz1337-collab.github.io';
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*', // tighten to ALLOWED_ORIGIN after testing
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+// ─── Router ────────────────────────────────────────────────────────────────────
+export default {
+  async fetch(request, env) {
+    if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
+
+    const url   = new URL(request.url);
+    const path  = url.pathname;
+    const method = request.method;
+
+    try {
+      if (path === '/api/health'  && method === 'GET')    return health();
+      if (path === '/api/data'    && method === 'GET')    return getData(env);
+      if (path === '/api/data'    && method === 'POST')   return saveData(request, env);
+      if (path === '/api/parse'   && method === 'POST')   return parseFile(request, env);
+      if (path === '/api/coach'   && method === 'POST')   return getCoaching(request, env);
+      if (path === '/api/coach'   && method === 'GET')    return getKVKey(env, 'last_coaching');
+      if (path === '/api/backup'  && method === 'POST')   return backupToGitHub(env);
+      if (path === '/api/goals'   && method === 'POST')   return saveKVKey(request, env, 'goals');
+      if (path === '/api/context' && method === 'POST')   return saveKVKey(request, env, 'coach_context');
+      if (path === '/api/context' && method === 'GET')    return getKVKey(env, 'coach_context');
+      if (path.startsWith('/api/data/') && method === 'DELETE') return deleteEntry(request, env, path);
+
+      return reply({ error: 'Not found' }, 404);
+    } catch (e) {
+      console.error(e);
+      return reply({ error: e.message }, 500);
+    }
+  }
+};
+
+// ─── Health ─────────────────────────────────────────────────────────────────────
+function health() {
+  return reply({ status: 'ok', time: new Date().toISOString() });
+}
+
+// ─── Get all data ───────────────────────────────────────────────────────────────
+async function getData(env) {
+  if (!env.FUELSTRONG_KV) {
+    return reply({ error: 'KV namespace not bound. Add FUELSTRONG_KV binding in Cloudflare Worker settings.' }, 500);
+  }
+  const [evolt, fitbod, fuelstrong] = await Promise.all([
+    env.FUELSTRONG_KV.get('evolt').catch(() => null),
+    env.FUELSTRONG_KV.get('fitbod').catch(() => null),
+    env.FUELSTRONG_KV.get('fuelstrong').catch(() => null),
+  ]);
+  return reply({
+    evolt:      JSON.parse(evolt      || '[]'),
+    fitbod:     JSON.parse(fitbod     || '[]'),
+    fuelstrong: JSON.parse(fuelstrong || '[]'),
+  });
+}
+
+// ─── Save parsed data ───────────────────────────────────────────────────────────
+async function saveData(request, env) {
+  if (!env.FUELSTRONG_KV) {
+    return reply({ error: 'KV namespace not bound.' }, 500);
+  }
+  const { type, data } = await request.json();
+  if (!['evolt','fitbod','fuelstrong'].includes(type)) {
+    return reply({ error: 'Invalid data type' }, 400);
+  }
+
+  // Empty array = clear operation — overwrite KV, do not merge
+  if (Array.isArray(data) && data.length === 0) {
+    await env.FUELSTRONG_KV.put(type, '[]');
+    return reply({ success: true, total: 0, added: 0, cleared: true });
+  }
+
+  const existing = JSON.parse(await env.FUELSTRONG_KV.get(type).catch(() => null) || '[]');
+  const incoming = Array.isArray(data) ? data : [data];
+  const merged   = [...existing];
+
+  for (const entry of incoming) {
+    const key = entry.id || entry.date;
+    const dup = merged.some(e => (e.id || e.date) === key);
+    if (!dup) merged.push({ ...entry, savedAt: new Date().toISOString() });
+  }
+
+  merged.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+  await env.FUELSTRONG_KV.put(type, JSON.stringify(merged));
+
+  return reply({ success: true, total: merged.length, added: incoming.length });
+}
+
+// ─── Delete entry ───────────────────────────────────────────────────────────────
+async function deleteEntry(request, env, path) {
+  // DELETE /api/data/{type}/{id}
+  const parts  = path.split('/').filter(Boolean);
+  const type   = parts[2];
+  const id     = parts[3];
+  const existing = JSON.parse(await env.FUELSTRONG_KV.get(type) || '[]');
+  const filtered = existing.filter(e => (e.id || e.date) !== decodeURIComponent(id));
+  await env.FUELSTRONG_KV.put(type, JSON.stringify(filtered));
+  return reply({ success: true, remaining: filtered.length });
+}
+
+// ─── Parse uploaded file (image → Claude vision) ────────────────────────────────
+async function parseFile(request, env) {
+  const { imageBase64, mimeType, filename, fileType } = await request.json();
+
+  // ── Fitbod screenshot ──
+  if (fileType === 'fitbod') {
+    const prompt = `Analyze this Fitbod workout app screenshot carefully. Extract every piece of workout data visible.
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "date": "YYYY-MM-DD or null",
+  "workoutName": "string or null",
+  "exercises": [
+    {
+      "name": "Exercise Name",
+      "muscleGroup": "Chest|Back|Legs|Shoulders|Arms|Core|Full Body",
+      "sets": [
+        { "reps": number, "weight": number, "unit": "lbs" }
+      ],
+      "totalVolume": number,
+      "maxWeight": number,
+      "notes": "string or null"
+    }
+  ],
+  "totalVolume": number,
+  "muscleGroupsWorked": ["array of muscle groups"],
+  "duration": "string or null",
+  "source": "fitbod_screenshot"
+}
+
+If this is NOT a Fitbod workout screenshot, return: { "error": "not_workout", "description": "what you see" }`;
+
+    const resp = await callClaude(env, {
+      model: 'claude-opus-4-5',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: imageBase64 } },
+          { type: 'text', text: prompt }
+        ]
+      }]
+    });
+
+    const text  = resp.content?.[0]?.text || '{}';
+    const match = text.match(/\{[\s\S]*\}/);
+    const parsed = safeJson(match?.[0]);
+    if (parsed && !parsed.error) {
+      parsed.id         = uid('fitbod');
+      parsed.sourceFile = filename;
+    }
+    return reply(parsed || { error: 'parse_failed', raw: text.slice(0, 500) });
+  }
+
+  return reply({ error: 'unknown_file_type' }, 400);
+}
+
+// ─── Generic KV helpers ─────────────────────────────────────────────────────────
+async function saveKVKey(request, env, key) {
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
+  const body = await request.json().catch(() => ({}));
+  await env.FUELSTRONG_KV.put(key, JSON.stringify(body));
+  return reply({ success: true });
+}
+async function getKVKey(env, key) {
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
+  const raw = await env.FUELSTRONG_KV.get(key).catch(() => null);
+  return reply(raw ? JSON.parse(raw) : {});
+}
+
+// ─── AI Coaching ────────────────────────────────────────────────────────────────
+async function getCoaching(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const question = body.question || '';
+
+  if (!env.FUELSTRONG_KV) {
+    return reply({ error: 'KV namespace not bound. Check Worker bindings in Cloudflare dashboard — variable must be named FUELSTRONG_KV.' }, 500);
+  }
+  if (!env.ANTHROPIC_API_KEY) {
+    return reply({ error: 'ANTHROPIC_API_KEY secret not set in Worker environment variables.' }, 500);
+  }
+
+  const [evoltRaw, fitbodRaw, fuelstrongRaw, goalsRaw, contextRaw] = await Promise.all([
+    env.FUELSTRONG_KV.get('evolt').catch(() => null),
+    env.FUELSTRONG_KV.get('fitbod').catch(() => null),
+    env.FUELSTRONG_KV.get('fuelstrong').catch(() => null),
+    env.FUELSTRONG_KV.get('goals').catch(() => null),
+    env.FUELSTRONG_KV.get('coach_context').catch(() => null),
+  ]);
+
+  const evolt      = JSON.parse(evoltRaw      || '[]');
+  const fitbod     = JSON.parse(fitbodRaw     || '[]');
+  const fuelstrong = JSON.parse(fuelstrongRaw || '[]');
+  const goals      = goalsRaw ? JSON.parse(goalsRaw) : (body.goals || {});
+  const savedCtx   = contextRaw ? JSON.parse(contextRaw) : {};
+  const context    = savedCtx.context || body.context || '';
+  const woSummary  = body.workoutSummary || null;
+  const mode       = body.mode || 'dashboard';
+
+  // New context fields from Phase 1 rebuild
+  const supplements  = body.supplements  || '';
+  const tirzepatide  = body.tirzepatide  || {};
+  const measurements = body.measurements || [];
+  const sessionLogs  = body.sessionLogs  || [];
+
+  // ── Format Evolt data ──
+  const evoltLines = evolt.map(s =>
+    `${s.date}: Weight=${s.weight}lbs | BF%=${s.bodyFatPct}% | SkeletalMuscle=${s.skeletalMuscleMass}lbs | ` +
+    `LBM=${s.leanBodyMass}lbs | VisceralFatMass=${s.visceralFatMass}lbs | VisceralFatArea=${s.visceralFatArea}cm² | ` +
+    `BWI=${s.bwiScore} | BMR=${s.bmr}kcal`
+  ).join('\n');
+
+  const evoltDelta = evolt.length >= 2 ? (() => {
+    const f = evolt[0], l = evolt[evolt.length-1];
+    return `Change ${f.date}→${l.date}: Weight ${f.weight}→${l.weight}lbs (${(l.weight-f.weight).toFixed(1)}), ` +
+      `BF% ${f.bodyFatPct}→${l.bodyFatPct}% (${(l.bodyFatPct-f.bodyFatPct).toFixed(1)}%), ` +
+      `Muscle ${f.skeletalMuscleMass}→${l.skeletalMuscleMass}lbs (${(l.skeletalMuscleMass-f.skeletalMuscleMass).toFixed(1)}), ` +
+      `VisceralFatMass ${f.visceralFatMass}→${l.visceralFatMass}lbs, BWI ${f.bwiScore}→${l.bwiScore}`;
+  })() : 'Only one scan available.';
+
+  const nutritionLines = fuelstrong.length > 0
+    ? fuelstrong.slice(-14).map(n => `${n.date}: Protein=${n.protein}g | Cal=${n.calories}kcal | Water=${n.water}oz`).join('\n')
+    : 'No nutrition data.';
+
+  // ── Format workout analytics ──
+  const woLines = woSummary ? `
+Total workouts: ${woSummary.totalWorkouts}
+Avg per week: ${woSummary.avgWorkoutsPerWeek}
+Recent weeks: ${woSummary.recentWeeks}
+Compound vs Isolation: ${woSummary.compoundPct}% compound / ${woSummary.isolationPct}% isolation
+Muscle balance (volume): ${woSummary.muscleBalance}
+Rep zone breakdown: ${woSummary.repZones}
+Top PRs: ${woSummary.topPRs}
+Recovery status: ${woSummary.recoveryStatus}` : fitbod.slice(-20).map(w =>
+    `${w.date}: ${w.workoutName||'Workout'} | ${(w.muscleGroupsWorked||[]).join(', ')} | ${w.totalVolume}lbs | ${(w.exercises||[]).map(e=>`${e.name}(${e.maxWeight}lbs max)`).join(', ')}`
+  ).join('\n') || 'No workout data.';
+
+  // ── Goals context block ──
+  const goalsBlock = goals && Object.keys(goals).length ? `
+User's stated fitness goals:
+- Primary goal: ${goals.primary || 'not set'}
+- Training focus: ${goals.training || 'not set'} (${goals.training === 'hypertrophy' ? '6-12 rep range' : goals.training === 'strength' ? '1-5 rep range' : goals.training === 'endurance' ? '13+ reps' : 'mixed'})
+- Target training frequency: ${goals.freq || 'not set'}x/week
+- Medication: ${goals.med || 'not specified'}
+- Priority muscle groups: ${(goals.muscles||[]).join(', ') || 'not set'}` : '';
+
+  const contextBlock = context ? `\nCoach context notes from user:\n${context}` : '';
+
+  // ── Supplement/tirzepatide/measurement context ──
+  const suppBlock = supplements ? `\nSupplement stack: ${supplements}` : '';
+
+  let tirzBlock = '';
+  if (tirzepatide?.dose || tirzepatide?.day !== undefined) {
+    const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const injDay = tirzepatide.day !== '' ? parseInt(tirzepatide.day) : null;
+    const todayDow = new Date().getDay();
+    const daysAgo = injDay !== null ? ((todayDow - injDay) + 7) % 7 : null;
+    tirzBlock = `\nTirzepatide: ${tirzepatide.dose ? tirzepatide.dose+'mg' : ''}${injDay!==null?' injected '+dayNames[injDay]:''}${tirzepatide.weeks?' ('+tirzepatide.weeks+' weeks on current dose)':''}${daysAgo!==null?' — '+daysAgo+' days since last injection':''}`;
+  }
+
+  const measBlock = measurements.length
+    ? `\nRecent body measurements (inches): ${measurements.map(m =>
+        `${m.date}: waist=${m.waist}"${m.hips?' hips='+m.hips+'"':''}${m.arm?' arm='+m.arm+'"':''}`
+      ).join(' | ')}`
+    : '';
+
+  const sessionBlock = sessionLogs.length
+    ? `\nRecent session logs: ${sessionLogs.map(s =>
+        `${s.date}: feel=${s.feel||'?'}/5, RPE=${s.rpe||'?'}/10${s.note?' ('+s.note+')':''}`
+      ).join(' | ')}`
+    : '';
+
+  // ── Base system prompt ──
+  const baseSystem = `You are a direct, data-driven fitness coach specializing in body recomposition — building visible muscle while losing fat. You coach a 50-year-old woman (Hanna) who:
+- Is 5'5", on tirzepatide (GLP-1) which suppresses appetite and affects muscle metabolism
+- Has been taking creatine daily for ~3 months (creatine inflates BIA lean mass readings 2-5 lbs in first 8 weeks)
+- Uses Evolt 360 BIA body composition scans, Fitbod for workouts, and FuelStrong for nutrition
+- GOAL: Build visible muscle while uncovering it through fat loss — the "body recomp" approach
+${goalsBlock}${contextBlock}${tirzBlock}${suppBlock}${measBlock}${sessionBlock}
+
+Your coaching rules:
+1. LEAD with what IS working — always cite actual data numbers
+2. Scale weight is the WORST metric — reframe toward skeletal muscle mass and body fat % trends
+3. Be specific and actionable — give exact numbers and concrete next steps
+4. Tirzepatide: suppresses appetite (protein goals harder), can cause muscle loss if calories too low, requires strategic protein timing
+5. Connect training data to body comp results — this is the key insight most coaches miss
+6. Realistic timelines: visible muscle takes 6-12+ months, 0.25-0.5 lbs/month on tirzepatide in deficit is a WIN
+7. Use body measurements when available — waist changes are better fat loss proxies than scale weight
+8. Format your response with clear emoji-headed sections: 🧠 Overall Analysis, 💪 Training, 🥗 Nutrition, 🎯 Top 3 Priorities`;
+
+  // ── Mode-specific prompt ──
+  let userMsg, systemAddition = '';
+
+  if (mode === 'dashboard') {
+    systemAddition = '\nDashboard coaching: Give a comprehensive but scannable analysis across all three data sources. Use clear section headers (🧠 Overall Analysis, 💪 Training, 🥗 Nutrition, 🎯 Your Top 3 Priorities). Be specific — use actual numbers from the data. Connect what you see in training to what you see in body comp. This is the user\'s daily coaching hub, so make it actionable and motivating. IMPORTANT: Start directly with the first section header — do NOT add a date, preamble, "Generated:", or horizontal dividers (---) before the content.';
+    userMsg = `Generate my comprehensive coaching dashboard.\n\nEvolt Scans (chronological):\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+
+  } else if (mode === 'fuelstrong_daily') {
+    // FuelStrong daily coaching — uses full context including H-E-M, Progress data, tirzepatide cycle
+    const hemEntries = body.hemLog || [];
+    const hemLatest  = body.hemLatest || {};
+    const mealTimes  = body.mealTimes || {};
+    const todayProtein  = body.protein || 0;
+    const todayCal      = body.calories || 0;
+    const todayWater    = body.water || 0;
+    const currentTime   = body.currentTime || '';
+    const todayPlan     = body.dayPlan || 'not set';
+    const wo            = body.workoutTime || null;
+
+    // Build H-E-M timeline string
+    const hemTimeline = hemEntries.length
+      ? hemEntries.map(e => `${e.time}: ${e.h?'H'+e.h:''} ${e.e?'E'+e.e:''} ${e.m?'M'+e.m:''}${e.note?' ('+e.note+')':''}`).join(' | ')
+      : 'No H-E-M logged yet';
+
+    // Meal timing summary
+    const mealSummary = Object.entries(mealTimes).map(([meal,d]) => `${meal}: ${d.protein}g protein at ${d.time}`).join(', ') || 'No meals logged';
+
+    // Historical averages from fuelstrong data if available
+    const recentDays = fuelstrong.slice(-14);
+    const avgP = recentDays.length ? Math.round(recentDays.reduce((a,d)=>a+d.protein,0)/recentDays.length) : null;
+    const avgCal = recentDays.length ? Math.round(recentDays.reduce((a,d)=>a+(d.calories||0),0)/recentDays.length) : null;
+
+    // Energy trend from HEM history (across days in fuelstrong)
+    const hemHistory = recentDays.filter(d=>d.hem?.e).map(d=>`${d.date}: E${d.hem.e}`).slice(-7).join(', ');
+
+    systemAddition = `\nYou are coaching Hanna in real-time today. Use the H-E-M timeline to detect how she's feeling and why. Connect energy/mood dips to meal gaps, tirzepatide cycle, and training load. Be specific about what to do RIGHT NOW based on the time of day. Use emoji section headers: 🧠 Right Now, 💉 Tirzepatide Context, 💪 Training & Nutrition, 🎯 Top 2 Actions.`;
+
+    userMsg = `Today's coaching check-in — ${currentTime}.
+
+TODAY'S STATUS:
+- Plan: ${todayPlan}${wo?' · Workout at '+wo:''}
+- Protein: ${todayProtein}g / ${goals.protein||150}g goal
+- Calories: ${todayCal} kcal
+- Water: ${todayWater}oz
+
+MEALS TODAY:
+${mealSummary}
+
+H-E-M TIMELINE (H=Hydration, E=Energy, M=Mood, scale 1-3):
+${hemTimeline}
+
+TIRZEPATIDE:
+- Dose: ${tirzepatide.dose||'unknown'}mg
+- Days since injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
+
+HISTORICAL CONTEXT (last 14 days):
+- Avg protein: ${avgP||'no data'}g
+- Avg calories: ${avgCal||'no data'} kcal
+- Energy history: ${hemHistory || 'no history'}
+
+EVOLT (body comp trend):
+${evoltLines}
+
+What's happening with her right now, and what should she do next?`;
+
+  } else if (mode === 'ask') {
+    systemAddition = '\nAnswer the specific question using the data provided. Be direct and specific. Use actual numbers from their data.';
+    userMsg = `My data:\n\nEvolt Scans:\n${evoltLines}\nDelta: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition:\n${nutritionLines}\n\nMy question: ${question}`;
+
+  } else if (mode === 'body') {
+    systemAddition = '\nFocus: Deep dive into body composition trends only. What do the Evolt numbers mean? What is the trajectory? What specific behaviors are driving changes? End with: "Your Top 3 Body Composition Priorities."';
+    userMsg = `Analyze my body composition data in depth.\n\nEvolt Scans:\n${evoltLines}\nOverall delta: ${evoltDelta}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+
+  } else if (mode === 'training') {
+    systemAddition = '\nFocus: Deep analysis of training quality for muscle building. Analyze rep ranges, exercise selection, consistency, recovery, progressive overload. End with: "Your Top 3 Training Adjustments."';
+    userMsg = `Analyze my training data in depth.\n\nWorkout Analytics:\n${woLines}\n\nBody Composition Impact:\n${evoltDelta}\n\nMuscle trend:\n${evolt.slice(-6).map(s=>`${s.date}: ${s.skeletalMuscleMass}lbs muscle`).join(', ')}`;
+
+  } else {
+    // full (legacy)
+    systemAddition = '\nFull synthesis: Connect ALL three data sources. What story do the numbers tell together? Where is she winning? What is the most important thing to fix? End with: "Your Top 3 Priorities Right Now."';
+    userMsg = `Full coaching analysis.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+  }
+
+  const resp = await callClaude(env, {
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1800,
+    system: baseSystem + systemAddition,
+    messages: [{ role: 'user', content: userMsg }]
+  });
+
+  const coaching = resp.content?.[0]?.text || 'Could not generate coaching.';
+
+  await env.FUELSTRONG_KV.put('last_coaching', JSON.stringify({
+    text: coaching, mode, question: question || null,
+    generatedAt: new Date().toISOString()
+  }));
+
+  return reply({ coaching, generatedAt: new Date().toISOString() });
+}
+
+// ─── GitHub Backup ──────────────────────────────────────────────────────────────
+async function backupToGitHub(env) {
+  const [e, f, fs] = await Promise.all([
+    env.FUELSTRONG_KV.get('evolt'),
+    env.FUELSTRONG_KV.get('fitbod'),
+    env.FUELSTRONG_KV.get('fuelstrong'),
+  ]);
+
+  const files = [
+    { path: 'data/evolt.json',      content: e  || '[]' },
+    { path: 'data/fitbod.json',     content: f  || '[]' },
+    { path: 'data/fuelstrong.json', content: fs || '[]' },
+  ];
+
+  const results = [];
+  for (const file of files) {
+    try {
+      let sha;
+      const check = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/contents/${file.path}`,
+        { headers: githubHeaders(env) }
+      );
+      if (check.ok) sha = (await check.json()).sha;
+
+      const body = {
+        message: `data: update ${file.path} ${new Date().toISOString().split('T')[0]}`,
+        content: b64encode(file.content),
+        ...(sha && { sha }),
+      };
+
+      const res = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/contents/${file.path}`,
+        { method: 'PUT', headers: githubHeaders(env), body: JSON.stringify(body) }
+      );
+      results.push({ file: file.path, ok: res.ok, status: res.status });
+    } catch (e) {
+      results.push({ file: file.path, ok: false, error: e.message });
+    }
+  }
+
+  return reply({ backed_up: results });
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────────
+async function callClaude(env, body) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const STATUS_MESSAGES = {
+      401: 'Invalid Anthropic API key — check ANTHROPIC_API_KEY in Worker secrets.',
+      402: 'Anthropic account out of credits — add credits at console.anthropic.com/billing.',
+      429: 'Anthropic rate limit hit — wait a moment and try again.',
+      529: 'Anthropic API quota exceeded or account paused — check console.anthropic.com/billing.',
+      500: 'Anthropic API internal error — try again in a moment.',
+    };
+    const msg = STATUS_MESSAGES[res.status] || `Anthropic API error ${res.status}`;
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function githubHeaders(env) {
+  return {
+    'Authorization': `token ${env.GITHUB_TOKEN}`,
+    'Content-Type': 'application/json',
+    'User-Agent': 'FuelStrong-App/1.0',
+  };
+}
+
+function reply(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...CORS, 'Content-Type': 'application/json' },
+  });
+}
+
+function safeJson(str) {
+  try { return JSON.parse(str); } catch { return null; }
+}
+
+function uid(prefix = '') {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function b64encode(str) {
+  // Cloudflare Workers compatible base64 encode
+  return btoa(unescape(encodeURIComponent(str)));
+}

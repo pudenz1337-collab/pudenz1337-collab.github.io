@@ -1513,9 +1513,28 @@ async function tryAutoCoach() {
   // Only auto-generate once per day
   const lastGen = localStorage.getItem('fs-coach-last-gen');
   const today = new Date().toISOString().split('T')[0];
-  if (lastGen === today || coachingGenerated) return;
-  if (!data.evolt.length && !data.fitbod.length) return;
+  if (coachingGenerated) return;
   if (!WORKER_URL) return;
+  if (!data.evolt.length && !data.fitbod.length) return;
+
+  // First: try loading cached coaching from KV (shared across devices)
+  try {
+    const cached = await wFetch('/api/coach');
+    if (cached && cached.text) {
+      const genDate = cached.generatedAt ? cached.generatedAt.split('T')[0] : null;
+      renderCoachOutput(cached.text);
+      const genTime = cached.generatedAt
+        ? new Date(cached.generatedAt).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' })
+        : '—';
+      document.getElementById('coach-generated-time').textContent = `Generated ${genDate === today ? 'today' : genDate} at ${genTime}`;
+      coachingGenerated = true;
+      if (genDate === today) localStorage.setItem('fs-coach-last-gen', today);
+      return; // Don't regenerate if we have a cached result
+    }
+  } catch(e) { /* no cache yet, fall through to generate */ }
+
+  // No cache or cache too old — generate fresh if not done today
+  if (lastGen === today) return;
   await runCoaching(true);
 }
 
@@ -1574,37 +1593,31 @@ function renderCoachOutput(text) {
     </div>`).join('');
 }
 
-function parseCoachSections(text) {
-  // Try to split on lines starting with emoji/hash section markers
-  const sectionMarkers = /^(?:#{1,3}|🧠|💪|🥗|📊|🎯|✨|📋|Overall|Training|Nutrition|Body|Summary)/im;
-  const lines = text.split('\n');
+function parseCoachSections(rawText) {
+  // Strip preamble before first real section header (model sometimes outputs date/--- before content)
+  let text = rawText.replace(/^[\s\S]*?(?=[\n\r](?:[#🧠💪🥗📊🎯✨📋🏆⚡🔥]))/m, "").trim();
+  if (!text) text = rawText; // fallback
+  const lines = text.split("\n");
   const sections = [];
-  let currentTitle = '🧠 Overall Analysis';
+  let currentTitle = "🧠 Overall Analysis";
   let currentBody = [];
-
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed) { currentBody.push(''); continue; }
-    // Check if this line is a section header
-    const isHeader = /^#{1,3}\s|^[🧠💪🥗📊🎯✨📋🏆⚡🔥]\s/.test(trimmed) && trimmed.length < 80;
-    if (isHeader && currentBody.join('').trim()) {
-      sections.push({ title: currentTitle, body: currentBody.join('\n').trim() });
+    if (/^-{3,}$/.test(trimmed)) continue; // skip --- dividers
+    if (!trimmed) { currentBody.push(""); continue; }
+    const isHeader = /^#{1,3}\s|^[🧠💪🥗📊🎯✨📋🏆⚡🔥]/.test(trimmed) && trimmed.length < 80;
+    if (isHeader && currentBody.join("").trim()) {
+      sections.push({ title: currentTitle, body: currentBody.join("\n").trim() });
       currentBody = [];
-      currentTitle = trimmed.replace(/^#+\s*/, '');
+      currentTitle = trimmed.replace(/^#+\s*/, "");
     } else if (isHeader) {
-      currentTitle = trimmed.replace(/^#+\s*/, '');
+      currentTitle = trimmed.replace(/^#+\s*/, "");
     } else {
       currentBody.push(line);
     }
   }
-  if (currentBody.join('').trim()) {
-    sections.push({ title: currentTitle, body: currentBody.join('\n').trim() });
-  }
-
-  // If no sections found, treat whole thing as one
-  if (!sections.length) {
-    return [{ title: '🧠 Your Coaching Analysis', body: text.trim() }];
-  }
+  if (currentBody.join("").trim()) sections.push({ title: currentTitle, body: currentBody.join("\n").trim() });
+  if (!sections.length) return [{ title: "🧠 Your Coaching Analysis", body: rawText.trim() }];
   return sections;
 }
 
