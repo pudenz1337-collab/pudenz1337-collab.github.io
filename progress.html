@@ -17,16 +17,18 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;font-size:14px}
-header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
-.logo{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:3px;color:var(--accent)}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;display:flex;flex-direction:column;min-height:100vh}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;flex-shrink:0}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:3px;color:var(--accent)}
 .logo span{color:var(--text)}
 .hbadge{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;background:rgba(0,229,160,.12);color:var(--accent);border:1px solid rgba(0,229,160,.25)}
-.tabs{background:var(--surface);border-bottom:1px solid var(--border);display:flex;padding:0 24px;overflow-x:auto}
-.tab{padding:14px 20px;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
-.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
-.tab:hover:not(.active){color:var(--text)}
-.panel{display:none;padding:24px;max-width:1400px}
+/* ── BOTTOM NAV ── */
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:200;height:60px}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;color:var(--muted);transition:color .2s;border:none;background:none;padding:6px 0;font-family:'DM Sans',sans-serif}
+.nav-btn.active{color:var(--accent)}
+.nav-btn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.nav-btn span{font-size:10px;font-weight:500;letter-spacing:.3px}
+.panel{display:none;padding:20px 24px 80px;max-width:1400px}
 .panel.active{display:block}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
@@ -74,7 +76,7 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
 ::-webkit-scrollbar-track{background:var(--surface)}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 @media(max-width:900px){.g3,.g4{grid-template-columns:1fr 1fr}}
-@media(max-width:600px){.g2,.g3,.g4{grid-template-columns:1fr}.tabs{gap:0}}
+@media(max-width:600px){.g2,.g3,.g4{grid-template-columns:1fr}}
 /* goal options */
 .goal-opt{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:6px 0;color:var(--text)}
 .goal-opt input{accent-color:var(--accent);cursor:pointer;flex-shrink:0}
@@ -139,13 +141,29 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
   </div>
 </header>
 
-<div class="tabs">
-  <div class="tab active" onclick="showTab('dashboard',this)">📊 Dashboard</div>
-  <div class="tab" onclick="showTab('bodycomp',this)">📋 Body Comp</div>
-  <div class="tab" onclick="showTab('workouts',this)">💪 Workouts</div>
-  <div class="tab" onclick="showTab('upload',this)">📂 Upload</div>
-  <div class="tab" onclick="showTab('settings',this)">⚙️ Settings</div>
-</div>
+<!-- ══ BOTTOM NAV ══ -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" id="nav-dashboard" onclick="showTab('dashboard',this)">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    <span>Dashboard</span>
+  </button>
+  <button class="nav-btn" id="nav-bodycomp" onclick="showTab('bodycomp',this)">
+    <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+    <span>Body Comp</span>
+  </button>
+  <button class="nav-btn" id="nav-workouts" onclick="showTab('workouts',this)">
+    <svg viewBox="0 0 24 24"><path d="M6 4v16M18 4v16M1 8h5M18 8h5M1 16h5M18 16h5"/></svg>
+    <span>Workouts</span>
+  </button>
+  <button class="nav-btn" id="nav-upload" onclick="showTab('upload',this)">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <span>Upload</span>
+  </button>
+  <button class="nav-btn" id="nav-settings" onclick="showTab('settings',this)">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span>Settings</span>
+  </button>
+</nav>
 
 <!-- ══════════════════════ DASHBOARD ══════════════════════ -->
 <div id="panel-dashboard" class="panel active">
@@ -213,7 +231,7 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
         <div style="display:flex;gap:8px;align-items:center">
           <div id="coach-hub-loading" style="display:none"><div class="spin"></div> <span style="font-size:12px;color:var(--muted);margin-left:6px">Analyzing your data...</span></div>
           <button class="btn btn-g btn-sm" onclick="runCoaching()" id="coach-regen-btn">↻ Regenerate</button>
-          <button class="btn btn-g btn-sm" onclick="showTab('settings',document.querySelectorAll('.tab')[4])">Ask a Question →</button>
+          <button class="btn btn-g btn-sm" onclick="showTab('settings',document.getElementById('nav-settings'))">Ask a Question →</button>
         </div>
       </div>
 
@@ -751,9 +769,11 @@ async function init() {
 // ══════════════════════════════════════════════════════
 function showTab(id, el) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-' + id).classList.add('active');
-  if (el) el.classList.add('active');
+  // Support both direct el (nav-btn) and querySelector fallback
+  if (el && el.classList.contains('nav-btn')) { el.classList.add('active'); }
+  else { const nb = document.getElementById('nav-' + id); if (nb) nb.classList.add('active'); }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1332,7 +1352,7 @@ function renderInsightCards() {
   const el = document.getElementById('insight-cards');
   const insights = generateCrossInsights();
   el.innerHTML = insights.map(ins => `
-    <div class="insight${ins.tab?' clickable':''}" ${ins.tab?`onclick="showTab('${ins.tab}',document.querySelectorAll('.tab')[${ins.tabIdx||1}])"`:''} style="background:${ins.bg||''};border-color:${ins.border||''}">
+    <div class="insight${ins.tab?' clickable':''}" ${ins.tab?`onclick="showTab('${ins.tab}',document.getElementById('nav-'+ins.tab))"`:''} style="background:${ins.bg||''};border-color:${ins.border||''}">
       <div style="display:flex;gap:10px;align-items:flex-start">
         <span style="font-size:20px;flex-shrink:0">${ins.icon}</span>
         <div>

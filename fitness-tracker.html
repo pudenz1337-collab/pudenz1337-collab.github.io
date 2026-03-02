@@ -28,9 +28,16 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 .header-meta{display:flex;align-items:center;gap:8px}
 .day-pill{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;
   letter-spacing:.8px;text-transform:uppercase}
-.worker-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);cursor:pointer}
-.worker-dot.ok{background:var(--accent);box-shadow:0 0 6px var(--accent)}
-.worker-dot.err{background:var(--danger)}
+/* ── CONNECTION PILL ── */
+.conn-pill{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;
+  background:var(--card2);border:1px solid var(--border);cursor:pointer;
+  font-size:11px;font-weight:600;color:var(--muted);transition:all .2s;white-space:nowrap}
+.conn-pill:hover{border-color:var(--accent)}
+.conn-pill.ok {border-color:rgba(0,229,160,.35);color:var(--accent)}
+.conn-pill.err{border-color:rgba(255,69,96,.35);color:var(--danger)}
+.conn-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:all .3s}
+.conn-pill.ok  .conn-dot{background:var(--accent);box-shadow:0 0 6px rgba(0,229,160,.6)}
+.conn-pill.err .conn-dot{background:var(--danger);box-shadow:0 0 6px rgba(255,69,96,.4)}
 
 /* ── SCROLL CONTENT ── */
 .app-content{flex:1;overflow-y:auto;padding-bottom:calc(var(--bottom-bar) + 16px)}
@@ -303,7 +310,10 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
   <div class="logo">Fuel<span>Strong</span></div>
   <div class="header-meta">
     <span id="goal-pills" style="display:flex;gap:6px"></span>
-    <div id="worker-dot-el" class="worker-dot" title="Worker status" onclick="testWorker()"></div>
+    <div id="worker-pill" class="conn-pill" onclick="testWorker()" title="Worker connection status">
+      <div class="conn-dot" id="worker-dot-el"></div>
+      <span id="worker-pill-label">Connecting…</span>
+    </div>
     <span id="header-date" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)"></span>
   </div>
 </div>
@@ -838,8 +848,11 @@ function showPanel(id, btn) {
 // WORKER
 // ══════════════════════════════════════════════════
 function updateWorkerDot(state) {
-  const dot = document.getElementById('worker-dot-el');
-  dot.className = 'worker-dot' + (state === 'ok' ? ' ok' : state === 'err' ? ' err' : '');
+  const pill  = document.getElementById('worker-pill');
+  const label = document.getElementById('worker-pill-label');
+  if (!pill) return;
+  pill.className = 'conn-pill' + (state === 'ok' ? ' ok' : state === 'err' ? ' err' : '');
+  label.textContent = state === 'ok' ? 'Connected' : state === 'err' ? 'Offline' : WORKER_URL ? 'Connecting…' : 'No Worker';
 }
 
 async function wFetch(path, opts = {}) {
