@@ -382,16 +382,17 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
     <div class="card">
       <div class="card-title">Today's Plan</div>
       <div class="plan-row" id="plan-btns">
-        <button class="plan-btn" data-plan="workout" onclick="setPlan('workout',this)">
+        <button class="plan-btn" data-plan="workout" onclick="togglePlan('workout',this)">
           <span class="plan-icon">💪</span>Training Day
         </button>
-        <button class="plan-btn" data-plan="recover" onclick="setPlan('recover',this)">
+        <button class="plan-btn" data-plan="recover" onclick="togglePlan('recover',this)">
           <span class="plan-icon">😴</span>Recovery Day
         </button>
-        <button class="plan-btn" data-plan="injection" onclick="setPlan('injection',this)">
+        <button class="plan-btn" data-plan="injection" onclick="togglePlan('injection',this)">
           <span class="plan-icon">💉</span>Injection Day
         </button>
       </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">Tap to toggle. Injection Day can be combined with any other plan.</div>
       <div id="workout-time-row" style="display:none;margin-top:10px">
         <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Workout time</div>
         <input type="time" id="workout-time" class="setting-input" style="max-width:140px" onchange="saveWorkoutTime()">
@@ -404,13 +405,13 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
       <div class="card-title">How Are You Feeling? <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:10px">tap to log anytime</span></div>
       <div class="hem-row">
         <div class="hem-block">
-          <div class="hem-label">Hydration</div>
+          <div class="hem-label">Hunger</div>
           <div class="hem-btns">
-            <button class="hem-btn" onclick="logHEM('h',1)" title="Low">💧</button>
-            <button class="hem-btn" onclick="logHEM('h',2)" title="OK">🫧</button>
-            <button class="hem-btn" onclick="logHEM('h',3)" title="Good">🌊</button>
+            <button class="hem-btn" onclick="logHEM('h',1)" title="Not hungry">😶</button>
+            <button class="hem-btn" onclick="logHEM('h',2)" title="A little hungry">🙂</button>
+            <button class="hem-btn" onclick="logHEM('h',3)" title="Very hungry">😤</button>
           </div>
-          <div class="hem-val" id="hem-h-val" style="color:var(--accent3)">—</div>
+          <div class="hem-val" id="hem-h-val" style="color:var(--accent2)">—</div>
         </div>
         <div class="hem-block">
           <div class="hem-label">Energy</div>
@@ -431,7 +432,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
           <div class="hem-val" id="hem-m-val" style="color:var(--purple)">—</div>
         </div>
       </div>
-      <input id="hem-note" class="search-input" placeholder="Optional note (e.g. feeling nauseous, had great energy after lunch...)" style="margin-top:10px;margin-bottom:0">
+      <input id="hem-note" class="search-input" placeholder="Optional note (e.g. feeling nauseous, not hungry today, had great energy after lunch...)" style="margin-top:10px;margin-bottom:0">
       <div id="hem-timeline" class="hem-timeline"></div>
     </div>
 
@@ -733,7 +734,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 // CONSTANTS & CONFIG
 // ══════════════════════════════════════════════════
 const MEAL_ORDER = ['Breakfast','Morning Snack','Lunch','Afternoon Snack','Dinner','Evening Snack'];
-const MOODS = { h: ['💧','🫧','🌊'], e: ['🪫','⚡','🔥'], m: ['😞','😐','😊'] };
+const MOODS = { h: ['😶','🙂','😤'], e: ['🪫','⚡','🔥'], m: ['😞','😐','😊'] };
 const DEDUP_MINS = 15; // combine food adds within this window
 const MAX_PINNED = 8;
 const OFF_API = 'https://world.openfoodfacts.org/api/v2/product/';
@@ -767,7 +768,9 @@ let foodPins    = JSON.parse(localStorage.getItem('fs2-pins')   || '[]');
 let mealLog     = JSON.parse(localStorage.getItem('fs2-meals')  || '{}');
 let hemLog      = JSON.parse(localStorage.getItem('fs2-hem')    || '[]'); // [{time,h,e,m,note}]
 let water       = parseInt(localStorage.getItem('fs2-water')    || '0');
-let dayPlan     = localStorage.getItem('fs2-plan')              || null;
+let dayPlans    = new Set(JSON.parse(localStorage.getItem('fs2-plans') || '[]'));
+// dayPlan remains as a compat shim: primary plan (workout/recover/light), or null
+let dayPlan     = [...dayPlans].find(p => p !== 'injection') || null;
 let workoutTime = localStorage.getItem('fs2-wtime')             || '';
 let history     = JSON.parse(localStorage.getItem('fs2-hist')   || '[]');
 let undoEntry   = JSON.parse(localStorage.getItem('fs2-undo')   || 'null');
@@ -987,9 +990,9 @@ function getLatestHEM() {
 function renderHEMTimeline() {
   const latest = getLatestHEM();
   const emojis = {
-    h: [null,'💧','🫧','🌊'], e: [null,'🪫','⚡','🔥'], m: [null,'😞','😐','😊']
+    h: [null,'😶','🙂','😤'], e: [null,'🪫','⚡','🔥'], m: [null,'😞','😐','😊']
   };
-  const colors = { h:'var(--accent3)', e:'var(--yellow)', m:'var(--purple)' };
+  const colors = { h:'var(--accent2)', e:'var(--yellow)', m:'var(--purple)' };
   ['h','e','m'].forEach(t => {
     const v = latest[t];
     const el = document.getElementById('hem-'+t+'-val');
@@ -1016,30 +1019,53 @@ function renderHEMTimeline() {
 // ══════════════════════════════════════════════════
 // DAY PLAN
 // ══════════════════════════════════════════════════
-function setPlan(plan, btn) {
-  dayPlan = plan;
-  localStorage.setItem('fs2-plan', plan);
-  document.querySelectorAll('.plan-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+function togglePlan(plan, btn) {
+  if (dayPlans.has(plan)) {
+    dayPlans.delete(plan);
+    btn.classList.remove('active');
+  } else {
+    // workout and recover are mutually exclusive
+    if (plan === 'workout') dayPlans.delete('recover');
+    if (plan === 'recover') dayPlans.delete('workout');
+    dayPlans.add(plan);
+    btn.classList.add('active');
+    // keep mutual exclusion reflected in UI
+    document.querySelectorAll('.plan-btn').forEach(b => {
+      if ((plan === 'workout' && b.dataset.plan === 'recover') ||
+          (plan === 'recover' && b.dataset.plan === 'workout')) {
+        b.classList.remove('active');
+      }
+    });
+  }
+  // Update compat shim
+  dayPlan = [...dayPlans].find(p => p !== 'injection') || null;
+  localStorage.setItem('fs2-plans', JSON.stringify([...dayPlans]));
+  // Legacy single-plan key for worker compat
+  if (dayPlan) localStorage.setItem('fs2-plan', dayPlan);
   const wtRow = document.getElementById('workout-time-row');
-  wtRow.style.display = plan === 'workout' ? 'block' : 'none';
+  wtRow.style.display = dayPlans.has('workout') ? 'block' : 'none';
   renderBMRRange();
   renderInsights();
+  renderGoalPills();
   autoSave();
 }
 
+// Keep setPlan as alias for restorePlan usage
+function setPlan(plan, btn) { togglePlan(plan, btn); }
+
 function restorePlan() {
-  if (!dayPlan) return;
+  if (!dayPlans.size) return;
   document.querySelectorAll('.plan-btn').forEach(b => {
-    if (b.dataset.plan === dayPlan) b.classList.add('active');
+    if (dayPlans.has(b.dataset.plan)) b.classList.add('active');
   });
-  if (dayPlan === 'workout') {
+  if (dayPlans.has('workout')) {
     document.getElementById('workout-time-row').style.display = 'block';
     if (workoutTime) {
       document.getElementById('workout-time').value = workoutTime;
       updateWorkoutTimeStatus();
     }
   }
+  renderGoalPills();
 }
 
 function saveWorkoutTime() {
@@ -1051,7 +1077,7 @@ function saveWorkoutTime() {
 
 function updateWorkoutTimeStatus() {
   const el = document.getElementById('workout-time-status');
-  if (!workoutTime || dayPlan !== 'workout') { el.textContent = ''; return; }
+  if (!workoutTime || !dayPlans.has('workout')) { el.textContent = ''; return; }
   const now = new Date();
   const [wh, wm] = workoutTime.split(':').map(Number);
   const wo = new Date(); wo.setHours(wh, wm, 0, 0);
@@ -1671,7 +1697,7 @@ function buildInsights() {
   }
 
   // Workout timing
-  if (dayPlan === 'workout' && workoutTime) {
+  if (dayPlans.has('workout') && workoutTime) {
     const [wh, wm] = workoutTime.split(':').map(Number);
     const wo = new Date(); wo.setHours(wh, wm, 0, 0);
     const mins = Math.round((wo - now) / 60000);
@@ -1705,11 +1731,11 @@ function buildInsights() {
   // Injection day + no insights → default
   if (!ins.length) {
     ins.push({
-      icon: dayPlan === 'recover' ? '🔧' : dayPlan === 'injection' ? '💉' : '🎯',
+      icon: dayPlans.has('recover') ? '🔧' : dayPlans.has('injection') ? '💉' : '🎯',
       color:'var(--accent)',
-      title: dayPlan === 'recover' ? 'Recovery day — muscle repair mode' : dayPlan === 'injection' ? 'Injection day' : 'Set your plan for today',
-      body: !dayPlan ? 'Tap Training Day, Recovery Day, or Injection Day above to get personalized insights.' :
-            dayPlan === 'recover' ? `Rest days build muscle. Keep protein at ${gp}g and stay hydrated. Get casein (cottage cheese) before bed for overnight repair.` :
+      title: dayPlans.has('recover') ? 'Recovery day — muscle repair mode' : dayPlans.has('injection') ? 'Injection day' : 'Set your plan for today',
+      body: !dayPlans.size ? 'Tap Training Day, Recovery Day, or Injection Day above to get personalized insights.' :
+            dayPlans.has('recover') ? `Rest days build muscle. Keep protein at ${gp}g and stay hydrated. Get casein (cottage cheese) before bed for overnight repair.` :
             `Track your H-E-M throughout the day. Protein and hydration are especially important on injection days.`,
     });
   }
@@ -1962,9 +1988,9 @@ function showCompleteDayModal() {
   if (totalP >= gp) highlights.push('🏆 Protein goal hit!');
   else if (totalP >= gp*.8) highlights.push(`💪 ${Math.round(totalP)}g protein — strong effort`);
   else highlights.push(`⚠️ ${Math.round(totalP)}g protein — ${Math.round(gp-totalP)}g short`);
-  if (dayPlan === 'workout') highlights.push('🏋️ Training day');
-  if (dayPlan === 'recover') highlights.push('😴 Recovery day');
-  if (dayPlan === 'injection') highlights.push('💉 Injection day');
+  if (dayPlans.has('workout'))   highlights.push('🏋️ Training day');
+  if (dayPlans.has('recover'))   highlights.push('😴 Recovery day');
+  if (dayPlans.has('injection')) highlights.push('💉 Injection day');
   if (water >= (goals.water||80)) highlights.push('💧 Hydration goal met!');
   document.getElementById('modal-highlights').innerHTML = highlights.map(h=>`<div>${h}</div>`).join('');
 
@@ -2019,11 +2045,12 @@ async function confirmCompleteDay() {
 
   // Reset daily state
   setTimeout(() => {
-    mealLog = {}; water = 0; hemLog = []; dayPlan = null; workoutTime = '';
+    mealLog = {}; water = 0; hemLog = []; dayPlan = null; dayPlans = new Set(); workoutTime = '';
     localStorage.setItem('fs2-meals','{}');
     localStorage.setItem('fs2-water','0');
     localStorage.setItem('fs2-hem','[]');
     localStorage.removeItem('fs2-plan');
+    localStorage.removeItem('fs2-plans');
     localStorage.removeItem('fs2-wtime');
     renderMealLog(); renderRings(); renderWater(); renderHEMTimeline();
     restorePlan(); renderHistory(); renderInsights();
@@ -2126,9 +2153,9 @@ function updateTirzStatus() {
 function renderGoalPills() {
   const pills = document.getElementById('goal-pills');
   const parts = [];
-  if (dayPlan === 'workout')   parts.push({ text:'💪 Training', color:'var(--accent3)' });
-  if (dayPlan === 'recover')   parts.push({ text:'😴 Recovery', color:'var(--purple)' });
-  if (dayPlan === 'injection') parts.push({ text:'💉 Injection', color:'var(--accent2)' });
+  if (dayPlans.has('workout'))   parts.push({ text:'💪 Training', color:'var(--accent3)' });
+  if (dayPlans.has('recover'))   parts.push({ text:'😴 Recovery', color:'var(--purple)' });
+  if (dayPlans.has('injection')) parts.push({ text:'💉 Injection', color:'var(--accent2)' });
   pills.innerHTML = parts.map(p =>
     `<span style="padding:3px 8px;border-radius:20px;font-size:10px;font-weight:600;background:rgba(0,0,0,.3);color:${p.color};border:1px solid ${p.color}30">${p.text}</span>`
   ).join('');
