@@ -49,7 +49,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);padding:1
 .btn-d{background:rgba(255,69,96,.15);border:1px solid rgba(255,69,96,.3);color:var(--danger)}
 .btn-sm{padding:6px 14px;font-size:12px}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.uzone{border:2px dashed var(--border);border-radius:var(--radius);padding:40px 32px;text-align:center;cursor:pointer;transition:all .3s;background:var(--card2)}
+.uzone{position:relative;border:2px dashed var(--border);border-radius:var(--radius);padding:40px 32px;text-align:center;cursor:pointer;transition:all .3s;background:var(--card2)}
 .uzone:hover,.uzone.over{border-color:var(--accent);background:rgba(0,229,160,.05)}
 .pbar-wrap{margin-bottom:12px}
 .pbar-label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px}
@@ -120,10 +120,6 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
 .coach-section-body th{background:var(--card2);color:var(--accent);padding:7px 10px;text-align:left;border:1px solid var(--border)}
 .coach-section-body td{padding:6px 10px;border:1px solid var(--border);color:var(--text)}
 .coach-section-body tr:nth-child(even) td{background:rgba(255,255,255,.02)}
-/* session log */
-.feel-btn{padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card2);cursor:pointer;font-size:20px;transition:all .15s;line-height:1}
-.feel-btn.active{border-color:var(--accent);background:rgba(0,229,160,.12);transform:scale(1.1)}
-.feel-btn:hover:not(.active){border-color:var(--border);transform:scale(1.05)}
 /* measurement guide */
 .mguide-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}
 .mguide-overlay.open{display:flex}
@@ -222,7 +218,6 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
         <div style="display:flex;gap:8px;align-items:center">
           <div id="coach-hub-loading" style="display:none"><div class="spin"></div> <span style="font-size:12px;color:var(--muted);margin-left:6px">Analyzing your data...</span></div>
           <button class="btn btn-g btn-sm" onclick="runCoaching()" id="coach-regen-btn">↻ Regenerate</button>
-          <button class="btn btn-g btn-sm" onclick="showTab('settings',document.getElementById('nav-settings'))">Ask a Question →</button>
         </div>
       </div>
 
@@ -247,38 +242,6 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
       </div>
     </div>
 
-    <!-- QUICK SESSION LOG -->
-    <div class="card">
-      <div class="ctitle">📝 Today's Session Log <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:11px" id="session-log-date"></span></div>
-      <div class="g2">
-        <div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">How did you feel today?</div>
-          <div style="display:flex;gap:8px" id="feel-btns">
-            <button class="feel-btn" data-feel="1" onclick="setFeel(1)" title="Terrible">😴</button>
-            <button class="feel-btn" data-feel="2" onclick="setFeel(2)" title="Bad">😕</button>
-            <button class="feel-btn" data-feel="3" onclick="setFeel(3)" title="OK">😐</button>
-            <button class="feel-btn" data-feel="4" onclick="setFeel(4)" title="Good">🙂</button>
-            <button class="feel-btn" data-feel="5" onclick="setFeel(5)" title="Great">🔥</button>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Workout RPE <span style="color:var(--muted)">(how hard were your sets?)</span></div>
-          <div style="display:flex;align-items:center;gap:12px">
-            <input type="range" id="rpe-slider" min="1" max="10" value="7" oninput="updateRPE(this.value)" style="-webkit-appearance:none;width:100%;height:6px;border-radius:99px;background:var(--border);outline:none;cursor:pointer">
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--yellow);min-width:32px;text-align:center" id="rpe-display">7</div>
-          </div>
-          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px"><span>Easy</span><span>Max Effort</span></div>
-        </div>
-      </div>
-      <div style="margin-top:12px">
-        <input class="ainput" id="session-note" placeholder="Optional: any notes about today — injury, energy, standout set, PR..." style="width:100%">
-      </div>
-      <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
-        <button class="btn btn-p btn-sm" onclick="saveSessionLog()">Save Session</button>
-        <button class="btn btn-g btn-sm" onclick="clearSessionLog()">Clear</button>
-        <span id="session-saved" style="font-size:12px;color:var(--accent);display:none">✓ Saved</span>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -433,11 +396,6 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
       </div>
     </div>
 
-    <!-- Session Log History -->
-    <div class="card">
-      <div class="ctitle">📝 Session Log History</div>
-      <div id="session-log-history" style="color:var(--muted);font-size:13px">No sessions logged yet.</div>
-    </div>
   </div>
 </div>
 
@@ -445,43 +403,53 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
 <div id="panel-upload" class="panel">
   <div style="margin-bottom:20px">
     <div style="font-size:18px;font-weight:600;margin-bottom:6px">Upload Your Data</div>
-    <div style="color:var(--muted);font-size:13px">Drop files below. Fitbod CSV is recommended — export from Fitbod → Profile → Export Workout Data.</div>
+    <div style="color:var(--muted);font-size:13px;line-height:1.6">Tap a zone to pick a file, or drag-and-drop on desktop. After uploading, you'll be taken straight to your Dashboard.</div>
   </div>
   <div class="g2" style="margin-bottom:20px">
     <div>
       <div style="font-size:11px;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📋 Evolt Body Scans</div>
-      <div class="uzone" id="z-evolt" ondragover="dOver(event,'z-evolt')" ondragleave="dLeave('z-evolt')" ondrop="dDrop(event,'evolt')" onclick="document.getElementById('f-evolt').click()">
+      <label class="uzone" id="z-evolt" ondragover="dOver(event,'z-evolt')" ondragleave="dLeave('z-evolt')" ondrop="dDrop(event,'evolt')" style="display:block;cursor:pointer;position:relative;overflow:hidden">
         <div style="font-size:36px;margin-bottom:8px">📋</div>
-        <div style="font-weight:600;margin-bottom:4px">Drop Evolt PDFs or ZIP</div>
-        <div style="font-size:12px;color:var(--muted)">Accepts .pdf or .zip containing PDFs</div>
-      </div>
-      <input type="file" id="f-evolt" multiple accept=".pdf,.zip" style="display:none" onchange="handleFiles(this.files,'evolt')">
+        <div style="font-weight:600;margin-bottom:4px">Evolt PDFs or ZIP</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Accepts .pdf or .zip containing PDFs</div>
+        <div style="font-size:11px;color:var(--accent);font-weight:600">📱 Tap anywhere here to select file</div>
+        <input type="file" id="f-evolt" multiple accept=".pdf,.zip" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2" onchange="handleFiles(this.files,'evolt')">
+      </label>
     </div>
     <div>
       <div style="font-size:11px;color:var(--accent3);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">💪 Fitbod Workouts</div>
-      <div class="uzone" id="z-fitbod" ondragover="dOver(event,'z-fitbod')" ondragleave="dLeave('z-fitbod')" ondrop="dDrop(event,'fitbod')" onclick="document.getElementById('f-fitbod').click()">
+      <label class="uzone" id="z-fitbod" ondragover="dOver(event,'z-fitbod')" ondragleave="dLeave('z-fitbod')" ondrop="dDrop(event,'fitbod')" style="display:block;cursor:pointer;position:relative;overflow:hidden">
         <div style="font-size:36px;margin-bottom:8px">💪</div>
-        <div style="font-weight:600;margin-bottom:4px">Drop Fitbod CSV</div>
-        <div style="font-size:12px;color:var(--muted)">Export from Fitbod → Profile → Export Workout Data → .csv</div>
-      </div>
-      <input type="file" id="f-fitbod" multiple accept=".jpg,.jpeg,.png,.zip,.csv" style="display:none" onchange="handleFiles(this.files,'fitbod')">
+        <div style="font-weight:600;margin-bottom:4px">Fitbod CSV</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Export from Fitbod → Profile → Export Workout Data → .csv</div>
+        <div style="font-size:11px;color:var(--accent3);font-weight:600">📱 Tap anywhere here to select file</div>
+        <input type="file" id="f-fitbod" multiple accept=".csv,.zip" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2" onchange="handleFiles(this.files,'fitbod')">
+      </label>
     </div>
   </div>
   <div style="margin-bottom:20px">
     <div style="font-size:11px;color:var(--yellow);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🥗 FuelStrong Nutrition Export</div>
-    <div class="uzone" id="z-fs" style="max-width:500px" ondragover="dOver(event,'z-fs')" ondragleave="dLeave('z-fs')" ondrop="dDrop(event,'fuelstrong')" onclick="document.getElementById('f-fs').click()">
+    <label class="uzone" id="z-fs" style="max-width:500px;display:block;cursor:pointer;position:relative;overflow:hidden" ondragover="dOver(event,'z-fs')" ondragleave="dLeave('z-fs')" ondrop="dDrop(event,'fuelstrong')">
       <div style="font-size:36px;margin-bottom:8px">📤</div>
-      <div style="font-weight:600;margin-bottom:4px">Drop FuelStrong JSON export</div>
-      <div style="font-size:12px;color:var(--muted)">Export from the FuelStrong app then drop here</div>
-    </div>
-    <input type="file" id="f-fs" accept=".json" style="display:none" onchange="handleFiles(this.files,'fuelstrong')">
+      <div style="font-weight:600;margin-bottom:4px">FuelStrong JSON export</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Export from the FuelStrong app → History → Export JSON, then upload here</div>
+      <div style="font-size:11px;color:var(--yellow);font-weight:600">📱 Tap anywhere here to select file</div>
+      <input type="file" id="f-fs" accept=".json" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2" onchange="handleFiles(this.files,'fuelstrong')">
+    </label>
   </div>
   <div id="proc-section" style="display:none">
-    <div style="font-size:13px;font-weight:600;margin-bottom:8px">Processing Log</div>
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">Processing</div>
     <div class="plog" id="proc-log"></div>
     <div style="margin-top:12px">
       <div class="pbar-label"><span id="prog-label">Processing...</span><span id="prog-pct">0%</span></div>
       <div class="pbar-track"><div class="pbar-fill" id="prog-bar" style="width:0%;background:var(--accent)"></div></div>
+    </div>
+    <div id="upload-done-row" style="display:none;margin-top:16px;padding:14px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.25);border-radius:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-weight:600;color:var(--accent);font-size:14px">✅ Upload complete!</div>
+        <div id="upload-done-summary" style="font-size:12px;color:var(--muted);margin-top:2px"></div>
+      </div>
+      <button class="btn btn-p" onclick="showTab('dashboard',document.getElementById('nav-dashboard'))">View Dashboard →</button>
     </div>
   </div>
 </div>
@@ -758,8 +726,6 @@ let supplements = JSON.parse(localStorage.getItem('fs-supplements') || '[]');
 let tirzepatide = JSON.parse(localStorage.getItem('fs-tirzepatide') || '{}');
 let measurements = JSON.parse(localStorage.getItem('fs-measurements') || '[]');
 let sessionLogs = JSON.parse(localStorage.getItem('fs-sessions') || '[]');
-let sessionFeel = null;
-let sessionRPE = 7;
 
 async function init() {
   document.getElementById('worker-url').value = WORKER_URL;
@@ -767,9 +733,6 @@ async function init() {
   renderSupplements();
   restoreTirzepatide();
   renderMeasurementHistory();
-  renderSessionLogHistory();
-  document.getElementById('session-log-date').textContent =
-    new Date().toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
 
   if (WORKER_URL) {
     setWorkerStatus('connecting');
@@ -908,16 +871,57 @@ function dDrop(e, type) {
 async function handleFiles(fileList, type) {
   const files = Array.from(fileList);
   if (!files.length) return;
+
+  // Check Worker URL first
+  if (!WORKER_URL) {
+    document.getElementById('proc-section').style.display = 'block';
+    document.getElementById('upload-done-row').style.display = 'none';
+    setProgress(0, 'Error');
+    plog('⚠ Worker URL not configured — go to Settings first and enter your Worker URL.', 'lerr');
+    plog('Your files will NOT be saved without a Worker URL.', 'lwarn');
+    return;
+  }
+
   document.getElementById('proc-section').style.display = 'block';
+  document.getElementById('upload-done-row').style.display = 'none';
   setProgress(0, 'Starting...');
-  let processed = 0;
+  let processed = 0, savedCount = 0, errorCount = 0;
   for (const file of files) {
-    await processFile(file, type);
+    const ok = await processFile(file, type);
+    if (ok) savedCount++;
+    else errorCount++;
     processed++;
     setProgress(Math.round(processed / files.length * 100), `${processed}/${files.length} files`);
   }
-  setProgress(100, 'Done!');
+  setProgress(100, errorCount ? `Done with ${errorCount} error(s)` : 'Done!');
+
+  const countBefore = type === 'evolt' ? data.evolt.length : type === 'fitbod' ? data.fitbod.length : data.fuelstrong.length;
   await loadFromWorker();
+  const countAfter = type === 'evolt' ? data.evolt.length : type === 'fitbod' ? data.fitbod.length : data.fuelstrong.length;
+  const added = Math.max(0, countAfter - countBefore);
+
+  // Show result row
+  const doneRow = document.getElementById('upload-done-row');
+  const doneSummary = document.getElementById('upload-done-summary');
+  const typeLabel = type === 'evolt' ? 'Evolt scan' : type === 'fitbod' ? 'workout session' : 'nutrition day';
+  if (errorCount > 0 && savedCount === 0) {
+    doneRow.style.cssText = doneRow.style.cssText.replace('background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.25)', 'background:rgba(255,69,96,.08);border:1px solid rgba(255,69,96,.25)');
+    doneRow.querySelector('div').innerHTML = `<div style="font-weight:600;color:var(--danger);font-size:14px">⚠️ Upload failed</div><div id="upload-done-summary" style="font-size:12px;color:var(--muted);margin-top:2px">Check the log above for details. Make sure your Worker URL is correct in Settings.</div>`;
+  } else {
+    doneSummary.textContent = added > 0
+      ? `${added} ${typeLabel}${added !== 1 ? 's' : ''} added — dashboard updated`
+      : `No new entries found (may already be saved, or check log above)`;
+  }
+  doneRow.style.display = 'flex';
+
+  // Auto-navigate to dashboard only on success
+  if (added > 0) {
+    setTimeout(() => {
+      showTab('dashboard', document.getElementById('nav-dashboard'));
+      coachingGenerated = false;
+      tryAutoCoach();
+    }, 2000);
+  }
 }
 
 async function processFile(file, type) {
@@ -1336,15 +1340,6 @@ function renderMomentum() {
       detail: `${goodDays}/${recent7.length} days ≥130g protein logged` });
   }
 
-  // Session feel average (last 7 sessions)
-  const recentSessions = sessionLogs.slice(-7);
-  if (recentSessions.filter(s=>s.feel).length) {
-    const avgFeel = recentSessions.filter(s=>s.feel).reduce((a,s)=>a+s.feel,0) / recentSessions.filter(s=>s.feel).length;
-    const feelScore = Math.round(avgFeel / 5 * 100);
-    factors.push({ label: 'How you feel', score: feelScore, color: '#b47fff',
-      detail: `Avg energy: ${avgFeel.toFixed(1)}/5 over recent sessions` });
-  }
-
   if (!factors.length) {
     document.getElementById('momentum-val').textContent = '—';
     document.getElementById('momentum-label').textContent = 'Not enough data yet';
@@ -1571,10 +1566,10 @@ async function runCoaching(auto = false) {
         mode: 'dashboard',
         goals,
         workoutSummary: woSummary,
+        workoutDetail: buildWorkoutDetail(),
         supplements: supplements.map(s => `${s.name} ${s.dose} ${s.timing}${s.startDate?' (since '+s.startDate+')':''}`).join(', ') || 'none',
         tirzepatide,
         measurements: measurements.slice(-3),
-        sessionLogs: sessionLogs.slice(-5),
       }),
     });
 
@@ -1597,7 +1592,7 @@ async function runCoaching(auto = false) {
 function mdToHtml(text) {
   // Section header patterns — the model sometimes repeats the section title as
   // the first line of the body. Strip them since they're already rendered as titles.
-  const HEADER_RE = /^(\*{0,2}#{0,3}\s*)?[🧠💪🥗📊🎯✨📋🏆⚡🔥💉💧🏋️].{0,80}$/;
+  const HEADER_RE = /^(\*{0,2}#{0,3}\s*)?[🧠💪🥗📊🎯✨📋🏆⚡🔥💉💧🏋️📅].{0,80}$/;
   const HASH_RE   = /^#{1,3}\s+.+$/;
 
   // Tables: | col | col | → <table>
@@ -1669,7 +1664,7 @@ function parseCoachSections(rawText) {
   const isHeader = (line) => {
     const t = line.trim();
     if (t.length > 90) return false;
-    return /^(\*{0,2}#{0,3}\s*)?[🧠💪🥗📊🎯✨📋🏆⚡🔥💉💧🏋️]/.test(t) ||
+    return /^(\*{0,2}#{0,3}\s*)?[🧠💪🥗📊🎯✨📋🏆⚡🔥💉💧🏋️📅]/.test(t) ||
            /^#{1,3}\s+\S/.test(t);
   };
   const cleanTitle = (line) => line.trim()
@@ -1802,9 +1797,40 @@ function buildWorkoutSummary() {
   };
 }
 
-// ══════════════════════════════════════════════════════
-// BODY COMP
-// ══════════════════════════════════════════════════════
+// Detailed per-week breakdown for cross-dataset pattern analysis
+function buildWorkoutDetail() {
+  const fitbod = data.fitbod;
+  if (!fitbod.length) return null;
+
+  // Last 8 weeks grouped by week
+  const cutoff = new Date(Date.now() - 56 * 86400000).toISOString().split('T')[0];
+  const recent = fitbod.filter(w => w.date >= cutoff);
+
+  const weeks = {};
+  recent.forEach(w => {
+    const wk = weekKey(w.date);
+    if (!weeks[wk]) weeks[wk] = { workouts: 0, muscles: {}, totalVolume: 0 };
+    weeks[wk].workouts++;
+    weeks[wk].totalVolume += w.totalVolume || 0;
+    (w.muscleGroupsWorked || []).forEach(mg => {
+      weeks[wk].muscles[mg] = (weeks[wk].muscles[mg] || 0) + 1;
+    });
+  });
+
+  const weekLines = Object.entries(weeks).sort(([a],[b])=>a.localeCompare(b)).map(([wk, d]) => {
+    const muscleStr = Object.entries(d.muscles).sort((a,b)=>b[1]-a[1]).map(([mg,c])=>`${mg}×${c}`).join(', ');
+    return `Week ${wk}: ${d.workouts} workouts | ${muscleStr} | ${Math.round(d.totalVolume/1000)}k lbs total`;
+  });
+
+  // Muscle group totals across all time
+  const allMuscles = {};
+  fitbod.forEach(w => (w.muscleGroupsWorked||[]).forEach(mg => { allMuscles[mg] = (allMuscles[mg]||0)+1; }));
+  const muscleRanking = Object.entries(allMuscles).sort((a,b)=>b[1]-a[1]).map(([mg,c])=>`${mg}:${c}sessions`).join(', ');
+
+  return { weekLines, muscleRanking, recentWorkouts: recent.length, weeks: Object.keys(weeks).length };
+}
+
+
 function renderBodyComp() {
   const evolt = data.evolt;
   document.getElementById('bc-empty').style.display = evolt.length ? 'none' : 'block';
@@ -2212,67 +2238,6 @@ function stackedChart(id, labels, datasets) {
       },
     },
   });
-}
-
-// ══════════════════════════════════════════════════════
-// SESSION LOG
-// ══════════════════════════════════════════════════════
-function setFeel(val) {
-  sessionFeel = val;
-  document.querySelectorAll('.feel-btn').forEach(b => {
-    b.classList.toggle('active', parseInt(b.dataset.feel) === val);
-  });
-}
-
-function updateRPE(val) {
-  sessionRPE = parseInt(val);
-  document.getElementById('rpe-display').textContent = val;
-}
-
-function saveSessionLog() {
-  const note = document.getElementById('session-note').value.trim();
-  const entry = {
-    date: new Date().toISOString().split('T')[0],
-    feel: sessionFeel,
-    rpe:  sessionRPE,
-    note: note || null,
-    savedAt: new Date().toISOString(),
-  };
-  // Replace today's entry if exists, otherwise add
-  const todayIdx = sessionLogs.findIndex(s => s.date === entry.date);
-  if (todayIdx >= 0) sessionLogs[todayIdx] = entry;
-  else sessionLogs.push(entry);
-  localStorage.setItem('fs-sessions', JSON.stringify(sessionLogs));
-  document.getElementById('session-saved').style.display = 'inline';
-  setTimeout(() => document.getElementById('session-saved').style.display='none', 2000);
-  renderSessionLogHistory();
-  renderMomentum();
-}
-
-function clearSessionLog() {
-  sessionFeel = null;
-  document.querySelectorAll('.feel-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('rpe-slider').value = 7;
-  document.getElementById('rpe-display').textContent = '7';
-  document.getElementById('session-note').value = '';
-}
-
-function renderSessionLogHistory() {
-  const el = document.getElementById('session-log-history');
-  if (!el) return;
-  if (!sessionLogs.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px">No sessions logged yet.</div>'; return; }
-  const feelEmoji = ['','😴','😕','😐','🙂','🔥'];
-  el.innerHTML = sessionLogs.slice().reverse().slice(0,10).map(s => `
-    <div class="logitem" style="animation:fadeIn .3s">
-      <div>
-        <div style="font-weight:500;font-size:12px;color:var(--muted)" class="mono">${s.date}</div>
-        <div style="font-size:13px;margin-top:2px">
-          ${s.feel?feelEmoji[s.feel]+' Feel: '+s.feel+'/5':''} 
-          ${s.rpe?' · RPE: '+s.rpe+'/10':''}
-          ${s.note?` · <em style="color:var(--muted)">${s.note}</em>`:''}
-        </div>
-      </div>
-    </div>`).join('');
 }
 
 // ══════════════════════════════════════════════════════
