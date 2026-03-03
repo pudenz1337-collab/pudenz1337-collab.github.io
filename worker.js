@@ -38,6 +38,10 @@ export default {
       if (path === '/api/goals'   && method === 'POST')   return saveKVKey(request, env, 'goals');
       if (path === '/api/context' && method === 'POST')   return saveKVKey(request, env, 'coach_context');
       if (path === '/api/context' && method === 'GET')    return getKVKey(env, 'coach_context');
+      if (path === '/api/profile'  && method === 'GET')    return getProfile(env);
+      if (path === '/api/profile'  && method === 'POST')   return saveProfile(request, env);
+      if (path === '/api/live'     && method === 'GET')    return getKVKey(env, 'today_live');
+      if (path === '/api/live'     && method === 'POST')   return saveKVKey(request, env, 'today_live');
       if (path.startsWith('/api/data/') && method === 'DELETE') return deleteEntry(request, env, path);
 
       return reply({ error: 'Not found' }, 404);
@@ -184,6 +188,35 @@ async function getKVKey(env, key) {
   return reply(raw ? JSON.parse(raw) : {});
 }
 
+// ─── Profile (goals, tirz, custom foods, pins) ─────────────────────────────────
+async function getProfile(env) {
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
+  const [goalsRaw, tirzRaw, customRaw, pinsRaw] = await Promise.all([
+    env.FUELSTRONG_KV.get('profile_goals').catch(() => null),
+    env.FUELSTRONG_KV.get('profile_tirz').catch(() => null),
+    env.FUELSTRONG_KV.get('profile_custom_foods').catch(() => null),
+    env.FUELSTRONG_KV.get('profile_food_pins').catch(() => null),
+  ]);
+  return reply({
+    goals:       goalsRaw ? JSON.parse(goalsRaw) : null,
+    tirz:        tirzRaw  ? JSON.parse(tirzRaw)  : null,
+    customFoods: customRaw ? JSON.parse(customRaw) : null,
+    foodPins:    pinsRaw  ? JSON.parse(pinsRaw)  : null,
+  });
+}
+
+async function saveProfile(request, env) {
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
+  const body = await request.json().catch(() => ({}));
+  const ops = [];
+  if (body.goals       !== undefined) ops.push(env.FUELSTRONG_KV.put('profile_goals',       JSON.stringify(body.goals)));
+  if (body.tirz        !== undefined) ops.push(env.FUELSTRONG_KV.put('profile_tirz',        JSON.stringify(body.tirz)));
+  if (body.customFoods !== undefined) ops.push(env.FUELSTRONG_KV.put('profile_custom_foods', JSON.stringify(body.customFoods)));
+  if (body.foodPins    !== undefined) ops.push(env.FUELSTRONG_KV.put('profile_food_pins',    JSON.stringify(body.foodPins)));
+  await Promise.all(ops);
+  return reply({ success: true });
+}
+
 // ─── AI Coaching ────────────────────────────────────────────────────────────────
 async function getCoaching(request, env) {
   const body = await request.json().catch(() => ({}));
@@ -196,19 +229,24 @@ async function getCoaching(request, env) {
     return reply({ error: 'ANTHROPIC_API_KEY secret not set in Worker environment variables.' }, 500);
   }
 
-  const [evoltRaw, fitbodRaw, fuelstrongRaw, goalsRaw, contextRaw] = await Promise.all([
+  const [evoltRaw, fitbodRaw, fuelstrongRaw, goalsRaw, contextRaw, liveRaw, profGoalsRaw] = await Promise.all([
     env.FUELSTRONG_KV.get('evolt').catch(() => null),
     env.FUELSTRONG_KV.get('fitbod').catch(() => null),
     env.FUELSTRONG_KV.get('fuelstrong').catch(() => null),
     env.FUELSTRONG_KV.get('goals').catch(() => null),
     env.FUELSTRONG_KV.get('coach_context').catch(() => null),
+    env.FUELSTRONG_KV.get('today_live').catch(() => null),
+    env.FUELSTRONG_KV.get('profile_goals').catch(() => null),
   ]);
 
   const evolt      = JSON.parse(evoltRaw      || '[]');
   const fitbod     = JSON.parse(fitbodRaw     || '[]');
   const fuelstrong = JSON.parse(fuelstrongRaw || '[]');
-  const goals      = goalsRaw ? JSON.parse(goalsRaw) : (body.goals || {});
+  // profile_goals takes precedence over legacy goals key
+  const goals      = profGoalsRaw ? JSON.parse(profGoalsRaw) : (goalsRaw ? JSON.parse(goalsRaw) : (body.goals || {}));
   const savedCtx   = contextRaw ? JSON.parse(contextRaw) : {};
+  // today_live from KV — supplement/override with client-sent data
+  const liveKV     = liveRaw ? JSON.parse(liveRaw) : {};
   const context    = savedCtx.context || body.context || '';
   const woSummary  = body.workoutSummary || null;
   const mode       = body.mode || 'dashboard';
@@ -317,66 +355,122 @@ EVIDENCE-BASED COACHING RULES (no myths, no broscience):
     userMsg = `Generate my comprehensive coaching dashboard.\n\nEvolt Scans (chronological):\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
 
   } else if (mode === 'fuelstrong_daily') {
-    // FuelStrong daily coaching — uses full context including H-E-M, Progress data, tirzepatide cycle
-    const hemEntries = body.hemLog || [];
-    const hemLatest  = body.hemLatest || {};
-    const mealTimes  = body.mealTimes || {};
-    const todayProtein  = body.protein || 0;
-    const todayCal      = body.calories || 0;
-    const todayWater    = body.water || 0;
-    const currentTime   = body.currentTime || '';
-    const todayPlan     = body.dayPlan || 'not set';
-    const wo            = body.workoutTime || null;
+    // Merge KV live data with client-sent data (client wins for freshness)
+    const hemEntries   = body.hemLog     || liveKV.hemLog     || [];
+    const mealLog      = body.mealLog    || liveKV.mealLog    || {};
+    const todayProtein = body.protein    ?? liveKV.protein    ?? 0;
+    const todayCal     = body.calories   ?? liveKV.calories   ?? 0;
+    const todayWater   = body.water      ?? liveKV.water      ?? 0;
+    const currentTime  = body.currentTime || new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const todayPlan    = body.dayPlan    || liveKV.dayPlan    || 'not set';
+    const wo           = body.workoutTime || liveKV.workoutTime || null;
+    const woStart      = body.workoutStart || liveKV.workoutStart || null;
+    const woEnd        = body.workoutEnd   || liveKV.workoutEnd   || null;
+    const woDuration   = body.workoutDuration || liveKV.workoutDuration || null;
+    const woStatus     = body.workoutStatus   || liveKV.workoutStatus   || 'planned';
+    const msgHistory   = body.history || []; // conversation history for multi-turn
 
-    // Build H-E-M timeline string
+    // Build H-E-M timeline
     const hemTimeline = hemEntries.length
-      ? hemEntries.map(e => `${e.time}: ${e.h?'H'+e.h:''} ${e.e?'E'+e.e:''} ${e.m?'M'+e.m:''}${e.note?' ('+e.note+')':''}`).join(' | ')
+      ? hemEntries.map(e => {
+          const hLabel = e.h === 1 ? 'H1(not hungry)' : e.h === 2 ? 'H2(moderate)' : e.h === 3 ? 'H3(very hungry)' : '';
+          const eLabel = e.e === 1 ? 'E1(low)' : e.e === 2 ? 'E2(moderate)' : e.e === 3 ? 'E3(high)' : '';
+          const mLabel = e.m === 1 ? 'M1(low)' : e.m === 2 ? 'M2(ok)' : e.m === 3 ? 'M3(good)' : '';
+          return `${e.time}: ${[hLabel,eLabel,mLabel].filter(Boolean).join(' ')}${e.note?' — '+e.note:''}`;
+        }).join(' | ')
       : 'No H-E-M logged yet';
 
-    // Meal timing summary
-    const mealSummary = Object.entries(mealTimes).map(([meal,d]) => `${meal}: ${d.protein}g protein at ${d.time}`).join(', ') || 'No meals logged';
+    // Build full meal log with times and protein
+    const mealOrder = ['Breakfast','Morning Snack','Lunch','Afternoon Snack','Dinner','Evening Snack'];
+    const mealLines = mealOrder.flatMap(meal => {
+      const items = mealLog[meal] || [];
+      if (!items.length) return [];
+      const mealP = Math.round(items.reduce((a,i)=>a+i.protein,0));
+      const mealC = items.reduce((a,i)=>a+i.cal,0);
+      const firstTime = items[0]?.time || '';
+      return [`${meal}${firstTime?' ('+firstTime+')':''}: ${mealP}g protein, ${mealC}kcal — ${items.map(i=>(i.displayName||i.name)+'('+i.protein+'g P)').join(', ')}`];
+    });
+    const mealSummary = mealLines.length ? mealLines.join('\n') : 'No meals logged yet';
 
-    // Historical averages from fuelstrong data if available
+    // Workout status block
+    let woBlock = '';
+    if (woStatus === 'complete' && woStart && woEnd) {
+      woBlock = `Workout: COMPLETE — started ${new Date(woStart).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}, ended ${new Date(woEnd).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}, duration ${woDuration} min`;
+    } else if (woStatus === 'active' && woStart) {
+      const elapsed = Math.round((Date.now() - woStart) / 60000);
+      woBlock = `Workout: IN PROGRESS — started ${new Date(woStart).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}, ${elapsed} min so far`;
+    } else if (wo) {
+      woBlock = `Workout: PLANNED for ${wo}`;
+    } else {
+      woBlock = 'No workout scheduled today';
+    }
+
+    // Historical averages
     const recentDays = fuelstrong.slice(-14);
-    const avgP = recentDays.length ? Math.round(recentDays.reduce((a,d)=>a+d.protein,0)/recentDays.length) : null;
+    const avgP   = recentDays.length ? Math.round(recentDays.reduce((a,d)=>a+d.protein,0)/recentDays.length) : null;
     const avgCal = recentDays.length ? Math.round(recentDays.reduce((a,d)=>a+(d.calories||0),0)/recentDays.length) : null;
+    const proteinGoal = goals.protein || 150;
+    const calGoal     = goals.cal     || 1800;
+    const waterGoal   = goals.water   || 80;
 
-    // Energy trend from HEM history (across days in fuelstrong)
-    const hemHistory = recentDays.filter(d=>d.hem?.e).map(d=>`${d.date}: E${d.hem.e}`).slice(-7).join(', ');
+    systemAddition = `
+You are coaching Hanna in real-time throughout the day using the check-in format below. Keep it conversational — like a coach texting her.
 
-    systemAddition = `\nYou are coaching Hanna in real-time today. Use the H-E-M timeline to detect how she's feeling and why. Connect energy/mood dips to meal gaps, tirzepatide cycle, and training load. Be specific about what to do RIGHT NOW based on the time of day. Use emoji section headers: 🧠 Right Now, 💉 Tirzepatide Context, 💪 Training & Nutrition, 🎯 Top 2 Actions.`;
+RESPONSE FORMAT (follow exactly every time):
+1. **Status** (1-2 sentences): Where she is in the day and how she's tracking.
+2. **Snapshot** (3-4 bullets): Current protein vs goal, water vs goal, workout status, one body comp trend note if relevant.
+3. **What This Means** (2-3 sentences): Connect the numbers to her muscle-building and fat-loss goals in plain language.
+4. **Next Steps** (2-4 specific actions for the next 2-4 hours): Use her actual logged foods. Name specific items she has available.
+5. **Check Back When**: One sentence telling her when to update you (after workout, after dinner, etc.)
 
-    userMsg = `Today's coaching check-in — ${currentTime}.
+Keep responses SHORT and direct. No long paragraphs. Coach texting style.
+If she asks a follow-up question, answer it directly, then give updated next steps.`;
 
-TODAY'S STATUS:
-- Plan: ${todayPlan}${wo?' · Workout at '+wo:''}
-- Protein: ${todayProtein}g / ${goals.protein||150}g goal
-- Calories: ${todayCal} kcal
-- Water: ${todayWater}oz
+    const systemData = `
+TODAY'S DATA (${currentTime}):
+Protein: ${todayProtein}g / ${proteinGoal}g goal
+Calories: ${todayCal} / ${calGoal} kcal goal
+Water: ${todayWater}oz / ${waterGoal}oz goal
+Plan: ${todayPlan}
+${woBlock}
 
-MEALS TODAY:
+MEALS LOGGED:
 ${mealSummary}
 
-H-E-M TIMELINE (H=Hunger 1=not hungry/2=moderate/3=very hungry, E=Energy 1-3, M=Mood 1-3):
+H-E-M TIMELINE (H=Hunger, E=Energy, M=Mood all scale 1-3):
 ${hemTimeline}
 
 TIRZEPATIDE:
-- Dose: ${tirzepatide.dose||'unknown'}mg
-- Days since injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
+Dose: ${tirzepatide.dose||'unknown'}mg | Days since injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
 
-HISTORICAL CONTEXT (last 14 days):
-- Avg protein: ${avgP||'no data'}g
-- Avg calories: ${avgCal||'no data'} kcal
-- Energy history: ${hemHistory || 'no history'}
+14-DAY AVERAGES: Protein ${avgP||'no data'}g/day | Calories ${avgCal||'no data'}/day
 
-EVOLT (body comp trend):
-${evoltLines}
+EVOLT TREND:
+${evoltLines}`;
 
-What's happening with her right now, and what should she do next?`;
+    // Build message history for conversational coaching
+    const messages = [...msgHistory];
+    if (messages.length === 0) {
+      // First message — inject all data as context
+      userMsg = `${systemData}
+
+Give me my coaching check-in.`;
+    } else {
+      // Follow-up — add fresh data header + new question
+      const lastUserMsg = body.question || 'Update my coaching based on current data.';
+      userMsg = `[Data update at ${currentTime}]
+Protein: ${todayProtein}g / ${proteinGoal}g | Water: ${todayWater}oz | ${woBlock}
+Latest HEM: ${hemEntries.length ? hemEntries[hemEntries.length-1] : 'none'}
+Meals: ${mealLines.join('; ') || 'none yet'}
+
+${lastUserMsg}`;
+    }
 
   } else if (mode === 'ask') {
-    systemAddition = '\nAnswer the specific question using the data provided. Be direct and specific. Use actual numbers from their data.';
-    userMsg = `My data:\n\nEvolt Scans:\n${evoltLines}\nDelta: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition:\n${nutritionLines}\n\nMy question: ${question}`;
+    systemAddition = '\nAnswer the specific question directly and specifically. Use actual numbers from the data. Keep it to 3-5 sentences. Coach texting style.';
+    // Include today context if provided
+    const todayCtx = body.todayContext || '';
+    userMsg = `${todayCtx ? 'TODAY: '+todayCtx+'\n\n' : ''}Evolt Scans:\n${evoltLines}\nDelta: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition:\n${nutritionLines}\n\nQuestion: ${question}`;
 
   } else if (mode === 'body') {
     systemAddition = '\nFocus: Deep dive into body composition trends only. What do the Evolt numbers mean? What is the trajectory? What specific behaviors are driving changes? End with: "Your Top 3 Body Composition Priorities."';
@@ -392,11 +486,19 @@ What's happening with her right now, and what should she do next?`;
     userMsg = `Full coaching analysis.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
   }
 
+  // Build messages array — support conversation history for daily coaching
+  let messagesArr;
+  if (mode === 'fuelstrong_daily' && body.history && body.history.length > 0) {
+    messagesArr = [...body.history, { role: 'user', content: userMsg }];
+  } else {
+    messagesArr = [{ role: 'user', content: userMsg }];
+  }
+
   const resp = await callClaude(env, {
     model: 'claude-sonnet-4-6',
-    max_tokens: 1800,
+    max_tokens: 1200,
     system: baseSystem + systemAddition,
-    messages: [{ role: 'user', content: userMsg }]
+    messages: messagesArr
   });
 
   const coaching = resp.content?.[0]?.text || 'Could not generate coaching.';

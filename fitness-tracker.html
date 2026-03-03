@@ -99,6 +99,19 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
   background:var(--card2);cursor:pointer;text-align:center;font-size:12px;font-weight:600;
   color:var(--muted);transition:all .2s;font-family:'DM Sans',sans-serif}
 .plan-btn.active{border-color:var(--accent);background:rgba(0,229,160,.12);color:var(--accent)}
+
+/* ── WORKOUT TRACKER ── */
+.wo-btn-start{width:100%;padding:12px;border-radius:10px;border:none;background:var(--accent);
+  color:#000;font-family:'DM Sans',sans-serif;font-weight:700;font-size:14px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;transition:all .2s;margin-top:8px}
+.wo-btn-start:active{transform:scale(.97)}
+.wo-timer{font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--danger)}
+.wo-complete-tile{background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.25);border-radius:10px;
+  padding:10px 14px;margin-top:8px;display:flex;justify-content:space-between;align-items:center}
+.wo-complete-info{font-size:13px;font-weight:600;color:var(--accent)}
+.wo-complete-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.wo-edit-link{font-size:11px;color:var(--muted);cursor:pointer;text-decoration:underline;
+  background:none;border:none;font-family:'DM Sans',sans-serif;padding:0}
 .plan-btn .plan-icon{font-size:20px;display:block;margin-bottom:4px}
 
 /* ── WATER ── */
@@ -162,10 +175,16 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 .coach-sec-body th{background:var(--card2);color:var(--accent);padding:7px 10px;text-align:left;border:1px solid var(--border)}
 .coach-sec-body td{padding:6px 10px;border:1px solid var(--border);color:var(--text)}
 .coach-sec-body tr:nth-child(even) td{background:rgba(255,255,255,.02)}
-.coach-ask-row{display:flex;gap:8px;margin-top:12px}
+.coach-ask-row{display:flex;gap:8px;margin-top:6px}
 .coach-ask-input{flex:1;background:var(--card2);border:1px solid var(--border);border-radius:8px;
   color:var(--text);padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;outline:none}
 .coach-ask-input:focus{border-color:var(--accent)}
+.chat-msg{margin-bottom:8px}
+.chat-bubble{border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.7}
+.chat-bubble-coach{background:var(--card);border:1px solid var(--border)}
+.chat-bubble-user{background:rgba(0,229,160,.1);border:1px solid rgba(0,229,160,.2);
+  font-size:13px;padding:8px 12px;border-radius:10px;color:var(--text);margin-left:15%;text-align:right}
+.chat-time{font-size:10px;color:var(--muted);margin-bottom:4px}
 
 /* ── QUICK ADD SHEET ── */
 .sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;
@@ -397,9 +416,37 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">Tap to toggle. Injection Day can be combined with any other plan.</div>
       <div id="workout-time-row" style="display:none;margin-top:10px">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Workout time</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Planned Workout Time</div>
         <input type="time" id="workout-time" class="setting-input" style="max-width:140px" onchange="saveWorkoutTime()">
         <div id="workout-time-status" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+        <!-- Workout Start/Done buttons -->
+        <div id="wo-tracker" style="margin-top:10px">
+          <!-- State 1: Not started -->
+          <div id="wo-state-ready">
+            <button class="wo-btn-start" onclick="startWorkout()">🏋️ Start Workout</button>
+            <div id="wo-planned-hint" style="font-size:11px;color:var(--muted);text-align:center;margin-top:4px;display:none"></div>
+          </div>
+          <!-- State 2: In progress -->
+          <div id="wo-state-active" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:10px 14px;background:rgba(255,69,96,.08);border:1px solid rgba(255,69,96,.2);border-radius:10px">
+              <div>
+                <div style="font-size:12px;color:var(--muted)">In progress</div>
+                <div class="wo-timer" id="wo-elapsed">0:00</div>
+              </div>
+              <button class="btn" style="background:var(--danger);color:#fff;font-weight:700;padding:10px 20px;" onclick="endWorkout()">✅ Done</button>
+            </div>
+          </div>
+          <!-- State 3: Complete -->
+          <div id="wo-state-done" style="display:none">
+            <div class="wo-complete-tile">
+              <div>
+                <div class="wo-complete-info" id="wo-summary-text">💪 Workout complete</div>
+                <div class="wo-complete-sub" id="wo-summary-sub"></div>
+              </div>
+              <button class="wo-edit-link" onclick="resetWorkout()">Reset</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -484,27 +531,29 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
         <div id="coach-gen-time" style="font-size:11px;color:var(--muted)"></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <div id="coach-loading" style="display:none"><div class="spin"></div></div>
-        <button class="btn btn-g btn-sm" onclick="runCoaching()" id="coach-regen-btn">↻ Update</button>
+        <div id="coach-loading" style="display:none;align-items:center;gap:6px"><div class="spin"></div></div>
+        <button class="btn btn-g btn-sm" onclick="runCoaching()" id="coach-regen-btn">↻ Refresh</button>
+        <button class="btn btn-g btn-sm" onclick="clearCoachHistory()" title="Start fresh conversation">🗑</button>
       </div>
     </div>
 
-    <div id="coach-output">
-      <div class="empty-state">
+    <!-- Conversation thread -->
+    <div id="coach-thread" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
+      <!-- Messages render here -->
+      <div id="coach-thread-empty" class="empty-state">
         <div class="es-icon">🧠</div>
-        <div>Log some food and feelings to generate coaching.</div>
-        <button class="btn btn-p btn-sm" style="margin-top:12px" onclick="runCoaching()">Generate Now</button>
+        <div>Your coach is ready. Log some food or tap Get Check-In to start.</div>
+        <button class="btn btn-p btn-sm" style="margin-top:12px" onclick="runCoaching()">Get Check-In</button>
       </div>
     </div>
 
-    <div style="margin-top:12px">
-      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">💬 Ask</div>
+    <!-- Input bar — always visible -->
+    <div style="position:sticky;bottom:0;background:var(--bg);padding:8px 0 4px">
       <div class="coach-ask-row">
-        <input class="coach-ask-input" id="coach-q" placeholder="e.g. Why am I crashing at 2pm? Should I eat before my workout?">
-        <button class="btn btn-p btn-sm" onclick="askCoach()">→</button>
+        <input class="coach-ask-input" id="coach-q" placeholder="Ask your coach anything…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();askCoach();}">
+        <button class="btn btn-p btn-sm" id="coach-send-btn" onclick="askCoach()">→</button>
       </div>
-      <div id="ask-loading" style="display:none;margin-top:8px;font-size:12px;color:var(--muted)"><div class="spin"></div> Thinking...</div>
-      <div id="ask-out" style="display:none;margin-top:10px;padding:14px;background:var(--card2);border:1px solid rgba(0,229,160,.15);border-radius:10px;font-size:13px;line-height:1.8;white-space:pre-wrap"></div>
+      <div id="ask-loading" style="display:none;margin-top:6px;font-size:12px;color:var(--muted);align-items:center;gap:6px"><div class="spin"></div> Coach is thinking...</div>
     </div>
   </div>
 
@@ -723,6 +772,12 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">All Foods</div>
         <div class="food-list" id="qa-all"></div>
       </div>
+      <!-- Add new food shortcut -->
+      <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;text-align:center">
+        <button class="btn btn-g btn-sm" style="width:100%" onclick="closeQuickAdd(); showPanel('library', document.getElementById('nav-library')); setTimeout(()=>{const f=document.getElementById('add-food-form'); if(f){f.style.display='block'; document.getElementById('lib-name').focus();}},200)">
+          ➕ Add New Custom Food
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -783,6 +838,15 @@ let mealLog     = JSON.parse(localStorage.getItem('fs2-meals')  || '{}');
 let hemLog      = JSON.parse(localStorage.getItem('fs2-hem')    || '[]'); // [{time,h,e,m,note}]
 let water       = parseInt(localStorage.getItem('fs2-water')    || '0');
 let dayPlans    = new Set(JSON.parse(localStorage.getItem('fs2-plans') || '[]'));
+
+// Workout tracker state
+let workoutStart    = localStorage.getItem('fs2-wo-start') ? parseInt(localStorage.getItem('fs2-wo-start')) : null;
+let workoutEnd      = localStorage.getItem('fs2-wo-end')   ? parseInt(localStorage.getItem('fs2-wo-end'))   : null;
+let workoutStatus   = localStorage.getItem('fs2-wo-status') || 'ready'; // ready|active|complete
+let _woTimerInterval = null;
+
+// Coaching conversation history
+let coachHistory = JSON.parse(localStorage.getItem('fs2-coach-hist') || '[]');
 // dayPlan remains as a compat shim: primary plan (workout/recover/light), or null
 let dayPlan     = [...dayPlans].find(p => p !== 'injection') || null;
 let workoutTime = localStorage.getItem('fs2-wtime')             || '';
@@ -815,9 +879,11 @@ function init() {
   setNowTime();
   restorePlan();
   updateTirzStatus();
+  restoreWorkoutState();
+  restoreCoachThread();
   if (WORKER_URL) loadRemoteData();
   // Refresh workout time status every minute
-  setInterval(updateWorkoutTimeStatus, 60000);
+  setInterval(() => { updateWorkoutTimeStatus(); renderInsights(); }, 60000);
 }
 
 // ══════════════════════════════════════════════════
@@ -847,14 +913,19 @@ function showNewDayBanner(lastDate) {
 
 function startFreshDay() {
   mealLog = {}; water = 0; hemLog = []; dayPlan = null; workoutTime = '';
+  workoutStart = null; workoutEnd = null; workoutStatus = 'ready';
   localStorage.setItem('fs2-meals','{}');
   localStorage.setItem('fs2-water','0');
   localStorage.setItem('fs2-hem','[]');
   localStorage.removeItem('fs2-plan');
   localStorage.removeItem('fs2-wtime');
+  localStorage.removeItem('fs2-wo-start');
+  localStorage.removeItem('fs2-wo-end');
+  localStorage.setItem('fs2-wo-status','ready');
   document.getElementById('new-day-banner')?.remove();
   renderMealLog(); renderRings(); renderWater(); renderHEMTimeline();
-  restorePlan(); toast('🌅 Fresh day started!');
+  restorePlan(); renderWorkoutTracker(); toast('🌅 Fresh day started!');
+  if (WORKER_URL) pushLive();
 }
 
 // ══════════════════════════════════════════════════
@@ -894,9 +965,84 @@ async function wFetch(path, opts = {}) {
 
 async function loadRemoteData() {
   try {
-    const res = await wFetch('/api/data');
-    remoteEvolt = res.evolt || [];
+    // Load KV data in parallel
+    const [dataRes, profileRes, liveRes] = await Promise.all([
+      wFetch('/api/data'),
+      wFetch('/api/profile').catch(() => null),
+      wFetch('/api/live').catch(() => null),
+    ]);
+
+    // Evolt from Progress app
+    remoteEvolt = dataRes.evolt || [];
     updateWorkerDot('ok');
+
+    // Restore profile if worker has newer data
+    if (profileRes) {
+      if (profileRes.goals && JSON.stringify(profileRes.goals) !== JSON.stringify(goals)) {
+        goals = profileRes.goals;
+        localStorage.setItem('fs2-goals', JSON.stringify(goals));
+        setGoalInputs();
+      }
+      if (profileRes.tirz && JSON.stringify(profileRes.tirz) !== JSON.stringify(tirz)) {
+        tirz = profileRes.tirz;
+        localStorage.setItem('fs2-tirz', JSON.stringify(tirz));
+        setTirzInputs();
+      }
+      if (profileRes.customFoods && profileRes.customFoods.length > customFoods.length) {
+        customFoods = profileRes.customFoods;
+        localStorage.setItem('fs2-custom', JSON.stringify(customFoods));
+        renderLibrary();
+        renderAllFoodsQuickAdd();
+      }
+      if (profileRes.foodPins && profileRes.foodPins.length > foodPins.length) {
+        foodPins = profileRes.foodPins;
+        localStorage.setItem('fs2-pins', JSON.stringify(foodPins));
+        renderPinnedQuickAdd();
+        renderPinnedSummary();
+      }
+    }
+
+    // Restore today's live session if from same day
+    if (liveRes && liveRes.date === todayKey()) {
+      let updated = false;
+      // Only merge if remote has more data (longer arrays = more entries)
+      const remoteMeals = liveRes.mealLog || {};
+      const remoteHem   = liveRes.hemLog  || [];
+      const remoteWater = liveRes.water   || 0;
+      const localMealCount = Object.values(mealLog).reduce((a,v)=>a+v.length,0);
+      const remoteMealCount = Object.values(remoteMeals).reduce((a,v)=>a+v.length,0);
+
+      if (remoteMealCount > localMealCount) {
+        mealLog = remoteMeals;
+        localStorage.setItem('fs2-meals', JSON.stringify(mealLog));
+        renderMealLog(); updated = true;
+      }
+      if (remoteHem.length > hemLog.length) {
+        hemLog = remoteHem;
+        localStorage.setItem('fs2-hem', JSON.stringify(hemLog));
+        renderHEMTimeline(); updated = true;
+      }
+      if (remoteWater > water) {
+        water = remoteWater;
+        localStorage.setItem('fs2-water', water);
+        renderWater(); updated = true;
+      }
+      // Restore workout state from remote
+      if (liveRes.workoutStatus && liveRes.workoutStatus !== 'ready' && workoutStatus === 'ready') {
+        workoutStatus = liveRes.workoutStatus;
+        workoutStart  = liveRes.workoutStart  || null;
+        workoutEnd    = liveRes.workoutEnd    || null;
+        if (workoutStatus !== 'ready') {
+          localStorage.setItem('fs2-wo-status', workoutStatus);
+          if (workoutStart) localStorage.setItem('fs2-wo-start', workoutStart);
+          if (workoutEnd)   localStorage.setItem('fs2-wo-end', workoutEnd);
+          renderWorkoutTracker();
+        }
+        updated = true;
+      }
+      if (updated) { renderRings(); renderInsights(); }
+    }
+
     renderBMRRange();
     renderInsights();
   } catch(e) { updateWorkerDot('err'); }
@@ -979,6 +1125,7 @@ function logHEM(type, val) {
   renderHEMTimeline();
   renderInsights();
   autoSave();
+  scheduleCoachRefresh(60000); // suggest refresh 1min after HEM log
   // Visual feedback on button
   highlightHEMBtn(type, val);
 }
@@ -1087,19 +1234,114 @@ function saveWorkoutTime() {
   localStorage.setItem('fs2-wtime', workoutTime);
   updateWorkoutTimeStatus();
   renderInsights();
+  pushLive();
 }
 
 function updateWorkoutTimeStatus() {
   const el = document.getElementById('workout-time-status');
   if (!workoutTime || !dayPlans.has('workout')) { el.textContent = ''; return; }
+  if (workoutStatus === 'active' || workoutStatus === 'complete') { el.textContent = ''; return; }
   const now = new Date();
   const [wh, wm] = workoutTime.split(':').map(Number);
   const wo = new Date(); wo.setHours(wh, wm, 0, 0);
   const mins = Math.round((wo - now) / 60000);
-  if (mins > 120) el.textContent = `🏋️ Workout at ${fmtTime(workoutTime)} — ${(mins/60).toFixed(1)}hrs away`;
-  else if (mins > 0) el.textContent = `⚠️ Workout in ${mins} min — eat pre-workout meal now!`;
-  else if (mins > -90) el.textContent = `⚡ Post-workout window OPEN — get 40g protein in the next ${90+mins} min!`;
+  if (mins > 120) el.textContent = `🏋️ Planned for ${fmtTime(workoutTime)} — ${(mins/60).toFixed(1)}hrs away`;
+  else if (mins > 60) el.textContent = `⚠️ Workout in ${Math.floor(mins/60)}h${mins%60}m — pre-workout window opening soon`;
+  else if (mins > 0)  el.textContent = `🔥 Workout in ${mins} min — eat pre-workout meal NOW if you haven't!`;
+  else if (mins > -90) el.textContent = `⚡ Post-workout window OPEN — ${90+mins} min left to get protein in!`;
   else el.textContent = `✓ Workout done — ${Math.abs(mins)} min ago`;
+  // Show planned time hint on button
+  const hint = document.getElementById('wo-planned-hint');
+  if (hint && workoutStatus === 'ready') { hint.style.display = 'block'; hint.textContent = `Planned for ${fmtTime(workoutTime)}`; }
+}
+
+// ══════════════════════════════════════════════════
+// WORKOUT START / STOP
+// ══════════════════════════════════════════════════
+function startWorkout() {
+  workoutStart  = Date.now();
+  workoutEnd    = null;
+  workoutStatus = 'active';
+  localStorage.setItem('fs2-wo-start',  workoutStart);
+  localStorage.removeItem('fs2-wo-end');
+  localStorage.setItem('fs2-wo-status', 'active');
+  localStorage.setItem('fs2-wo-date',   todayKey());
+  renderWorkoutTracker();
+  pushLive();
+  scheduleCoachRefresh(90000); // refresh coach after 90s to reflect workout started
+  toast('💪 Workout started!');
+}
+
+function endWorkout() {
+  workoutEnd    = Date.now();
+  workoutStatus = 'complete';
+  localStorage.setItem('fs2-wo-end',    workoutEnd);
+  localStorage.setItem('fs2-wo-status', 'complete');
+  if (_woTimerInterval) { clearInterval(_woTimerInterval); _woTimerInterval = null; }
+  renderWorkoutTracker();
+  pushLive();
+  scheduleCoachRefresh(5000); // refresh coach soon — user wants post-workout guidance
+  const dur = Math.round((workoutEnd - workoutStart) / 60000);
+  toast(`✅ Workout done! ${dur} min · Get your protein in!`);
+}
+
+function resetWorkout() {
+  workoutStart  = null;
+  workoutEnd    = null;
+  workoutStatus = 'ready';
+  localStorage.removeItem('fs2-wo-start');
+  localStorage.removeItem('fs2-wo-end');
+  localStorage.setItem('fs2-wo-status', 'ready');
+  if (_woTimerInterval) { clearInterval(_woTimerInterval); _woTimerInterval = null; }
+  renderWorkoutTracker();
+  pushLive();
+}
+
+function renderWorkoutTracker() {
+  const ready  = document.getElementById('wo-state-ready');
+  const active = document.getElementById('wo-state-active');
+  const done   = document.getElementById('wo-state-done');
+  if (!ready) return;
+
+  ready.style.display  = workoutStatus === 'ready'    ? 'block' : 'none';
+  active.style.display = workoutStatus === 'active'   ? 'block' : 'none';
+  done.style.display   = workoutStatus === 'complete' ? 'block' : 'none';
+
+  if (workoutStatus === 'active' && workoutStart) {
+    // Start live timer
+    if (_woTimerInterval) clearInterval(_woTimerInterval);
+    const tick = () => {
+      const el = document.getElementById('wo-elapsed');
+      if (!el) return;
+      const elapsed = Math.floor((Date.now() - workoutStart) / 1000);
+      const m = Math.floor(elapsed / 60), s = elapsed % 60;
+      el.textContent = `${m}:${String(s).padStart(2,'0')}`;
+    };
+    tick();
+    _woTimerInterval = setInterval(tick, 1000);
+  }
+
+  if (workoutStatus === 'complete' && workoutStart && workoutEnd) {
+    const dur    = Math.round((workoutEnd - workoutStart) / 60000);
+    const endStr = new Date(workoutEnd).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const startStr = new Date(workoutStart).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const sum = document.getElementById('wo-summary-text');
+    const sub = document.getElementById('wo-summary-sub');
+    if (sum) sum.textContent = `💪 ${dur} min workout complete`;
+    if (sub) sub.textContent = `${startStr} → ${endStr} · Post-workout window open!`;
+  }
+}
+
+function restoreWorkoutState() {
+  const savedDate = localStorage.getItem('fs2-wo-date');
+  if (savedDate && savedDate !== todayKey()) {
+    // Different day — reset
+    workoutStart = null; workoutEnd = null; workoutStatus = 'ready';
+    localStorage.removeItem('fs2-wo-start'); localStorage.removeItem('fs2-wo-end');
+    localStorage.setItem('fs2-wo-status', 'ready');
+  }
+  renderWorkoutTracker();
+  if (workoutStatus !== 'ready') updateWorkoutTimeStatus();
 }
 
 // ══════════════════════════════════════════════════
@@ -1360,10 +1602,8 @@ function addFoodToLog(food, qty = 1) {
   renderMealLog();
   renderInsights();
   autoSave();
+  scheduleCoachRefresh(120000); // suggest coach refresh 2min after logging
 }
-
-// ══════════════════════════════════════════════════
-// BARCODE SCANNING
 // ══════════════════════════════════════════════════
 async function startBarcodeMode() {
   const area   = document.getElementById('scan-area');
@@ -1532,6 +1772,7 @@ function togglePin(foodId) {
   renderPinnedSummary();
   renderPinnedQuickAdd();
   renderAllFoodsQuickAdd();
+  pushProfile();
 }
 
 function renderLibrary() {
@@ -1568,6 +1809,7 @@ function deleteCustomFood(id) {
   renderPinnedQuickAdd();
   renderAllFoodsQuickAdd();
   toast('Deleted');
+  pushProfile();
 }
 
 async function estimateMacros() {
@@ -1629,6 +1871,7 @@ function saveCustomFood() {
   renderLibrary();
   renderAllFoodsQuickAdd();
   toast(`✓ ${food.name} added to Food Library!`);
+  pushProfile();
 }
 
 // ══════════════════════════════════════════════════
@@ -1786,69 +2029,176 @@ function getLastMealTime() {
 }
 
 // ══════════════════════════════════════════════════
-// COACHING (API — full context)
+// COACHING — Conversational, full context
 // ══════════════════════════════════════════════════
 let coachLoaded = false;
 function tryCoachLoad() {
-  if (!coachLoaded && WORKER_URL) runCoaching(true);
+  // If history was restored on boot, don't auto-fire — user can tap Refresh if they want
+  if (!coachLoaded && WORKER_URL && !coachHistory.length) runCoaching(true);
+}
+
+function buildCoachPayload(question = null) {
+  const { totalP, totalCal } = getTotals();
+  const tirzDayNum  = tirz.day !== '' ? parseInt(tirz.day) : null;
+  const dayOfWeek   = new Date().getDay();
+  const daysPostInj = tirzDayNum !== null ? ((dayOfWeek - tirzDayNum) + 7) % 7 : null;
+  const woDuration  = (workoutStart && workoutEnd) ? Math.round((workoutEnd - workoutStart)/60000) : null;
+
+  return {
+    mode:         'fuelstrong_daily',
+    goals,
+    dayPlan,
+    dayPlans:     [...dayPlans],
+    workoutTime:  workoutTime || null,
+    workoutStatus,
+    workoutStart: workoutStart || null,
+    workoutEnd:   workoutEnd   || null,
+    workoutDuration: woDuration,
+    todayDate:    todayKey(),
+    currentTime:  new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}),
+    protein:      Math.round(totalP),
+    calories:     Math.round(totalCal),
+    water,
+    mealLog,                           // full meal log with times and macros
+    hemLog:       hemLog.slice(-20),   // full today HEM timeline
+    hemLatest:    getLatestHEM(),
+    tirzepatide:  { ...tirz, daysPostInjection: daysPostInj },
+    history:      coachHistory,        // conversation history for multi-turn
+    question:     question || null,
+  };
 }
 
 async function runCoaching(silent = false) {
   if (!WORKER_URL) { if (!silent) toast('Set Worker URL in Settings first', true); return; }
-  const loadEl = document.getElementById('coach-loading');
-  const btn    = document.getElementById('coach-regen-btn');
-  loadEl.style.display = 'inline';
-  if (btn) btn.disabled = true;
+
+  const loadEl  = document.getElementById('coach-loading');
+  const sendBtn = document.getElementById('coach-send-btn');
+  const emptyEl = document.getElementById('coach-thread-empty');
+  if (loadEl)  loadEl.style.display = 'flex';
+  if (sendBtn) sendBtn.disabled = true;
+  if (emptyEl) emptyEl.style.display = 'none';
 
   try {
-    const { totalP, totalCal } = getTotals();
-    const latest = getLatestHEM();
-    const tirzDayNum = tirz.day !== '' ? parseInt(tirz.day) : null;
-    const dayOfWeek  = new Date().getDay();
-    const daysPostInj = tirzDayNum !== null ? ((dayOfWeek - tirzDayNum) + 7) % 7 : null;
+    const res = await wFetch('/api/coach', { method:'POST', body: JSON.stringify(buildCoachPayload()) });
+    const coaching = res.coaching || '';
 
-    const res = await wFetch('/api/coach', {
-      method:'POST',
-      body: JSON.stringify({
-        mode: 'fuelstrong_daily',
-        goals,
-        dayPlan,
-        workoutTime: workoutTime || null,
-        todayDate: todayKey(),
-        currentTime: new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}),
-        protein: Math.round(totalP),
-        calories: totalCal,
-        water,
-        hemLog: hemLog.slice(-12), // last 12 entries
-        hemLatest: latest,
-        tirzepatide: { ...tirz, daysPostInjection: daysPostInj },
-        mealTimes: getMealTimeSummary(),
-        supplements: JSON.parse(localStorage.getItem('fs-supplements')||'[]').map(s=>s.name+' '+s.dose).join(', '),
-      })
-    });
-    renderCoachOutput(res.coaching);
+    // Add to conversation history
     const now = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    document.getElementById('coach-gen-time').textContent = `Updated ${now}`;
+    appendCoachMessage('coach', coaching, now);
+    const now2 = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    document.getElementById('coach-gen-time').textContent = `Last update: ${now2}`;
     coachLoaded = true;
   } catch(e) {
-    document.getElementById('coach-output').innerHTML =
-      `<div style="color:var(--danger);padding:20px;font-size:13px">⚠️ ${e.message}</div>`;
+    appendCoachMessage('coach', `⚠️ ${e.message}`, new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}), true);
   }
-  loadEl.style.display = 'none';
-  if (btn) btn.disabled = false;
+  if (loadEl)  loadEl.style.display = 'none';
+  if (sendBtn) sendBtn.disabled = false;
 }
 
-function getMealTimeSummary() {
-  const summary = {};
-  MEAL_ORDER.forEach(meal => {
-    const items = mealLog[meal] || [];
-    if (items.length) {
-      const totalP = Math.round(items.reduce((a,i)=>a+i.protein,0));
-      const firstTime = items[0]?.time || '';
-      summary[meal] = { protein: totalP, time: firstTime };
+async function askCoach() {
+  const input = document.getElementById('coach-q');
+  const q = input?.value.trim();
+  if (!q || !WORKER_URL) {
+    if (!WORKER_URL) toast('Set Worker URL in Settings first', true);
+    return;
+  }
+  input.value = '';
+
+  const now = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  appendCoachMessage('user', q, now);
+
+  const loadEl  = document.getElementById('ask-loading');
+  const sendBtn = document.getElementById('coach-send-btn');
+  if (loadEl)  loadEl.style.display = 'flex';
+  if (sendBtn) sendBtn.disabled = true;
+
+  try {
+    const res = await wFetch('/api/coach', { method:'POST', body: JSON.stringify(buildCoachPayload(q)) });
+    const coaching = res.coaching || '';
+    const now2 = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    appendCoachMessage('coach', coaching, now2);
+    document.getElementById('coach-gen-time').textContent = `Last update: ${now2}`;
+  } catch(e) {
+    appendCoachMessage('coach', `⚠️ ${e.message}`, now, true);
+  }
+  if (loadEl)  loadEl.style.display = 'none';
+  if (sendBtn) sendBtn.disabled = false;
+}
+
+function appendCoachMessage(role, text, time, isError = false) {
+  const thread = document.getElementById('coach-thread');
+  const emptyEl = document.getElementById('coach-thread-empty');
+  if (!thread) return;
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  // Save to history (only coach messages for API context)
+  if (role === 'coach' && !isError) {
+    coachHistory.push({ role: 'assistant', content: text });
+    // Keep last 10 turns to avoid token overflow
+    if (coachHistory.length > 20) coachHistory = coachHistory.slice(-20);
+    localStorage.setItem('fs2-coach-hist', JSON.stringify(coachHistory));
+  }
+  if (role === 'user') {
+    coachHistory.push({ role: 'user', content: text });
+    if (coachHistory.length > 20) coachHistory = coachHistory.slice(-20);
+    localStorage.setItem('fs2-coach-hist', JSON.stringify(coachHistory));
+  }
+
+  const div = document.createElement('div');
+  div.className = 'chat-msg';
+
+  if (role === 'user') {
+    div.innerHTML = `<div class="chat-bubble-user">${escHtml(text)}</div>`;
+  } else {
+    div.innerHTML = `
+      <div class="chat-time">${time}</div>
+      <div class="chat-bubble chat-bubble-coach">${mdToHtml(text)}</div>`;
+  }
+
+  // Insert before the sticky input bar (last child is input bar)
+  const inputBar = thread.nextElementSibling;
+  thread.appendChild(div);
+
+  // Auto-scroll to bottom
+  div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function clearCoachHistory() {
+  coachHistory = [];
+  localStorage.removeItem('fs2-coach-hist');
+  const thread = document.getElementById('coach-thread');
+  if (thread) {
+    const empty = document.getElementById('coach-thread-empty');
+    // Remove all chat messages, keep empty state
+    Array.from(thread.children).forEach(c => { if (c !== empty) c.remove(); });
+    if (empty) empty.style.display = 'block';
+  }
+  coachLoaded = false;
+  toast('Chat cleared');
+}
+
+function restoreCoachThread() {
+  if (!coachHistory.length) return;
+  // Replay history to populate thread on page load
+  const thread = document.getElementById('coach-thread');
+  const emptyEl = document.getElementById('coach-thread-empty');
+  if (!thread) return;
+  if (emptyEl) emptyEl.style.display = 'none';
+  coachHistory.forEach(msg => {
+    const div = document.createElement('div');
+    div.className = 'chat-msg';
+    if (msg.role === 'user') {
+      div.innerHTML = `<div class="chat-bubble-user">${escHtml(msg.content)}</div>`;
+    } else {
+      div.innerHTML = `<div class="chat-bubble chat-bubble-coach">${mdToHtml(msg.content)}</div>`;
     }
+    thread.appendChild(div);
   });
-  return summary;
+  coachLoaded = true;
+}
+
+function escHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function mdToHtml(text) {
@@ -1958,30 +2308,7 @@ function toggleSection(hdr) {
   hdr.classList.toggle('open', !open);
 }
 
-async function askCoach() {
-  const q = document.getElementById('coach-q').value.trim();
-  if (!q || !WORKER_URL) return;
-  const loadEl = document.getElementById('ask-loading');
-  const out    = document.getElementById('ask-out');
-  loadEl.style.display = 'block';
-  out.style.display = 'none';
-  try {
-    const { totalP, totalCal } = getTotals();
-    const res = await wFetch('/api/coach', {
-      method:'POST',
-      body: JSON.stringify({
-        mode:'ask', question:q,
-        context:`Today: ${totalP}g protein, ${totalCal}kcal, ${water}oz water. Plan: ${dayPlan||'not set'}. H-E-M: ${JSON.stringify(getLatestHEM())}. Tirzepatide days post injection: ${tirz.daysPostInjection||'unknown'}.`
-      })
-    });
-    out.textContent = res.coaching;
-    out.style.display = 'block';
-  } catch(e) {
-    out.textContent = '⚠️ ' + e.message;
-    out.style.display = 'block';
-  }
-  loadEl.style.display = 'none';
-}
+// askCoach merged into conversational system above
 
 // ══════════════════════════════════════════════════
 // COMPLETE DAY + UNDO
@@ -2067,14 +2394,19 @@ async function confirmCompleteDay() {
   // Reset daily state
   setTimeout(() => {
     mealLog = {}; water = 0; hemLog = []; dayPlan = null; dayPlans = new Set(); workoutTime = '';
+    workoutStart = null; workoutEnd = null; workoutStatus = 'ready';
     localStorage.setItem('fs2-meals','{}');
     localStorage.setItem('fs2-water','0');
     localStorage.setItem('fs2-hem','[]');
     localStorage.removeItem('fs2-plan');
     localStorage.removeItem('fs2-plans');
     localStorage.removeItem('fs2-wtime');
+    localStorage.removeItem('fs2-wo-start');
+    localStorage.removeItem('fs2-wo-end');
+    localStorage.setItem('fs2-wo-status','ready');
     renderMealLog(); renderRings(); renderWater(); renderHEMTimeline();
-    restorePlan(); renderHistory(); renderInsights();
+    restorePlan(); renderHistory(); renderInsights(); renderWorkoutTracker();
+    if (WORKER_URL) pushLive();
   }, 800);
 }
 
@@ -2147,6 +2479,7 @@ function saveGoals() {
   document.getElementById('goals-saved').style.display = 'inline';
   setTimeout(() => document.getElementById('goals-saved').style.display='none', 2000);
   renderRings(); renderInsights(); renderWater(); toast('✓ Goals saved');
+  pushProfile();
 }
 
 function setTirzInputs() {
@@ -2163,6 +2496,7 @@ function saveTirz() {
   document.getElementById('tirz-saved').style.display = 'inline';
   setTimeout(() => document.getElementById('tirz-saved').style.display='none', 2000);
   updateTirzStatus(); renderInsights();
+  pushProfile();
 }
 
 function updateTirzStatus() {
@@ -2240,7 +2574,74 @@ function autoSave() {
     localStorage.setItem('fs2-hem', JSON.stringify(hemLog));
     localStorage.setItem('fs2-water', water);
     localStorage.setItem('fs2-today', todayKey());
+    if (WORKER_URL) pushLive();
   }, 500);
+}
+
+// ══════════════════════════════════════════════════
+// SYNC — Push profile data to worker KV
+// ══════════════════════════════════════════════════
+let _profileSyncTimer;
+function pushProfile(immediate = false) {
+  if (!WORKER_URL) return;
+  clearTimeout(_profileSyncTimer);
+  const delay = immediate ? 0 : 2000;
+  _profileSyncTimer = setTimeout(async () => {
+    try {
+      await wFetch('/api/profile', {
+        method: 'POST',
+        body: JSON.stringify({ goals, tirz, customFoods, foodPins })
+      });
+    } catch(e) { console.warn('Profile sync failed:', e.message); }
+  }, delay);
+}
+
+// ══════════════════════════════════════════════════
+// SYNC — Push today's live session to worker KV
+// ══════════════════════════════════════════════════
+let _liveSyncTimer;
+function pushLive() {
+  if (!WORKER_URL) return;
+  clearTimeout(_liveSyncTimer);
+  _liveSyncTimer = setTimeout(async () => {
+    const { totalP, totalCal } = getTotals();
+    try {
+      await wFetch('/api/live', {
+        method: 'POST',
+        body: JSON.stringify({
+          date:            todayKey(),
+          mealLog,
+          hemLog,
+          water,
+          protein:         Math.round(totalP),
+          calories:        Math.round(totalCal),
+          dayPlan,
+          dayPlans:        [...dayPlans],
+          workoutTime:     workoutTime || null,
+          workoutStatus,
+          workoutStart:    workoutStart || null,
+          workoutEnd:      workoutEnd   || null,
+          workoutDuration: (workoutStart && workoutEnd) ? Math.round((workoutEnd - workoutStart)/60000) : null,
+        })
+      });
+    } catch(e) { console.warn('Live sync failed:', e.message); }
+  }, 8000); // 8 second debounce — batches rapid changes
+}
+
+// ══════════════════════════════════════════════════
+// SYNC — Schedule a coaching refresh
+// ══════════════════════════════════════════════════
+let _coachRefreshTimer;
+function scheduleCoachRefresh(delayMs = 120000) {
+  // Only auto-refresh if coach tab is active or will be opened
+  clearTimeout(_coachRefreshTimer);
+  _coachRefreshTimer = setTimeout(() => {
+    coachLoaded = false; // allow next open to trigger reload
+    // If coach panel is currently visible, refresh now
+    if (document.getElementById('panel-coach')?.classList.contains('active')) {
+      runCoaching(true);
+    }
+  }, delayMs);
 }
 
 // ══════════════════════════════════════════════════
@@ -2368,6 +2769,7 @@ function saveEditFood() {
   renderPinnedQuickAdd();
   renderAllFoodsQuickAdd();
   toast('✅ Food updated!');
+  pushProfile();
 }
 
 // ══════════════════════════════════════════════════
