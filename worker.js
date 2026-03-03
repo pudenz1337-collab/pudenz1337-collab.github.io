@@ -42,6 +42,7 @@ export default {
       if (path === '/api/profile'  && method === 'POST')   return saveProfile(request, env);
       if (path === '/api/live'     && method === 'GET')    return getKVKey(env, 'today_live');
       if (path === '/api/live'     && method === 'POST')   return saveKVKey(request, env, 'today_live');
+      if (path === '/api/estimate' && method === 'POST')   return estimateMacros(request, env);
       if (path.startsWith('/api/data/') && method === 'DELETE') return deleteEntry(request, env, path);
 
       return reply({ error: 'Not found' }, 404);
@@ -591,6 +592,24 @@ async function backupToGitHub(env) {
   }
 
   return reply({ backed_up: results });
+}
+
+// ─── Macro Estimator ────────────────────────────────────────────────────────
+async function estimateMacros(request, env) {
+  const body = await request.json();
+  const name = (body.name || '').trim();
+  if (!name) return reply({ error: 'Food name required' }, 400);
+  const resp = await callClaude(env, {
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 200,
+    system: 'You are a nutrition database. Return ONLY valid JSON with no other text, preamble, or markdown.',
+    messages: [{ role: 'user', content: `Estimate nutrition for one standard serving of: "${name}". Return ONLY this JSON: {"cal":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"serving":"description","confidence":"high|medium|low"}` }]
+  });
+  const raw = resp.content?.[0]?.text || '';
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return reply({ error: 'Could not parse' }, 500);
+  try { return reply({ estimate: JSON.parse(match[0]) }); }
+  catch(e) { return reply({ error: 'Invalid JSON' }, 500); }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────

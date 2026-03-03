@@ -41,14 +41,13 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 .conn-pill.err .conn-dot{background:var(--danger);box-shadow:0 0 6px rgba(255,69,96,.4)}
 
 /* ── SCROLL CONTENT ── */
-.app-content{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:calc(var(--bottom-bar) + 16px);-webkit-overflow-scrolling:touch}
-.panel{display:none;padding:16px}
+.app-content{flex:1;overflow-y:auto;overflow-x:hidden;min-height:0;-webkit-overflow-scrolling:touch}
+.panel{display:none;padding:16px;padding-bottom:20px}
 .panel.active{display:block}
 
 /* ── BOTTOM NAV ── */
-.bottom-nav{position:fixed;bottom:0;left:0;right:0;
-  width:100%;max-width:600px;margin:0 auto;background:var(--surface);
-  border-top:1px solid var(--border);display:flex;z-index:100;height:var(--bottom-bar);flex-shrink:0}
+.bottom-nav{flex-shrink:0;width:100%;background:var(--surface);
+  border-top:1px solid var(--border);display:flex;z-index:100;height:var(--bottom-bar)}
 .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:3px;cursor:pointer;color:var(--muted);transition:color .2s;border:none;background:none;
   padding:6px 0;font-family:'DM Sans',sans-serif}
@@ -122,7 +121,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 .water-btns{display:flex;gap:6px;flex-wrap:wrap}
 
 /* ── QUICK ADD FLOATING ── */
-.quick-add-fab{position:fixed;bottom:calc(var(--bottom-bar) + 12px);right:16px;
+.quick-add-fab{position:sticky;bottom:16px;right:16px;float:right;margin-right:0;
   background:var(--accent);color:#000;width:52px;height:52px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;
   cursor:pointer;border:none;box-shadow:0 4px 20px rgba(0,229,160,.4);z-index:90;
@@ -324,7 +323,7 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 .spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(0,229,160,.3);
   border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
-#toast{position:fixed;bottom:calc(var(--bottom-bar) + 70px);left:50%;transform:translateX(-50%) translateY(10px);
+#toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(10px);
   background:var(--accent);color:#000;padding:10px 18px;border-radius:8px;font-weight:600;
   font-size:13px;z-index:999;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -786,7 +785,11 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 <div class="modal-overlay" id="complete-modal" onclick="if(event.target===this)closeCompleteModal()">
   <div class="modal">
     <div class="modal-title">Day Complete 🏁</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:4px" id="modal-date"></div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">Completing which day?</div>
+      <input type="date" id="modal-date-input" style="background:var(--card2);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:8px;font-family:'DM Mono',monospace;font-size:13px;outline:none;width:100%;box-sizing:border-box;" oninput="updateModalDate()">
+      <div id="modal-date-note" style="font-size:11px;color:var(--accent);margin-top:5px;display:none"></div>
+    </div>
     <div class="modal-stat-grid" id="modal-stats"></div>
     <div id="modal-highlights" style="font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:16px"></div>
     <div style="display:flex;gap:8px">
@@ -1818,30 +1821,33 @@ async function estimateMacros() {
   const bar = document.getElementById('lib-estimate-bar');
   const txt = document.getElementById('lib-estimate-txt');
   bar.style.display = 'block';
-  txt.textContent = '✨ Estimating...';
+  txt.style.color = 'var(--text)';
+  txt.textContent = '✨ Estimating…';
+  if (!WORKER_URL) {
+    txt.style.color = 'var(--danger)';
+    txt.textContent = '⚠️ Connect your Worker in Settings first';
+    return;
+  }
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        model:'claude-sonnet-4-20250514', max_tokens:400,
-        system:'You are a nutrition database. Return only valid JSON with no other text, preamble, or markdown.',
-        messages:[{ role:'user', content:`Estimate nutrition facts for one standard serving of: "${name}". Return ONLY a JSON object like this: {"cal":120,"protein":15,"carbs":8,"fat":3,"fiber":2,"serving":"1 cup (240ml)","confidence":"high"}` }]
-      })
+    const r = await fetch(WORKER_URL + '/api/estimate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
     });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
-    const m = (d.content?.[0]?.text||'').match(/\{[\s\S]*\}/);
-    if (!m) throw new Error('No JSON');
-    const est = JSON.parse(m[0]);
-    // Map JSON keys to actual field IDs
+    if (d.error) throw new Error(d.error);
+    const est = d.estimate;
     const fieldMap = { cal:'lib-cal', protein:'lib-prot', carbs:'lib-carb', fat:'lib-fat', fiber:'lib-fiber' };
     Object.entries(fieldMap).forEach(([k, id]) => {
       const el = document.getElementById(id);
       if (el && !el.value && est[k] != null) el.value = est[k];
     });
-    txt.innerHTML = `✨ <strong>${est.serving}</strong> — <span style="color:${est.confidence==='high'?'var(--accent)':est.confidence==='medium'?'var(--yellow)':'var(--accent2)'}">${est.confidence} confidence</span>`;
+    const confColor = est.confidence === 'high' ? 'var(--accent)' : est.confidence === 'medium' ? 'var(--yellow)' : 'var(--accent2)';
+    txt.innerHTML = `✨ <strong>${est.serving}</strong> — <span style="color:${confColor}">${est.confidence} confidence</span>. Edit values if needed.`;
   } catch(e) {
-    txt.style.color = 'var(--danger)'; txt.textContent = '⚠️ Estimate failed — enter manually';
+    txt.style.color = 'var(--danger)';
+    txt.textContent = '⚠️ Estimate failed: ' + e.message;
   }
 }
 
@@ -2318,8 +2324,27 @@ function showCompleteDayModal() {
   const latest = getLatestHEM();
   const moods = ['','😞','😐','😊'];
   const energies = ['','🪫','⚡','🔥'];
-  document.getElementById('modal-date').textContent =
-    new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+
+  // Smart backdate: before 10am defaults to yesterday
+  const now = new Date();
+  const isEarlyMorning = now.getHours() < 10;
+  const yesterdayKey = new Date(now.getTime() - 86400000).toISOString().split('T')[0];
+  const defaultDate = isEarlyMorning ? yesterdayKey : todayKey();
+
+  const dateInput = document.getElementById('modal-date-input');
+  dateInput.value = defaultDate;
+  dateInput.max = todayKey();
+  const minD = new Date(); minD.setDate(minD.getDate() - 7);
+  dateInput.min = minD.toISOString().split('T')[0];
+
+  const noteEl = document.getElementById('modal-date-note');
+  if (isEarlyMorning) {
+    noteEl.textContent = "🌅 Looks like you're completing yesterday — change the date if needed.";
+    noteEl.style.color = 'var(--accent)';
+    noteEl.style.display = 'block';
+  } else {
+    noteEl.style.display = 'none';
+  }
 
   const gp = goals.protein || 150;
   const gc = goals.cal || 1800;
@@ -2345,14 +2370,41 @@ function showCompleteDayModal() {
   document.getElementById('complete-modal').classList.add('open');
 }
 
+function updateModalDate() {
+  const val = document.getElementById('modal-date-input').value;
+  const noteEl = document.getElementById('modal-date-note');
+  if (!val) { noteEl.style.display = 'none'; return; }
+  const now = new Date();
+  const yesterdayKey = new Date(now.getTime() - 86400000).toISOString().split('T')[0];
+  const isYesterday = val === yesterdayKey;
+  const isToday = val === todayKey();
+  const label = new Date(val + 'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
+  if (isToday) {
+    noteEl.textContent = '📅 Saving as today';
+    noteEl.style.color = 'var(--muted)';
+  } else if (isYesterday) {
+    noteEl.textContent = '📅 Saving as yesterday';
+    noteEl.style.color = 'var(--accent)';
+  } else {
+    noteEl.textContent = '📅 Saving as ' + label;
+    noteEl.style.color = 'var(--yellow)';
+  }
+  noteEl.style.display = 'block';
+}
+
 function closeCompleteModal() { document.getElementById('complete-modal').classList.remove('open'); }
 
 async function confirmCompleteDay() {
   const { totalP, totalCal, totalFiber } = getTotals();
   const latest = getLatestHEM();
+
+  // Use the date selected in the modal picker
+  const selectedDate = document.getElementById('modal-date-input').value || todayKey();
+  const displayDate = new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+
   const entry = {
-    date: new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}),
-    isoDate: todayKey(),
+    date: displayDate,
+    isoDate: selectedDate,
     protein: Math.round(totalP),
     cal: totalCal,
     water,
@@ -2378,7 +2430,7 @@ async function confirmCompleteDay() {
 
   // Push to worker
   await pushDayToWorker({
-    date: entry.isoDate,
+    date: selectedDate,
     protein: entry.protein,
     calories: entry.cal,
     water: entry.water,
