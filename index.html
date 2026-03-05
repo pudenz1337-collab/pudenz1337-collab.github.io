@@ -2655,6 +2655,7 @@ async function askCoach() {
   const q     = input?.value.trim();
   if (!q) return;
   if (!WORKER_URL) { toast('Set Worker URL in Settings', true); return; }
+  if (coachInFlight) { toast('Coach is thinking — try in a moment', true); return; }
 
   input.value = '';
   const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -2664,17 +2665,30 @@ async function askCoach() {
   const sendBtn   = document.getElementById('coach-send');
   if (askStatus) askStatus.style.display = 'flex';
   if (sendBtn)   sendBtn.disabled = true;
+  coachInFlight = true;
+
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('timeout')), 15000);
+  });
 
   try {
-    const res = await wFetch('/api/coach', { method: 'POST', body: JSON.stringify(buildCoachPayload(q, 'ask')) });
+    const res = await Promise.race([
+      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(buildCoachPayload(q, 'ask')) }),
+      timeoutPromise
+    ]);
+    clearTimeout(timeoutId);
     const now2 = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     appendMsg('coach', res.coaching, now2);
   } catch (e) {
-    appendMsg('coach', '⚠️ ' + e.message, now, true);
+    clearTimeout(timeoutId);
+    const msg = e.message === 'timeout' ? '⚠️ Response timed out — try again.' : '⚠️ ' + e.message;
+    appendMsg('coach', msg, now);
+  } finally {
+    coachInFlight = false;
+    if (askStatus) askStatus.style.display = 'none';
+    if (sendBtn)   sendBtn.disabled = false;
   }
-
-  if (askStatus) askStatus.style.display = 'none';
-  if (sendBtn)   sendBtn.disabled = false;
 }
 
 const MAX_VISIBLE_MSGS = 5;
