@@ -212,6 +212,13 @@ body{
   transition:color .15s;line-height:1;flex-shrink:0;
 }
 .food-remove:hover{color:var(--danger)}
+.food-qty-btn{
+  background:var(--card2);border:1px solid var(--border);
+  color:var(--muted);cursor:pointer;font-size:11px;
+  padding:2px 6px;border-radius:5px;flex-shrink:0;
+  transition:border-color .15s,color .15s;font-family:'DM Mono',monospace;
+}
+.food-qty-btn:hover{border-color:var(--accent);color:var(--accent)}
 .food-empty{
   text-align:center;padding:28px 20px;color:var(--muted);
   font-size:13px;
@@ -813,13 +820,18 @@ body{
     <div style="font-size:16px;font-weight:600;margin-bottom:13px">🥗 Food Library</div>
 
     <div class="card">
-      <div class="card-title">📷 Add by Photo</div>
-      <label style="display:flex;align-items:center;gap:10px;padding:11px 13px;border:2px dashed var(--border2);border-radius:var(--radius-sm);cursor:pointer;transition:all .2s;color:var(--muted);font-size:13px"
+      <div class="card-title">📷 Add by Photo or Barcode</div>
+      <label style="display:flex;align-items:center;gap:10px;padding:11px 13px;border:2px dashed var(--border2);border-radius:var(--radius-sm);cursor:pointer;transition:all .2s;color:var(--muted);font-size:13px;margin-bottom:8px"
         onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)'">
         <span style="font-size:22px">📷</span>
         <span>Scan Nutrition Label</span>
         <input type="file" accept="image/*" capture="environment" style="display:none" onchange="scanLabel(event)">
       </label>
+      <button onclick="startBarcode()" style="display:flex;align-items:center;gap:10px;padding:11px 13px;border:2px dashed var(--border2);border-radius:var(--radius-sm);cursor:pointer;transition:all .2s;color:var(--muted);font-size:13px;width:100%;background:none;text-align:left"
+        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)'">
+        <span style="font-size:22px">🔲</span>
+        <span>Scan Barcode</span>
+      </button>
       <div id="scan-status" style="display:none;margin-top:8px;padding:8px 11px;background:var(--accent-dim);border:1px solid rgba(0,229,160,.2);border-radius:var(--radius-sm);font-size:12px;color:var(--accent)"></div>
     </div>
 
@@ -975,17 +987,7 @@ body{
       <!-- Time row always visible -->
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
         <span style="font-size:11px;color:var(--muted);flex-shrink:0">Time:</span>
-        <input type="time" id="qa-time" class="field-input" style="flex:0 0 120px">
-        <span style="font-size:11px;color:var(--muted)">→</span>
-        <select id="qa-meal-hint" class="field-input" style="flex:1;font-size:12px">
-          <option value="">No meal label</option>
-          <option value="Breakfast">Breakfast</option>
-          <option value="Morning Snack">Morning Snack</option>
-          <option value="Lunch">Lunch</option>
-          <option value="Afternoon Snack">Afternoon Snack</option>
-          <option value="Dinner">Dinner</option>
-          <option value="Evening Snack">Evening Snack</option>
-        </select>
+        <input type="time" id="qa-time" class="field-input" style="flex:1">
       </div>
 
       <!-- Pinned tab -->
@@ -1105,6 +1107,31 @@ body{
   </div>
 </div>
 
+<!-- Qty Edit Modal (logged entry) -->
+<div class="modal-overlay" id="qty-edit-modal" onclick="if(event.target===this)closeQtyEdit()">
+  <div class="modal">
+    <div class="modal-title" id="qty-edit-title">Edit Quantity</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px" id="qty-preset-btns">
+      <button class="btn btn-g" onclick="applyQtyPreset(0.5)">½×</button>
+      <button class="btn btn-g" onclick="applyQtyPreset(1)">1×</button>
+      <button class="btn btn-g" onclick="applyQtyPreset(1.5)">1.5×</button>
+      <button class="btn btn-g" onclick="applyQtyPreset(2)">2×</button>
+      <button class="btn btn-g" onclick="applyQtyPreset(2.5)">2.5×</button>
+      <button class="btn btn-g" onclick="applyQtyPreset(3)">3×</button>
+    </div>
+    <div style="margin-bottom:12px">
+      <div class="field-label">Custom quantity</div>
+      <input class="field-input" id="qty-custom" type="number" min="0.1" step="0.1" placeholder="e.g. 0.75" style="width:100%"
+        oninput="updateQtyPreview(parseFloat(this.value)||0)">
+    </div>
+    <div id="qty-preview" style="font-size:12px;color:var(--muted);margin-bottom:12px;min-height:18px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-p" style="flex:1" onclick="saveQtyEdit()">Update</button>
+      <button class="btn btn-g btn-sm" onclick="closeQtyEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1140,9 +1167,10 @@ let dayData = {
 };
 
 // Coach state
-let coachThread  = [];  // [{role, content, time}]
-let coachStale   = false;
-let coachLoaded  = false;
+let coachThread   = [];  // [{role, content, time}]
+let coachStale    = false;
+let coachLoaded   = false;
+let coachInFlight = false;  // prevents concurrent API calls
 
 // Scanning
 let barcodeScanner = null;
@@ -1171,8 +1199,9 @@ function isToday(dateStr) {
 
 function fmtDateDisplay(dateStr) {
   if (isToday(dateStr)) return 'Today';
-  const d = new Date(dateStr + 'T12:00:00');
-  const diff = Math.round((new Date(todayISO()) - d) / 86400000);
+  const d    = new Date(dateStr      + 'T12:00:00');
+  const now  = new Date(todayISO()   + 'T12:00:00'); // use noon on both sides — avoids UTC midnight skew
+  const diff = Math.round((now - d) / 86400000);
   if (diff === 1) return 'Yesterday';
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
@@ -1204,6 +1233,7 @@ function showPanel(id, btn) {
   if (id === 'history') { renderHistory(); }
   if (id === 'coach')   {
     document.getElementById('coach-badge').classList.remove('show');
+    checkWeeklyCoaching();  // run weekly session if due before regular checkin
     if (coachStale && WORKER_URL) triggerCoaching('checkin', true);
   }
 }
@@ -1535,22 +1565,25 @@ function renderWater() {
 // ══════════════════════════════════════════════════
 let _pendingHEM = { h: null, e: null, m: null };
 
+let _pendingHEM = { h: null, e: null, m: null };
+let _hemFieldTimers = { h: null, e: null, m: null }; // per-field 10s debounce
+
 function setHEM(type, val) {
   _pendingHEM[type] = val;
-  // Update button highlight
+  // Update button highlight immediately so UI feels responsive
   ['1','2','3'].forEach(v => {
     const el = document.getElementById(`${type}-${v}`);
     if (el) el.classList.toggle('sel', parseInt(v) === val);
   });
-  // Log if all three are set, or log partial after 2s
-  clearTimeout(_hemLogTimer);
-  if (_pendingHEM.h && _pendingHEM.e && _pendingHEM.m) {
-    logHEM();
-  } else {
-    _hemLogTimer = setTimeout(() => { if (_pendingHEM.h || _pendingHEM.e || _pendingHEM.m) logHEM(); }, 2000);
-  }
+  // Per-field debounce: resetting THIS field's timer doesn't disturb H/E/M timers
+  clearTimeout(_hemFieldTimers[type]);
+  _hemFieldTimers[type] = setTimeout(() => {
+    _hemFieldTimers[type] = null;
+    // Only log if there's actually something pending (another field's earlier timer
+    // may have already fired logHEM and cleared _pendingHEM)
+    if (_pendingHEM.h || _pendingHEM.e || _pendingHEM.m) logHEM();
+  }, 10000);
 }
-let _hemLogTimer;
 
 function logHEM() {
   const note  = document.getElementById('hem-note').value.trim();
@@ -1593,7 +1626,6 @@ function addFoodToLog(food, qty = 1) {
   qty = Math.max(0.5, qty);
   const timeStr  = document.getElementById('qa-time').value || nowTimeStr();
   const ts       = timeStrToTimestamp(timeStr, viewDate);
-  const mealHint = document.getElementById('qa-meal-hint').value || null;
 
   // 15-min dedup: same food within window → combine
   const dup = dayData.foodLog.find(e => {
@@ -1619,7 +1651,6 @@ function addFoodToLog(food, qty = 1) {
       name:        food.name,
       displayName: qty !== 1 ? `${food.name} ×${qty}` : food.name,
       timestamp:   ts,
-      mealHint,
       qty,
       calories: Math.round(food.calories * qty),
       protein:  Math.round(food.protein  * qty * 10) / 10,
@@ -1655,6 +1686,71 @@ function removeFood(id) {
   scheduleCoachRefresh(90000);
 }
 
+// ── Qty Edit (logged entry) ───────────────────────────────────────────────────
+let _qtyEditId = null;
+
+function openQtyEdit(id) {
+  const entry = dayData.foodLog.find(f => f.id === id);
+  if (!entry) return;
+  _qtyEditId = id;
+  document.getElementById('qty-edit-title').textContent = entry.name;
+  document.getElementById('qty-custom').value = '';
+  updateQtyPreview(entry.qty || 1);
+  document.getElementById('qty-edit-modal').classList.add('open');
+}
+
+function applyQtyPreset(qty) {
+  document.getElementById('qty-custom').value = qty;
+  updateQtyPreview(qty);
+}
+
+function updateQtyPreview(qty) {
+  const entry = _qtyEditId ? dayData.foodLog.find(f => f.id === _qtyEditId) : null;
+  if (!entry) return;
+  const base = entry.qty ? entry.calories / entry.qty : entry.calories;
+  const baseP = entry.qty ? entry.protein  / entry.qty : entry.protein;
+  const newCal  = Math.round(base  * qty);
+  const newProt = Math.round(baseP * qty * 10) / 10;
+  document.getElementById('qty-preview').textContent = `→ ${newCal} kcal · ${newProt}g protein`;
+}
+
+function closeQtyEdit() {
+  document.getElementById('qty-edit-modal').classList.remove('open');
+  _qtyEditId = null;
+}
+
+function saveQtyEdit() {
+  const rawVal = document.getElementById('qty-custom').value;
+  const newQty = parseFloat(rawVal);
+  if (!newQty || newQty <= 0) { toast('Enter a valid quantity', true); return; }
+  const entry = dayData.foodLog.find(f => f.id === _qtyEditId);
+  if (!entry) { closeQtyEdit(); return; }
+
+  // Derive base-per-1 macros from current stored values + current qty
+  const oldQty  = entry.qty || 1;
+  const baseCal  = entry.calories / oldQty;
+  const baseProt = entry.protein  / oldQty;
+  const baseCarb = (entry.carbs  || 0) / oldQty;
+  const baseFat  = (entry.fat    || 0) / oldQty;
+  const baseFib  = (entry.fiber  || 0) / oldQty;
+
+  entry.qty         = newQty;
+  entry.calories    = Math.round(baseCal  * newQty);
+  entry.protein     = Math.round(baseProt * newQty * 10) / 10;
+  entry.carbs       = Math.round(baseCarb * newQty * 10) / 10;
+  entry.fat         = Math.round(baseFat  * newQty * 10) / 10;
+  entry.fiber       = Math.round(baseFib  * newQty * 10) / 10;
+  entry.displayName = newQty !== 1 ? `${entry.name} ×${newQty}` : entry.name;
+
+  closeQtyEdit();
+  renderFoodTimeline();
+  renderRings();
+  renderInsights();
+  saveDayDebounced();
+  scheduleCoachRefresh(90000);
+  toast(`✓ Updated to ×${newQty}`);
+}
+
 function renderFoodTimeline() {
   const el = document.getElementById('food-timeline');
   const sorted = [...dayData.foodLog].sort((a, b) =>
@@ -1671,8 +1767,9 @@ function renderFoodTimeline() {
       <div class="food-time">${fmtTime(item.timestamp)}</div>
       <div class="food-info">
         <div class="food-name">${item.displayName || item.name}</div>
-        <div class="food-macros">${item.calories} kcal · ${item.protein}g P${item.fiber ? ' · ' + item.fiber + 'g F' : ''}${item.mealHint ? ' · ' + item.mealHint : ''}</div>
+        <div class="food-macros">${item.calories} kcal · ${item.protein}g P${item.fiber ? ' · ' + item.fiber + 'g F' : ''}</div>
       </div>
+      <button class="food-qty-btn" onclick="openQtyEdit('${item.id}')" title="Edit quantity">×${item.qty || 1}</button>
       <button class="food-remove" onclick="removeFood('${item.id}')">✕</button>
     </div>`).join('');
 
@@ -1832,7 +1929,7 @@ function buildInsights() {
         title: `${Math.round(t.protein)}g protein · ${Math.round(left)}g to go`,
         body: left <= 30
           ? 'Almost there — one protein source closes it out.'
-          : 'Spread remaining protein across meals rather than cramming at dinner.',
+          : 'Spread remaining protein across the next few hours rather than cramming it all at once.',
       });
     }
   } else if (t.protein >= gp) {
@@ -1878,7 +1975,7 @@ function buildInsights() {
     ins.push({
       type: 'blue', icon: '💧', color: 'var(--blue)',
       title: `${t.water}oz water — ${Math.round(gw - t.water)}oz still needed`,
-      body: 'Drink a glass now and one before dinner to stay on track.',
+      body: 'Drink a glass now and another in the next hour to stay on track.',
     });
   }
 
@@ -2412,7 +2509,9 @@ function buildCoachPayload(question = null, mode = 'checkin') {
 
 async function triggerCoaching(mode = 'checkin', silent = false) {
   if (!WORKER_URL) { if (!silent) toast('Set Worker URL in Settings', true); return; }
+  if (coachInFlight) return;  // already waiting on a response — don't stack calls
 
+  coachInFlight = true;
   coachStale = false;
   document.getElementById('coach-badge').classList.remove('show');
   const spinEl   = document.getElementById('coach-spin');
@@ -2430,10 +2529,11 @@ async function triggerCoaching(mode = 'checkin', silent = false) {
     coachLoaded = true;
   } catch (e) {
     if (!silent) toast('Coach error: ' + e.message, true);
+  } finally {
+    coachInFlight = false;
+    if (spinEl)  spinEl.style.display = 'none';
+    if (sendBtn) sendBtn.disabled = false;
   }
-
-  if (spinEl)  spinEl.style.display = 'none';
-  if (sendBtn) sendBtn.disabled = false;
 }
 
 async function askCoach() {
@@ -2463,6 +2563,8 @@ async function askCoach() {
   if (sendBtn)   sendBtn.disabled = false;
 }
 
+const MAX_VISIBLE_MSGS = 5;
+
 function appendMsg(role, text, time, isErr = false) {
   const thread  = document.getElementById('coach-thread');
   const emptyEl = document.getElementById('thread-empty');
@@ -2472,18 +2574,44 @@ function appendMsg(role, text, time, isErr = false) {
   coachThread.push({ role, content: text, time });
   localStorage.setItem('fs3-coach', JSON.stringify(coachThread));
 
-  const div = document.createElement('div');
-  div.className = 'chat-msg';
+  // Only keep last MAX_VISIBLE_MSGS messages rendered in the DOM
+  renderThreadDOM();
+}
 
-  if (role === 'user') {
-    div.innerHTML = `<div class="chat-bubble-user">${escHtml(text)}</div>`;
-  } else {
-    div.innerHTML = `<div class="chat-time">${time}</div>
-      <div class="chat-bubble-coach">${mdToHtml(text)}</div>`;
+function renderThreadDOM() {
+  const thread  = document.getElementById('coach-thread');
+  const emptyEl = document.getElementById('thread-empty');
+  if (!thread) return;
+
+  // Clear all chat-msg children, keep emptyEl
+  Array.from(thread.children).forEach(c => { if (!c.id || c.id !== 'thread-empty') c.remove(); });
+
+  const visible = coachThread.slice(-MAX_VISIBLE_MSGS);
+  const hidden  = coachThread.length - visible.length;
+
+  // Show "X earlier messages" hint if thread is longer than window
+  if (hidden > 0) {
+    const hint = document.createElement('div');
+    hint.style.cssText = 'text-align:center;font-size:11px;color:var(--muted);padding:6px 0 2px';
+    hint.textContent = `↑ ${hidden} earlier message${hidden > 1 ? 's' : ''} (cleared from view)`;
+    thread.appendChild(hint);
   }
 
-  thread.appendChild(div);
-  div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  visible.forEach(msg => {
+    const div = document.createElement('div');
+    div.className = 'chat-msg';
+    if (msg.role === 'user') {
+      div.innerHTML = `<div class="chat-bubble-user">${escHtml(msg.content)}</div>`;
+    } else {
+      div.innerHTML = `<div class="chat-time">${msg.time || ''}</div>
+        <div class="chat-bubble-coach">${mdToHtml(msg.content)}</div>`;
+    }
+    thread.appendChild(div);
+  });
+
+  // Scroll last message into view
+  const last = thread.lastElementChild;
+  if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function clearThread() {
@@ -2500,21 +2628,9 @@ function clearThread() {
 function restoreThread() {
   coachThread = JSON.parse(localStorage.getItem('fs3-coach') || '[]');
   if (!coachThread.length) return;
-  const thread  = document.getElementById('coach-thread');
   const emptyEl = document.getElementById('thread-empty');
-  if (!thread) return;
   if (emptyEl) emptyEl.style.display = 'none';
-  coachThread.forEach(msg => {
-    const div = document.createElement('div');
-    div.className = 'chat-msg';
-    if (msg.role === 'user') {
-      div.innerHTML = `<div class="chat-bubble-user">${escHtml(msg.content)}</div>`;
-    } else {
-      div.innerHTML = `<div class="chat-time">${msg.time || ''}</div>
-        <div class="chat-bubble-coach">${mdToHtml(msg.content)}</div>`;
-    }
-    thread.appendChild(div);
-  });
+  renderThreadDOM();
   coachLoaded = true;
 }
 
@@ -2531,6 +2647,39 @@ function scheduleCoachRefresh(delayMs) {
       document.getElementById('coach-badge').classList.add('show');
     }
   }, delayMs);
+}
+
+// ── Weekly coaching ───────────────────────────────────────────────────────────
+// Runs once per week on any Friday-or-later open if not yet run this week.
+function checkWeeklyCoaching() {
+  if (!WORKER_URL || coachInFlight) return;
+
+  const now      = new Date();
+  const dayOfWeek = now.getDay();    // 0=Sun … 5=Fri … 6=Sat
+  const hour      = now.getHours();
+
+  // Only eligible Friday (5) or Saturday (6) after 8pm, or any day after Saturday (Sun)
+  const isFridayAfter8 = dayOfWeek === 5 && hour >= 20;
+  const isWeekendAfter = dayOfWeek === 6 || dayOfWeek === 0;
+  if (!isFridayAfter8 && !isWeekendAfter) return;
+
+  // Compute ISO date of this week's Friday
+  const friday = new Date(now);
+  const daysToFriday = (5 - dayOfWeek + 7) % 7; // days since last Friday
+  friday.setDate(now.getDate() - (dayOfWeek >= 5 ? dayOfWeek - 5 : dayOfWeek + 2));
+  const fridayISO = friday.toISOString().split('T')[0];
+
+  const lastWeekly = localStorage.getItem('fs3-weekly-date');
+  if (lastWeekly === fridayISO) return; // already ran this week
+
+  // Mark immediately so rapid tab opens don't double-fire
+  localStorage.setItem('fs3-weekly-date', fridayISO);
+
+  // Append a system message to thread before triggering
+  const now2 = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  appendMsg('coach', '📊 Running your weekly performance analysis…', now2);
+
+  triggerCoaching('weekly', true);
 }
 
 // ══════════════════════════════════════════════════
@@ -2628,12 +2777,62 @@ async function confirmCloseDay() {
 function checkAutoComplete() {
   const lastDate = localStorage.getItem('fs3-today');
   const today    = todayISO();
+
   if (lastDate && lastDate !== today) {
-    // New day — reset today's live data but don't wipe past day
-    localStorage.setItem('fs3-today', today);
+    // App opened on a new day — check if yesterday was never closed
+    const yesterdayCache = loadDayFromCache(lastDate);
+    if (yesterdayCache && yesterdayCache.status !== 'complete' &&
+        (yesterdayCache.foodLog?.length || yesterdayCache.workouts?.length || yesterdayCache.waterLog?.length)) {
+      autoFinalizeDay(lastDate, yesterdayCache);
+    }
     clearThread(); // start fresh coach thread for new day
   }
+
   localStorage.setItem('fs3-today', today);
+  scheduleMidnightClose();
+}
+
+function autoFinalizeDay(dateStr, data) {
+  data.status      = 'complete';
+  data.completedAt = new Date().toISOString();
+  data.autoCompleted = true;
+  saveDayToCache(dateStr, data);
+
+  if (WORKER_URL) {
+    wFetch(`/api/daily/${dateStr}`, { method: 'PUT', body: JSON.stringify(data) }).catch(() => {});
+  }
+
+  // Add to history if not already there
+  const alreadyIn = history.some(h => h.isoDate === dateStr);
+  if (!alreadyIn) {
+    const t = {
+      protein:  Math.round((data.foodLog||[]).reduce((a,f) => a+(f.protein||0), 0)),
+      calories: Math.round((data.foodLog||[]).reduce((a,f) => a+(f.calories||0), 0)),
+      water:    Math.round((data.waterLog||[]).reduce((a,w) => a+(w.oz||0), 0)),
+      fiber:    Math.round((data.foodLog||[]).reduce((a,f) => a+(f.fiber||0), 0)),
+    };
+    const displayDate = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    history.unshift({ date: displayDate, isoDate: dateStr, ...t, flags: data.flags, completedAt: data.completedAt });
+    if (history.length > 90) history = history.slice(0, 90);
+    localStorage.setItem('fs3-hist', JSON.stringify(history));
+  }
+}
+
+function scheduleMidnightClose() {
+  const now        = new Date();
+  const midnight   = new Date(now);
+  midnight.setHours(23, 59, 0, 0);
+  const msUntil = midnight - now;
+  if (msUntil <= 0) return; // already past 11:59 today
+  setTimeout(() => {
+    // Auto-finalize today if still open
+    if (dayData.status !== 'complete' && isToday(viewDate)) {
+      autoFinalizeDay(viewDate, dayData);
+      toast('Day auto-completed at midnight');
+      // Reset for new day
+      setTimeout(() => location.reload(), 2000);
+    }
+  }, msUntil);
 }
 
 // ══════════════════════════════════════════════════
@@ -2752,8 +2951,9 @@ function nukeTodayData() {
   if (!confirm('Clear today\'s data?')) return;
   dayData.foodLog  = [];
   dayData.waterLog = [];
+  dayData.workouts = [];
   saveDayToCache(viewDate, dayData);
-  renderFoodTimeline(); renderRings(); renderWater(); renderInsights();
+  renderFoodTimeline(); renderRings(); renderWater(); renderWorkouts(); renderInsights();
   toast('Today cleared');
 }
 
@@ -2781,22 +2981,58 @@ function renderHeroTime() {
 // MARKDOWN → HTML
 // ══════════════════════════════════════════════════
 function mdToHtml(text) {
-  const lines   = text.split('\n');
-  let html      = '';
-  let inUl      = false;
+  const lines = text.split('\n');
+  let html    = '';
+  let inUl    = false;
+  let inOl    = false;
+
+  const closeList = () => {
+    if (inUl) { html += '</ul>'; inUl = false; }
+    if (inOl) { html += '</ol>'; inOl = false; }
+  };
+
   for (const line of lines) {
     const t = line.trim();
-    if (!t) { if (inUl) { html += '</ul>'; inUl = false; } continue; }
+
+    // blank line — close any open list
+    if (!t) { closeList(); continue; }
+
+    // heading: ### or ## or #
+    if (/^#{1,3}\s+/.test(t)) {
+      closeList();
+      const level = t.match(/^(#{1,3})/)[1].length;
+      const tag   = level === 1 ? 'h3' : 'h4';
+      const inner = mdInline(t.replace(/^#{1,3}\s+/, ''));
+      html += `<${tag} style="margin:10px 0 4px;color:var(--accent);font-size:${level===1?'14px':'13px'}">${inner}</${tag}>`;
+      continue;
+    }
+
+    // unordered bullet: - or *
     if (/^[-*]\s+/.test(t)) {
+      if (inOl) { html += '</ol>'; inOl = false; }
       if (!inUl) { html += '<ul>'; inUl = true; }
       html += `<li>${mdInline(t.replace(/^[-*]\s+/, ''))}</li>`;
-    } else {
-      if (inUl) { html += '</ul>'; inUl = false; }
-      if (t.startsWith('<')) html += t;
-      else html += `<p>${mdInline(t)}</p>`;
+      continue;
     }
+
+    // ordered list: 1. 2. etc
+    if (/^\d+\.\s+/.test(t)) {
+      if (inUl) { html += '</ul>'; inUl = false; }
+      if (!inOl) { html += '<ol style="margin:6px 0 6px 16px;display:flex;flex-direction:column;gap:3px">'; inOl = true; }
+      html += `<li>${mdInline(t.replace(/^\d+\.\s+/, ''))}</li>`;
+      continue;
+    }
+
+    // horizontal rule
+    if (/^---+$/.test(t)) { closeList(); html += '<hr style="border:none;border-top:1px solid var(--border);margin:6px 0">'; continue; }
+
+    // plain paragraph
+    closeList();
+    if (t.startsWith('<')) html += t;
+    else html += `<p>${mdInline(t)}</p>`;
   }
-  if (inUl) html += '</ul>';
+
+  closeList();
   return html;
 }
 

@@ -435,7 +435,7 @@ TONE: Direct, coach-like, encouraging but not vague. Specific numbers over reass
           }).join(' | ')
       : 'No H-E-M logged yet';
 
-    // ── Food log — sorted by typed timestamp, grouped by mealHint/time ───
+    // ── Food log — sorted by timestamp, grouped by time-of-day period ───────
     const sortedFood = [...foodLog].sort((a,b) => (a.timestamp||'').localeCompare(b.timestamp||''));
     let mealLines = [];
     if (sortedFood.length) {
@@ -444,24 +444,25 @@ TONE: Direct, coach-like, encouraging but not vague. Specific numbers over reass
       sortedFood.forEach(item => {
         const t    = fmtISO(item.timestamp);
         const hour = item.timestamp ? new Date(item.timestamp).getHours() : 12;
-        const hint = item.mealHint ||
-          (hour <  10 ? 'Breakfast'        :
-           hour <  11 ? 'Morning Snack'    :
-           hour <  14 ? 'Lunch'            :
-           hour <  16 ? 'Afternoon Snack'  :
-           hour <  20 ? 'Dinner'           : 'Evening Snack');
-        if (!groups[hint]) { groups[hint] = { items:[], firstTime: t }; groupOrder.push(hint); }
-        groups[hint].items.push(item);
+        // Time-of-day period — no meal labels
+        const period =
+          hour <  9  ? 'Morning (before 9am)'    :
+          hour <  12 ? 'Late Morning (9–12pm)'   :
+          hour <  14 ? 'Midday (12–2pm)'         :
+          hour <  17 ? 'Afternoon (2–5pm)'        :
+          hour <  20 ? 'Evening (5–8pm)'          : 'Night (after 8pm)';
+        if (!groups[period]) { groups[period] = { items:[], firstTime: t }; groupOrder.push(period); }
+        groups[period].items.push(item);
       });
-      mealLines = groupOrder.map(meal => {
-        const g     = groups[meal];
-        const mealP = Math.round(g.items.reduce((a,i) => a+(i.protein||0), 0));
-        const mealC = Math.round(g.items.reduce((a,i) => a+(i.calories||0), 0));
-        const foods = g.items.map(i => `${i.displayName||i.name}(${i.protein||0}g P)`).join(', ');
-        return `${meal} (${g.firstTime}): ${mealP}g protein, ${mealC}kcal — ${foods}`;
+      mealLines = groupOrder.map(period => {
+        const g      = groups[period];
+        const periodP = Math.round(g.items.reduce((a,i) => a+(i.protein||0), 0));
+        const periodC = Math.round(g.items.reduce((a,i) => a+(i.calories||0), 0));
+        const foods   = g.items.map(i => `${i.displayName||i.name}(${i.protein||0}g P)`).join(', ');
+        return `${period} [${g.firstTime}]: ${periodP}g protein, ${periodC}kcal — ${foods}`;
       });
     }
-    const mealSummary = mealLines.length ? mealLines.join('\n') : 'No meals logged yet';
+    const mealSummary = mealLines.length ? mealLines.join('\n') : 'No food logged yet';
 
     // ── Workouts — build block from workouts array ────────────────────────
     let woBlock = '';
@@ -500,11 +501,10 @@ RESPONSE FORMAT (follow exactly every time):
 1. **Status** (1-2 sentences): Where she is in the day and how she's tracking.
 2. **Snapshot** (3-4 bullets): Current protein vs goal, water vs goal, workout status, one body comp trend note if relevant.
 3. **What This Means** (2-3 sentences): Connect the numbers to her muscle-building and fat-loss goals in plain language.
-4. **Next Steps** (2-4 specific actions for the next 2-4 hours): Use her actual logged foods. Name specific items she has available.
-5. **Check Back When**: One sentence telling her when to update you (after workout, after dinner, etc.)
+4. **Next Steps** (2-4 specific actions for the next 2-4 hours): Use her actual logged foods and times. Reference specific time windows, not meal names.
+5. **Check Back When**: One sentence telling her when to update you (after workout, after 6pm, etc.)
 
-Keep responses SHORT and direct. No long paragraphs. Coach texting style.
-If she asks a follow-up question, answer it directly, then give updated next steps.`;
+Keep responses SHORT and direct. No long paragraphs. Coach texting style. Never reference breakfast/lunch/dinner — use time of day instead (e.g., "before 2pm", "after your workout").`;
 
     const systemData = `
 TODAY'S DATA (${currentTime}):
@@ -540,7 +540,7 @@ Give me my coaching check-in.`;
 Protein: ${todayProtein}g / ${proteinGoal}g | Water: ${todayWater}oz
 ${woBlock}
 Latest HEM: ${latestHEM}
-Meals: ${mealLines.join('; ') || 'none yet'}
+Food logged: ${mealLines.join('; ') || 'none yet'}
 
 ${lastUserMsg}`;
     }
@@ -555,6 +555,56 @@ ${lastUserMsg}`;
     systemAddition = '\nFocus: Deep dive into body composition trends only. What do the Evolt numbers mean? What is the trajectory? What specific behaviors are driving changes? End with: "Your Top 3 Body Composition Priorities."';
     userMsg = `Analyze my body composition data in depth.\n\nEvolt Scans:\n${evoltLines}\nOverall delta: ${evoltDelta}\n\nNutrition (last 14 days):\n${nutritionLines}`;
 
+  } else if (mode === 'weekly') {
+    // ── Weekly deep analysis — runs Friday evening, checks full week ─────────
+    const recentWeek = fuelstrong.slice(-7);
+    const weekProtein = recentWeek.length
+      ? recentWeek.map(d => `${d.date}: ${d.protein}g protein, ${d.calories||'?'}kcal, ${d.water||'?'}oz water${d.flags?.trainingDay ? ' 💪' : ''}${d.flags?.injectionDay ? ' 💉' : ''}`).join('\n')
+      : 'No logged days this week';
+
+    const avgWeekP   = recentWeek.length ? Math.round(recentWeek.reduce((a,d)=>a+d.protein,0) / recentWeek.length) : null;
+    const avgWeekCal = recentWeek.length ? Math.round(recentWeek.reduce((a,d)=>a+(d.calories||0),0) / recentWeek.length) : null;
+    const workoutDays = recentWeek.filter(d => d.flags?.trainingDay).length;
+    const injDays    = recentWeek.filter(d => d.flags?.injectionDay).length;
+
+    systemAddition = `
+You are giving Hanna her weekly performance review. Be concise, direct, and data-driven. No fluff.
+
+OUTPUT FORMAT (use exactly):
+### What Worked This Week
+2-3 specific wins with numbers (protein averages, workout days, body comp improvements).
+
+### What Limited Progress
+2-3 specific gaps or patterns holding her back. Use actual data.
+
+### Adjustments for Next Week
+3 concrete, numbered actions she can take next week. Be specific — name foods, times, targets.
+
+### Trend Check
+One sentence on where her body composition trajectory is heading if she keeps this pattern.
+
+Keep the whole response under 300 words. No motivation fluff. Coach data review style.`;
+
+    userMsg = `Weekly review — week ending ${new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}.
+
+DAILY LOG (last 7 days):
+${weekProtein}
+
+WEEKLY AVERAGES:
+Protein: ${avgWeekP||'no data'}g/day | Calories: ${avgWeekCal||'no data'}/day
+Training days: ${workoutDays}/7 | Injection days: ${injDays} this week
+
+BODY COMPOSITION (recent Evolt):
+${evoltLines || 'No scans available'}
+Overall delta: ${evoltDelta}
+
+14-DAY NUTRITION TREND:
+${nutritionLines}
+
+TIRZEPATIDE: ${tirzepatide.dose||'unknown'}mg | Days since last injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
+
+Generate my weekly review.`;
+
   } else if (mode === 'training') {
     systemAddition = '\nFocus: Deep analysis of training quality for muscle building. Analyze rep ranges, exercise selection, consistency, recovery, progressive overload. End with: "Your Top 3 Training Adjustments."';
     userMsg = `Analyze my training data in depth.\n\nWorkout Analytics:\n${woLines}\n\nBody Composition Impact:\n${evoltDelta}\n\nMuscle trend:\n${evolt.slice(-6).map(s=>`${s.date}: ${s.skeletalMuscleMass}lbs muscle`).join(', ')}`;
@@ -567,7 +617,7 @@ ${lastUserMsg}`;
 
   // Build messages array — support conversation history for daily coaching
   let messagesArr;
-  if (mode === 'fuelstrong_daily' && body.history && body.history.length > 0) {
+  if ((mode === 'fuelstrong_daily' || mode === 'checkin') && body.history && body.history.length > 0) {
     messagesArr = [...body.history, { role: 'user', content: userMsg }];
   } else {
     messagesArr = [{ role: 'user', content: userMsg }];
@@ -575,7 +625,7 @@ ${lastUserMsg}`;
 
   const resp = await callClaude(env, {
     model: 'claude-sonnet-4-6',
-    max_tokens: mode === 'dashboard' ? 1600 : 1200,
+    max_tokens: (mode === 'dashboard' || mode === 'weekly') ? 1600 : 1200,
     system: baseSystem + systemAddition,
     messages: messagesArr
   });
