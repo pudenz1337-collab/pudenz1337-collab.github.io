@@ -222,6 +222,53 @@ body{
 .setting-input:focus{border-color:var(--accent)}
 textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
 
+/* ── MOMENTUM SIGNAL ── */
+.momentum-card{
+  border-radius:var(--radius);padding:13px 14px;margin-bottom:10px;
+  border:1px solid var(--border2);background:var(--card);
+  position:relative;overflow:hidden;
+}
+.momentum-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.momentum-card.building::before{background:var(--accent)}
+.momentum-card.holding::before{background:var(--blue)}
+.momentum-card.drifting::before{background:var(--yellow)}
+.momentum-top{display:flex;align-items:center;gap:9px;margin-bottom:6px}
+.momentum-state{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1.5px}
+.momentum-state.building{color:var(--accent)}
+.momentum-state.holding{color:var(--blue)}
+.momentum-state.drifting{color:var(--yellow)}
+.momentum-badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.5px}
+.momentum-badge.building{background:var(--accent-dim);color:var(--accent)}
+.momentum-badge.holding{background:var(--blue-dim);color:var(--blue)}
+.momentum-badge.drifting{background:var(--yellow-dim);color:var(--yellow)}
+.momentum-headline{font-size:12px;line-height:1.6;color:var(--text);margin-bottom:5px}
+.momentum-priority{font-size:11px;color:var(--accent);font-style:italic}
+.momentum-priority.holding{color:var(--blue)}
+.momentum-priority.drifting{color:var(--yellow)}
+
+/* ── SCAN INTERVALS ── */
+.interval-card{
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:12px 13px;margin-bottom:7px;
+}
+.interval-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.interval-dates{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)}
+.interval-outcome{
+  font-size:10px;font-weight:700;padding:2px 9px;border-radius:10px;
+  text-transform:uppercase;letter-spacing:.4px;
+}
+.outcome-recomp{background:var(--accent-dim);color:var(--accent)}
+.outcome-building{background:var(--blue-dim);color:var(--blue)}
+.outcome-cutting{background:rgba(180,127,255,.12);color:var(--purple)}
+.outcome-maintaining{background:var(--border2);color:var(--muted)}
+.outcome-muscle_loss{background:rgba(255,69,96,.1);color:var(--danger)}
+.outcome-unknown{background:var(--border2);color:var(--muted)}
+.interval-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+.interval-stat{text-align:center}
+.interval-stat-val{font-family:'Bebas Neue',sans-serif;font-size:18px;line-height:1}
+.interval-stat-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:1px}
+.interval-detail{font-size:11px;color:var(--muted);margin-top:7px;line-height:1.6;border-top:1px solid var(--border);padding-top:7px}
+
 /* ── MISC ── */
 .btn{
   padding:9px 18px;border-radius:8px;border:none;cursor:pointer;
@@ -295,6 +342,9 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
     <!-- Since-Last-Scan Hero -->
     <div id="scan-hero-wrap"></div>
 
+    <!-- Momentum Signal -->
+    <div id="momentum-wrap"></div>
+
     <!-- Quick stats row -->
     <div id="overview-stats" class="stat-row" style="display:none"></div>
 
@@ -353,6 +403,10 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
       <!-- Scan list -->
       <div class="section-label">All Scans</div>
       <div id="scan-list"></div>
+
+      <!-- Scan Interval Analysis -->
+      <div class="section-label" id="intervals-section-label" style="display:none">Interval Analysis — What Each Period Produced</div>
+      <div id="scan-intervals-wrap"></div>
     </div>
   </div>
 
@@ -600,8 +654,8 @@ function showPanel(id, btn) {
   document.getElementById('panel-' + id).classList.add('active');
   btn.classList.add('active');
 
-  if (id === 'overview')  renderOverview();
-  if (id === 'body')      renderBody();
+  if (id === 'overview')  { renderOverview(); loadMomentum(); }
+  if (id === 'body')      { renderBody(); loadScanIntervals(); }
   if (id === 'training')  renderTraining();
   if (id === 'insights') {
     document.getElementById('ins-badge').classList.remove('show');
@@ -681,6 +735,7 @@ async function loadFromWorker() {
     renderOverview();
     renderDataSummary();
     checkInsightsFreshness();
+    loadMomentum();
   } catch (e) {
     setConn('err');
     sync.style.display = 'none';
@@ -787,6 +842,7 @@ async function handleFiles(files, type) {
     renderOverview(); renderBody(); renderTraining(); renderDataSummary();
     document.getElementById('ins-badge').classList.add('show');
     document.getElementById('coach-badge').classList.add('show');
+    loadMomentum();
   } else {
     plog('No new records added.', 'lwarn');
   }
@@ -988,6 +1044,134 @@ function normalizeMuscleGroup(str) {
   if (/bicep|tricep|arm|curl|push.*down/.test(s)) return 'Arms';
   if (/core|ab|plank|crunch/.test(s)) return 'Core';
   return 'Other';
+}
+
+// ══════════════════════════════════════════════
+// MOMENTUM SIGNAL
+// ══════════════════════════════════════════════
+async function loadMomentum() {
+  if (!WORKER_URL) return;
+  try {
+    const m = await wFetch('/api/momentum');
+    renderMomentum(m);
+  } catch (e) {
+    console.log('[Momentum] Load failed:', e.message);
+  }
+}
+
+function renderMomentum(m) {
+  const el = document.getElementById('momentum-wrap');
+  if (!el) return;
+  if (!m || m.insufficient) { el.innerHTML = ''; return; }
+
+  const state = (m.state || 'Holding').toLowerCase();
+  const emoji = state === 'building' ? '🟢' : state === 'holding' ? '🔵' : '🟡';
+  const scanNote = m.scanDirection
+    ? (m.scanDirection.muscleUp && m.scanDirection.fatDown ? ' · Last scan: muscle up, fat down ✦' :
+       m.scanDirection.muscleUp ? ' · Last scan: muscle up' :
+       m.scanDirection.fatDown  ? ' · Last scan: fat down' : '')
+    : '';
+
+  el.innerHTML = `<div class="momentum-card ${state}">
+    <div class="momentum-top">
+      <span style="font-size:16px">${emoji}</span>
+      <span class="momentum-state ${state}">${m.state}</span>
+      <span class="momentum-badge ${state}">${state === 'building' ? 'On Track' : state === 'holding' ? 'Stable' : 'Needs Attention'}</span>
+      ${scanNote ? `<span style="font-size:10px;color:var(--muted);margin-left:auto">${scanNote}</span>` : ''}
+    </div>
+    <div class="momentum-headline">${m.headline || ''}</div>
+    ${m.priority ? `<div class="momentum-priority ${state}">→ ${m.priority}</div>` : ''}
+    ${m.metrics ? `<div style="display:flex;gap:14px;margin-top:8px;flex-wrap:wrap">
+      <span style="font-size:10px;color:var(--muted)">Protein ${m.metrics.proteinPct}% of goal</span>
+      <span style="font-size:10px;color:var(--muted)">Avg cal ${m.metrics.avgCal}</span>
+      <span style="font-size:10px;color:var(--muted)">Training ${m.metrics.weeklyTraining}/wk</span>
+      <span style="font-size:10px;color:var(--muted)">${m.metrics.loggedDays} days logged</span>
+    </div>` : ''}
+  </div>`;
+}
+
+// ══════════════════════════════════════════════
+// SCAN INTERVAL ANALYSIS
+// ══════════════════════════════════════════════
+async function loadScanIntervals() {
+  if (!WORKER_URL) return;
+  const wrap  = document.getElementById('scan-intervals-wrap');
+  const label = document.getElementById('intervals-section-label');
+  if (!wrap) return;
+
+  try {
+    const result = await wFetch('/api/scan-intervals');
+    if (!result.intervals || result.intervals.length === 0) {
+      if (label) label.style.display = 'none';
+      wrap.innerHTML = result.message
+        ? `<div style="font-size:12px;color:var(--muted);padding:10px 2px;font-style:italic">${result.message}</div>`
+        : '';
+      return;
+    }
+    if (label) label.style.display = 'block';
+    renderScanIntervals(result.intervals);
+  } catch (e) {
+    console.log('[Intervals] Load failed:', e.message);
+  }
+}
+
+function renderScanIntervals(intervals) {
+  const el = document.getElementById('scan-intervals-wrap');
+  if (!el) return;
+
+  const outcomeClass = {
+    recomp:       'outcome-recomp',
+    building:     'outcome-building',
+    cutting:      'outcome-cutting',
+    maintaining:  'outcome-maintaining',
+    muscle_loss:  'outcome-muscle_loss',
+    unknown:      'outcome-unknown',
+  };
+
+  el.innerHTML = intervals.map(iv => {
+    const mc = iv.bodyComp.muscleChange;
+    const fc = iv.bodyComp.fatChange;
+    const wc = iv.bodyComp.weightChange;
+
+    const muscleColor = mc === null ? 'var(--muted)' : mc > 0.1 ? 'var(--accent)' : mc < -0.1 ? 'var(--danger)' : 'var(--muted)';
+    const fatColor    = fc === null ? 'var(--muted)' : fc < -0.2 ? 'var(--accent)' : fc > 0.2 ? 'var(--danger)' : 'var(--muted)';
+    const weightColor = wc === null ? 'var(--muted)' : wc < 0 ? 'var(--accent)' : wc > 0 ? 'var(--muted)' : 'var(--muted)';
+
+    const fmt = (v, sign = true) => v === null ? '—' : `${sign && v > 0 ? '+' : ''}${v}`;
+
+    const nutritionDetail = iv.nutrition.loggedDays > 0
+      ? `Avg protein ${iv.nutrition.avgProtein !== null ? iv.nutrition.avgProtein+'g' : '—'} · Avg cal ${iv.nutrition.avgCal !== null ? iv.nutrition.avgCal : '—'} · ${iv.nutrition.loggedDays} days logged (${iv.nutrition.coveragePct}% coverage)${iv.nutrition.lowCalDays > 0 ? ` · ${iv.nutrition.lowCalDays} days under 1,200 cal ⚠️` : ''}`
+      : 'Nutrition not logged during this interval';
+
+    const trainingDetail = iv.training.totalWorkouts > 0
+      ? `${iv.training.totalWorkouts} workouts · ${iv.training.weeklyFreq}/week · Top: ${iv.training.topMuscleGroups.join(', ') || '—'}`
+      : 'Training not logged during this interval';
+
+    return `<div class="interval-card">
+      <div class="interval-header">
+        <span class="interval-dates">${iv.startDate} → ${iv.endDate} · ${iv.days}d</span>
+        <span class="interval-outcome ${outcomeClass[iv.outcome] || 'outcome-unknown'}">${iv.outcomeLabel || iv.outcome}</span>
+      </div>
+      <div class="interval-grid">
+        <div class="interval-stat">
+          <div class="interval-stat-val" style="color:${muscleColor}">${fmt(mc)}lbs</div>
+          <div class="interval-stat-label">Muscle</div>
+        </div>
+        <div class="interval-stat">
+          <div class="interval-stat-val" style="color:${fatColor}">${fmt(fc)}%</div>
+          <div class="interval-stat-label">Body Fat</div>
+        </div>
+        <div class="interval-stat">
+          <div class="interval-stat-val" style="color:${weightColor}">${fmt(wc)}lbs</div>
+          <div class="interval-stat-label">Weight</div>
+        </div>
+      </div>
+      <div class="interval-detail">
+        <div>🥗 ${nutritionDetail}</div>
+        <div style="margin-top:3px">💪 ${trainingDetail}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ══════════════════════════════════════════════
