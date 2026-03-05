@@ -1352,6 +1352,9 @@ function getDayFromCache(dateStr) {
   return raw ? JSON.parse(raw) : null;
 }
 
+// Alias — some call sites use this name
+const loadDayFromCache = getDayFromCache;
+
 function saveDayToCache(dateStr, data) {
   localStorage.setItem('fs3-day-' + dateStr, JSON.stringify(data));
 }
@@ -2510,7 +2513,11 @@ function buildCoachPayload(question = null, mode = 'checkin') {
     currentTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
     timezoneOffset: new Date().getTimezoneOffset(),
     tirzepatide: { ...tirz, daysPostInjection: daysPostInj },
-    history:     CoachUtils.normalizeCoachHistory(coachThread),
+    history:     (typeof CoachUtils !== 'undefined')
+                   ? CoachUtils.normalizeCoachHistory(coachThread)
+                   : coachThread.filter(m => m.role !== 'time')
+                       .map(m => ({ role: m.role === 'coach' ? 'assistant' : 'user', content: m.content }))
+                       .slice(-16),
     question:    question || null,
   };
 }
@@ -2605,7 +2612,10 @@ function appendMsg(role, text, time, isErr = false) {
   if (!thread) return;
 
   // Dedup: skip if identical to last coach message
-  if (role === 'coach' && CoachUtils.isDuplicateCoachMessage(coachThread, text)) return;
+  const isDup = typeof CoachUtils !== 'undefined'
+    ? CoachUtils.isDuplicateCoachMessage(coachThread, text)
+    : coachThread.slice().reverse().find(m => m.role === 'coach' || m.role === 'assistant')?.content === text;
+  if (role === 'coach' && isDup) return;
 
   if (emptyEl) emptyEl.style.display = 'none';
   coachThread.push({ role, content: text, time });
@@ -2706,6 +2716,11 @@ function scheduleCoachRefresh(delayMs) {
 // ── Weekly coaching ───────────────────────────────────────────────────────────
 function checkWeeklyCoaching() {
   if (!WORKER_URL || coachInFlight) return;
+
+  if (typeof CoachUtils === 'undefined') {
+    console.log('[Coach] CoachUtils not loaded — weekly check skipped');
+    return;
+  }
 
   if (!CoachUtils.shouldRunWeeklyCoaching('fs3-weekly-date')) {
     console.log('[Coach] Weekly analysis skipped — not due yet or already completed');
@@ -3136,7 +3151,10 @@ async function init() {
   setInterval(updateCloseSec, 300000);
 }
 
-init();
+// Wait for all external scripts (coach-utils.js, ZXing, etc.) to finish loading
+// before initialising the app. This prevents ReferenceErrors from scripts that
+// haven't evaluated yet and guarantees fetchDayData runs with a fully ready DOM.
+window.addEventListener('load', () => { init(); });
 
 // ══════════════════════════════════════════════════
 // DRAGGABLE FAB
