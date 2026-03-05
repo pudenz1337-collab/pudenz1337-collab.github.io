@@ -2400,6 +2400,7 @@ function buildCoachPayload(question = null, mode = 'checkin') {
     hem:         dayData.hem,
     workouts:    dayData.workouts,
     currentTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+    timezoneOffset: new Date().getTimezoneOffset(),
     tirzepatide: { ...tirz, daysPostInjection: daysPostInj },
     history:     coachThread
       .filter(m => m.role !== 'time')
