@@ -470,6 +470,7 @@ body{
   background:var(--card);border:1px solid var(--border);
   border-radius:14px 14px 14px 3px;
   padding:13px 15px;font-size:13px;line-height:1.75;
+
 }
 .chat-bubble-user{
   background:var(--accent-dim);border:1px solid rgba(0,229,160,.2);
@@ -483,6 +484,7 @@ body{
 .chat-bubble-coach li{list-style:disc}
 .chat-bubble-coach p{margin-bottom:8px}
 .chat-bubble-coach p:last-child{margin-bottom:0}
+.coach-stamp{display:block;margin-top:8px;font-size:10px;color:var(--muted);opacity:.7;border-top:1px solid var(--border);padding-top:6px}
 .chat-time{font-size:10px;color:var(--muted);margin-bottom:4px}
 .chat-empty{
   text-align:center;padding:50px 20px 30px;color:var(--muted);
@@ -1205,6 +1207,7 @@ let coachThread   = [];  // [{role, content, time}]
 let coachStale    = false;
 let coachLoaded   = false;
 let coachInFlight = false;  // prevents concurrent API calls
+let _coachAbortCtrl = null; // AbortController for in-flight coach call
 
 // Momentum state
 let momentumData  = null;
@@ -1339,6 +1342,7 @@ async function wFetch(path, opts = {}) {
   const r = await fetch(WORKER_URL + path, {
     ...opts,
     headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }
+    // signal passed through via opts.signal if present
   });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || 'Worker error ' + r.status);
@@ -2597,12 +2601,29 @@ function buildCoachPayload(question = null, mode = 'checkin') {
 
 async function triggerCoaching(mode = 'checkin', silent = false) {
   if (!WORKER_URL) { if (!silent) toast('Set Worker URL in Settings', true); return; }
+
+  // Manual check-in (not silent) aborts any in-flight auto-refresh so it
+  // always runs immediately with the latest data.
   if (coachInFlight) {
-    console.log('[Coach] Skipped — already in flight');
-    return;
+    if (silent) {
+      console.log('[Coach] Skipped — already in flight');
+      return;
+    }
+    // Manual: cancel the in-flight call and restart
+    if (_coachAbortCtrl) {
+      _coachAbortCtrl.abort();
+      console.log('[Coach] Aborted previous in-flight call for manual check-in');
+    }
+    // brief yield so the abort propagates before we reset
+    await new Promise(r => setTimeout(r, 50));
   }
 
-  console.log(`[Coach] Started — mode: ${mode}`);
+  // Snapshot current totals NOW (before any await) to stamp on the response
+  const t = getTotals();
+  const dataStamp = `${Math.round(t.protein)}g protein · ${Math.round(t.calories)} cal · ${Math.round(t.water)}oz water`;
+
+  console.log(`[Coach] Started — mode: ${mode} | data: ${dataStamp}`);
+  _coachAbortCtrl = new AbortController();
   coachInFlight = true;
   coachStale = false;
   document.getElementById('coach-badge').classList.remove('show');
@@ -2613,26 +2634,37 @@ async function triggerCoaching(mode = 'checkin', silent = false) {
   if (sendBtn) sendBtn.disabled = true;
   if (emptyEl) emptyEl.style.display = 'none';
 
-  // 15s hard timeout — spinner must never hang indefinitely
+  // 15s hard timeout
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => reject(new Error('timeout')), 15000);
   });
 
+  const payload = buildCoachPayload(null, mode);
+
   try {
     const res = await Promise.race([
-      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(buildCoachPayload(null, mode)) }),
+      wFetch('/api/coach', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        signal: _coachAbortCtrl.signal,
+      }),
       timeoutPromise
     ]);
     clearTimeout(timeoutId);
     const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    appendMsg('coach', res.coaching, now);
+    // Append response with a small data stamp so stale responses are obvious
+    appendMsg('coach', res.coaching + `\n\n<span class="coach-stamp">📊 ${dataStamp}</span>`, now);
     document.getElementById('coach-time').textContent = 'Last check-in: ' + now;
     localStorage.setItem('fs3-last-coach-hash', buildDataFingerprint());
     coachLoaded = true;
     console.log(`[Coach] Finished — mode: ${mode}`);
   } catch (e) {
     clearTimeout(timeoutId);
+    if (e.name === 'AbortError') {
+      console.log('[Coach] Call aborted — superseded by manual check-in');
+      return; // don't show error, the new call is taking over
+    }
     if (e.message === 'timeout') {
       const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
       if (!silent) toast('Coaching temporarily unavailable.', true);
@@ -2644,6 +2676,7 @@ async function triggerCoaching(mode = 'checkin', silent = false) {
     }
   } finally {
     coachInFlight = false;
+    _coachAbortCtrl = null;
     if (spinEl)  spinEl.style.display = 'none';
     if (sendBtn) sendBtn.disabled = false;
     console.log('[Coach] Spinner hidden, lock released');
