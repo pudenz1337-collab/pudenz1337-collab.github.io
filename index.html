@@ -2757,8 +2757,7 @@ function renderThreadDOM() {
       const isLatest  = idx === lastCoachIdx;
       const msgId     = 'cmsg-' + idx;
       const bodyId    = 'cbody-' + idx;
-      const preview   = escHtml(msg.content.replace(/<[^>]+>/g, '').slice(0, 72)).replace(/
-.*/,'') + (msg.content.length > 72 ? '…' : '');
+      const preview   = escHtml(msg.content.replace(/<[^>]+>/g, '').replace(/[\r\n].*/s, '').slice(0, 72)) + (msg.content.length > 72 ? '…' : '');
 
       wrap.innerHTML = `
         <div class="coach-accordion ${isLatest ? 'expanded' : ''}" id="${msgId}">
