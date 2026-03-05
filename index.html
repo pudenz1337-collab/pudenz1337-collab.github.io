@@ -1357,12 +1357,8 @@ function saveDayToCache(dateStr, data) {
 }
 
 async function fetchDayData(dateStr) {
-  // Try cache first
-  const cached = getDayFromCache(dateStr);
-  if (cached) { dayData = cached; return; }
-
-  // Blank default
-  dayData = {
+  // Blank default — used if both worker and cache miss
+  const blank = {
     date:     dateStr,
     foodLog:  [],
     waterLog: [],
@@ -1372,15 +1368,31 @@ async function fetchDayData(dateStr) {
     status:   'open',
   };
 
-  if (!WORKER_URL) return;
-
-  try {
-    const remote = await wFetch(`/api/daily/${dateStr}`);
-    if (remote.exists) {
-      dayData = remote;
-      saveDayToCache(dateStr, dayData);
+  if (WORKER_URL) {
+    try {
+      // Fix 1: Worker takes priority over local cache for cross-device sync
+      const remote = await wFetch(`/api/daily/${dateStr}`);
+      if (remote.exists) {
+        dayData = remote;
+        saveDayToCache(dateStr, dayData); // keep cache warm for offline use
+        return;
+      }
+      // Worker returned exists:false — day not yet saved remotely.
+      // Still check local cache in case this device has unsaved progress.
+      const cached = getDayFromCache(dateStr);
+      if (cached) { dayData = cached; return; }
+      dayData = blank;
+      return;
+    } catch (e) {
+      // Worker unreachable — fall through to local cache
+      console.log('[Sync] Worker unavailable, falling back to local cache:', e.message);
     }
-  } catch (e) { /* offline - use blank */ }
+  }
+
+  // Offline path: use local cache
+  const cached = getDayFromCache(dateStr);
+  if (cached) { dayData = cached; return; }
+  dayData = blank;
 }
 
 function saveDayDebounced(immediate = false) {

@@ -1376,7 +1376,16 @@ async function loadInsights() {
     if (ins.insights && ins.insights.length) {
       renderInsightsList(ins);
     }
-  } catch (e) { /* offline */ }
+  } catch (e) {
+    // Fix 6: show error in panel rather than silently failing
+    const emptyEl = document.getElementById('insights-empty');
+    if (emptyEl) {
+      emptyEl.textContent = 'Insights engine unavailable.';
+      emptyEl.style.display = 'block';
+    }
+    document.getElementById('insights-list').style.display = 'none';
+    console.log('[Insights] Load failed:', e.message);
+  }
 }
 
 function checkInsightsFreshness() {
@@ -1440,16 +1449,27 @@ function renderInsightsList(data) {
 
 async function generateInsights() {
   if (!WORKER_URL) { toast('Set Worker URL in Settings', true); return; }
-  const spinEl = document.getElementById('ins-spin');
+  const spinEl  = document.getElementById('ins-spin');
+  const emptyEl = document.getElementById('insights-empty');
   spinEl.style.display = 'block';
+  if (emptyEl) emptyEl.style.display = 'none';
   try {
     const ins = await wFetch('/api/insights', { method: 'POST', body: '{}' });
     renderInsightsList(ins);
     toast('✅ Insights updated!');
   } catch (e) {
+    // Fix 6: surface error in the panel, never crash the UI
+    if (emptyEl) {
+      emptyEl.textContent = 'Insights engine unavailable.';
+      emptyEl.style.display = 'block';
+    }
+    document.getElementById('insights-list').style.display = 'none';
     toast('Insights error: ' + e.message, true);
+    console.log('[Insights] Generate failed:', e.message);
+  } finally {
+    // Fix 6: spinner always stops regardless of outcome
+    spinEl.style.display = 'none';
   }
-  spinEl.style.display = 'none';
 }
 
 // ══════════════════════════════════════════════
