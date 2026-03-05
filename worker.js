@@ -394,7 +394,7 @@ TONE: Direct, coach-like, encouraging but not vague. Specific numbers over reass
 
     userMsg = `Generate my coaching dashboard.\n\nEvolt Scans (chronological):\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}${weeklyBreakdown}\n\nNutrition (last 14 days from FuelStrong):\n${nutritionLines}`;
 
-  } else if (mode === 'fuelstrong_daily') {
+  } else if (mode === 'fuelstrong_daily' || mode === 'checkin') {
     // ── Data from client (new model) ──────────────────────────────────────
     // foodLog  : flat array  { timestamp(ISO), name, displayName, calories, protein, carbs, fat, fiber, mealHint }
     // workouts : array       { startTime(ISO), endTime(ISO|null), durationMinutes, rpe, notes }

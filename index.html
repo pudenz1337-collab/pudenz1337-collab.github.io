@@ -6,6 +6,7 @@
 <title>FuelStrong</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/@zxing/library@0.18.6/umd/index.min.js"></script>
+<script src="coach-utils.js"></script>
 <style>
 /* ── TOKENS ── */
 :root {
@@ -2497,18 +2498,19 @@ function buildCoachPayload(question = null, mode = 'checkin') {
     currentTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
     timezoneOffset: new Date().getTimezoneOffset(),
     tirzepatide: { ...tirz, daysPostInjection: daysPostInj },
-    history:     coachThread
-      .filter(m => m.role !== 'time')
-      .map(m => ({ role: m.role === 'coach' ? 'assistant' : 'user', content: m.content }))
-      .slice(-16),
+    history:     CoachUtils.normalizeCoachHistory(coachThread),
     question:    question || null,
   };
 }
 
 async function triggerCoaching(mode = 'checkin', silent = false) {
   if (!WORKER_URL) { if (!silent) toast('Set Worker URL in Settings', true); return; }
-  if (coachInFlight) return;  // already waiting on a response — don't stack calls
+  if (coachInFlight) {
+    console.log('[Coach] Skipped — already in flight');
+    return;
+  }
 
+  console.log(`[Coach] Started — mode: ${mode}`);
   coachInFlight = true;
   coachStale = false;
   document.getElementById('coach-badge').classList.remove('show');
@@ -2519,18 +2521,40 @@ async function triggerCoaching(mode = 'checkin', silent = false) {
   if (sendBtn) sendBtn.disabled = true;
   if (emptyEl) emptyEl.style.display = 'none';
 
+  // 15s hard timeout — spinner must never hang indefinitely
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('timeout')), 15000);
+  });
+
   try {
-    const res = await wFetch('/api/coach', { method: 'POST', body: JSON.stringify(buildCoachPayload(null, mode)) });
+    const res = await Promise.race([
+      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(buildCoachPayload(null, mode)) }),
+      timeoutPromise
+    ]);
+    clearTimeout(timeoutId);
     const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     appendMsg('coach', res.coaching, now);
     document.getElementById('coach-time').textContent = 'Last check-in: ' + now;
+    localStorage.setItem('fs3-last-coach-hash', buildDataFingerprint());
     coachLoaded = true;
+    console.log(`[Coach] Finished — mode: ${mode}`);
   } catch (e) {
-    if (!silent) toast('Coach error: ' + e.message, true);
+    clearTimeout(timeoutId);
+    if (e.message === 'timeout') {
+      const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      if (!silent) toast('Coaching temporarily unavailable.', true);
+      appendMsg('coach', '⚠️ Coaching temporarily unavailable. Try again in a moment.', now);
+      console.log('[Coach] Timed out after 15s');
+    } else {
+      if (!silent) toast('Coach error: ' + e.message, true);
+      console.log(`[Coach] Failed — ${e.message}`);
+    }
   } finally {
     coachInFlight = false;
     if (spinEl)  spinEl.style.display = 'none';
     if (sendBtn) sendBtn.disabled = false;
+    console.log('[Coach] Spinner hidden, lock released');
   }
 }
 
@@ -2567,12 +2591,15 @@ function appendMsg(role, text, time, isErr = false) {
   const thread  = document.getElementById('coach-thread');
   const emptyEl = document.getElementById('thread-empty');
   if (!thread) return;
-  if (emptyEl) emptyEl.style.display = 'none';
 
+  // Dedup: skip if identical to last coach message
+  if (role === 'coach' && CoachUtils.isDuplicateCoachMessage(coachThread, text)) return;
+
+  if (emptyEl) emptyEl.style.display = 'none';
   coachThread.push({ role, content: text, time });
   localStorage.setItem('fs3-coach', JSON.stringify(coachThread));
 
-  // Only keep last MAX_VISIBLE_MSGS messages rendered in the DOM
+  // Render last MAX_VISIBLE_MSGS messages
   renderThreadDOM();
 }
 
@@ -2633,10 +2660,27 @@ function restoreThread() {
 }
 
 // Auto-refresh: mark stale, show badge
+// Returns a lightweight string fingerprint of today's loggable data.
+// scheduleCoachRefresh compares this to the hash stored at last coaching run —
+// if nothing changed, coachStale is NOT set and no new session is triggered.
+function buildDataFingerprint() {
+  const t = getTotals();
+  const lastHEM = dayData.hem.length ? dayData.hem[dayData.hem.length - 1].timestamp : '';
+  const woCount = dayData.workouts.length;
+  return `${t.calories}|${t.protein}|${t.water}|${woCount}|${lastHEM}`;
+}
+
 function scheduleCoachRefresh(delayMs) {
   if (!WORKER_URL) return;
   clearTimeout(_coachTimer);
   _coachTimer = setTimeout(() => {
+    // Only mark stale if data has actually changed since last coaching run
+    const currentHash = buildDataFingerprint();
+    const lastHash    = localStorage.getItem('fs3-last-coach-hash') || '';
+    if (currentHash === lastHash) {
+      console.log('[Coach] Refresh skipped — data unchanged since last session');
+      return;
+    }
     coachStale = true;
     const coachPanel = document.getElementById('panel-coach');
     if (coachPanel?.classList.contains('active')) {
@@ -2648,35 +2692,19 @@ function scheduleCoachRefresh(delayMs) {
 }
 
 // ── Weekly coaching ───────────────────────────────────────────────────────────
-// Runs once per week on any Friday-or-later open if not yet run this week.
 function checkWeeklyCoaching() {
   if (!WORKER_URL || coachInFlight) return;
 
-  const now      = new Date();
-  const dayOfWeek = now.getDay();    // 0=Sun … 5=Fri … 6=Sat
-  const hour      = now.getHours();
+  if (!CoachUtils.shouldRunWeeklyCoaching('fs3-weekly-date')) {
+    console.log('[Coach] Weekly analysis skipped — not due yet or already completed');
+    return;
+  }
 
-  // Only eligible Friday (5) or Saturday (6) after 8pm, or any day after Saturday (Sun)
-  const isFridayAfter8 = dayOfWeek === 5 && hour >= 20;
-  const isWeekendAfter = dayOfWeek === 6 || dayOfWeek === 0;
-  if (!isFridayAfter8 && !isWeekendAfter) return;
+  console.log('[Coach] Weekly analysis triggered for week of ' + CoachUtils.thisWeekFridayISO());
+  CoachUtils.markWeeklyDone('fs3-weekly-date');
 
-  // Compute ISO date of this week's Friday
-  const friday = new Date(now);
-  const daysToFriday = (5 - dayOfWeek + 7) % 7; // days since last Friday
-  friday.setDate(now.getDate() - (dayOfWeek >= 5 ? dayOfWeek - 5 : dayOfWeek + 2));
-  const fridayISO = friday.toISOString().split('T')[0];
-
-  const lastWeekly = localStorage.getItem('fs3-weekly-date');
-  if (lastWeekly === fridayISO) return; // already ran this week
-
-  // Mark immediately so rapid tab opens don't double-fire
-  localStorage.setItem('fs3-weekly-date', fridayISO);
-
-  // Append a system message to thread before triggering
-  const now2 = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  appendMsg('coach', '📊 Running your weekly performance analysis…', now2);
-
+  const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  appendMsg('coach', '📊 Running your weekly performance analysis…', now);
   triggerCoaching('weekly', true);
 }
 

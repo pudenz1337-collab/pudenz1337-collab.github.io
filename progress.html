@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="coach-utils.js"></script>
 <style>
 :root {
   --bg:#080b10; --surface:#0f1319; --card:#141a24; --card2:#1a2130;
@@ -585,8 +586,9 @@ const WORKER_KEY = 'fs3-worker'; // Same key as Tracker
 let WORKER_URL = localStorage.getItem(WORKER_KEY) || '';
 
 let data = { evolt: [], fitbod: [], fuelstrong: [] };
-let coachThread = JSON.parse(localStorage.getItem('fsp-coach') || '[]');
-let coachContext = '';
+let coachThread   = JSON.parse(localStorage.getItem('fsp-coach') || '[]');
+let coachContext  = '';
+let coachInFlight = false; // prevents concurrent coaching API calls
 let charts = {};
 
 // ══════════════════════════════════════════════
@@ -1453,37 +1455,68 @@ async function generateInsights() {
 // ══════════════════════════════════════════════
 // COACHING
 // ══════════════════════════════════════════════
-function buildCoachPayload(question = null) {
-  const latest   = data.evolt.length ? data.evolt[data.evolt.length - 1] : null;
+function buildUnifiedCoachPayload(question = null) {
   const sessions = data.fitbod;
   const last4w   = sessions.filter(s => daysDiff(s.date) <= 28);
+  const last8w   = sessions.filter(s => daysDiff(s.date) <= 56);
   const prs      = buildPRs(sessions);
 
-  const woSummary = {
-    totalWorkouts:       sessions.length,
-    last4weeks:          last4w.length,
-    avgWorkoutsPerWeek:  (last4w.length / 4).toFixed(1),
-    topPRs:              prs.slice(0, 5).map(p => `${p.exercise} ${p.weight}lbs`).join(', '),
-  };
-
+  // Workout summary
   let compoundSets = 0, totalSets = 0;
   last4w.forEach(s => (s.exercises || []).forEach(ex => {
     totalSets += ex.sets.length;
     if (/squat|deadlift|bench|press|row|pull.?up|dip|lunge|rdl/i.test(ex.name)) compoundSets += ex.sets.length;
   }));
-  woSummary.compoundPct = totalSets ? Math.round(compoundSets / totalSets * 100) : 0;
+  const workoutSummary = {
+    totalWorkouts:      sessions.length,
+    last4weeks:         last4w.length,
+    last8weeks:         last8w.length,
+    avgWorkoutsPerWeek: parseFloat((last4w.length / 4).toFixed(1)),
+    compoundPct:        totalSets ? Math.round(compoundSets / totalSets * 100) : 0,
+    topPRs:             prs.slice(0, 5).map(p => `${p.exercise} ${p.weight}lbs × ${p.reps} (${p.date})`).join(', '),
+  };
 
-  const coachHistory = coachThread
-    .map(m => ({ role: m.role === 'coach' ? 'assistant' : 'user', content: m.content }))
-    .slice(-16);
+  // Training trends — weekly volume (last 8 weeks) + muscle group distribution (last 30 days)
+  const weeklyVol = buildWeeklyVolume(sessions, 8)
+    .map(w => `${w.label}: ${Math.round(w.vol / 1000)}k lbs`).join(', ');
+  const mgVol = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 30));
+  const muscleGroupDist = Object.entries(mgVol)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([mg, vol]) => `${mg} ${Math.round(vol / 1000)}k`).join(', ');
+  const trainingTrends = { weeklyVolume: weeklyVol, muscleGroupDist };
+
+  // Latest body composition from Evolt
+  const evoltScans  = data.evolt;
+  const latestScan  = evoltScans.length ? evoltScans[evoltScans.length - 1] : null;
+  const prevScan    = evoltScans.length > 1 ? evoltScans[evoltScans.length - 2] : null;
+  const latestBodyData = latestScan ? {
+    date:               latestScan.date,
+    weight:             latestScan.weight,
+    bodyFatPct:         latestScan.bodyFatPercent,
+    skeletalMuscleMass: latestScan.skeletalMuscleMass,
+    visceralFatLevel:   latestScan.visceralFatLevel,
+    bmr:                latestScan.bmr,
+    // Delta vs previous scan
+    muscleChange:  (prevScan && latestScan.skeletalMuscleMass && prevScan.skeletalMuscleMass)
+      ? +(latestScan.skeletalMuscleMass - prevScan.skeletalMuscleMass).toFixed(1) : null,
+    fatChange: (prevScan && latestScan.bodyFatPercent && prevScan.bodyFatPercent)
+      ? +(latestScan.bodyFatPercent - prevScan.bodyFatPercent).toFixed(1) : null,
+    totalScans: evoltScans.length,
+  } : null;
+
+  // History — role-mapped and trimmed to last 16 via shared utility
+  const history = CoachUtils.normalizeCoachHistory(coachThread);
 
   return {
-    mode:           'dashboard',
-    context:        coachContext,
-    goals:          {},
-    workoutSummary: woSummary,
-    history:        coachHistory,
-    question:       question || null,
+    mode:            'dashboard',
+    context:         coachContext,
+    goals:           {},
+    question:        question || null,
+    history,
+    workoutSummary,
+    trainingTrends,
+    latestBodyData,
   };
 }
 
@@ -1492,6 +1525,13 @@ async function getCoaching() {
   if (!data.evolt.length && !data.fitbod.length) {
     toast('Upload data first', true); return;
   }
+  if (coachInFlight) {
+    console.log('[Coach/Progress] Skipped — already in flight');
+    return;
+  }
+
+  console.log('[Coach/Progress] Started — mode: dashboard');
+  coachInFlight = true;
   const spinEl  = document.getElementById('coach-spin');
   const btn     = document.getElementById('coach-btn');
   const emptyEl = document.getElementById('coach-empty');
@@ -1499,19 +1539,34 @@ async function getCoaching() {
   btn.disabled = true;
   if (emptyEl) emptyEl.style.display = 'none';
 
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('timeout')), 15000);
+  });
+
   try {
-    const res = await wFetch('/api/coach', {
-      method: 'POST',
-      body:   JSON.stringify(buildCoachPayload()),
-    });
-    const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    appendMsg('coach', res.coaching, now);
-    document.getElementById('coach-sub').textContent = 'Last analysis: ' + now;
+    const res = await Promise.race([
+      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(buildUnifiedCoachPayload()) }),
+      timeoutPromise
+    ]);
+    clearTimeout(timeoutId);
+    if (res.coaching) {
+      const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      appendMsg('coach', res.coaching, now);
+      document.getElementById('coach-sub').textContent = 'Last analysis: ' + now;
+      console.log('[Coach/Progress] Finished');
+    }
   } catch (e) {
-    toast('Coach error: ' + e.message, true);
+    clearTimeout(timeoutId);
+    const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    appendMsg('coach', '⚠️ Coaching temporarily unavailable. Try again in a moment.', now);
+    console.log(`[Coach/Progress] Failed — ${e.message}`);
+  } finally {
+    coachInFlight = false;
+    spinEl.style.display = 'none';
+    btn.disabled = false;
+    console.log('[Coach/Progress] Spinner hidden, lock released');
   }
-  spinEl.style.display = 'none';
-  btn.disabled = false;
 }
 
 async function askCoach() {
@@ -1519,6 +1574,12 @@ async function askCoach() {
   const q     = input?.value.trim();
   if (!q) return;
   if (!WORKER_URL) { toast('Set Worker URL in Settings', true); return; }
+  if (coachInFlight) {
+    console.log('[Coach/Progress] Ask skipped — already in flight');
+    return;
+  }
+
+  coachInFlight = true;
   input.value = '';
   const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   appendMsg('user', q, now);
@@ -1526,34 +1587,47 @@ async function askCoach() {
   const sendEl = document.getElementById('coach-send');
   if (askEl)  askEl.style.display  = 'flex';
   if (sendEl) sendEl.disabled = true;
+
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('timeout')), 15000);
+  });
+
   try {
-    const res = await wFetch('/api/coach', {
-      method: 'POST',
-      body:   JSON.stringify(buildCoachPayload(q)),
-    });
-    const now2 = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    appendMsg('coach', res.coaching, now2);
+    const res = await Promise.race([
+      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(buildUnifiedCoachPayload(q)) }),
+      timeoutPromise
+    ]);
+    clearTimeout(timeoutId);
+    if (res.coaching) {
+      const now2 = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      appendMsg('coach', res.coaching, now2);
+    }
   } catch (e) {
-    appendMsg('coach', '⚠️ ' + e.message, now, true);
+    clearTimeout(timeoutId);
+    const now2 = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    appendMsg('coach', '⚠️ Coaching temporarily unavailable. Try again in a moment.', now2);
+    console.log(`[Coach/Progress] Ask failed — ${e.message}`);
+  } finally {
+    coachInFlight = false;
+    if (askEl)  askEl.style.display  = 'none';
+    if (sendEl) sendEl.disabled = false;
   }
-  if (askEl)  askEl.style.display  = 'none';
-  if (sendEl) sendEl.disabled = false;
 }
 
 function appendMsg(role, text, time) {
   const thread  = document.getElementById('coach-thread');
   const emptyEl = document.getElementById('coach-empty');
+  if (!thread) return;
+
+  // Shared dedup check — skip identical consecutive coach messages
+  if ((role === 'coach' || role === 'assistant') && CoachUtils.isDuplicateCoachMessage(coachThread, text)) return;
+
   if (emptyEl) emptyEl.style.display = 'none';
   coachThread.push({ role, content: text, time });
   localStorage.setItem('fsp-coach', JSON.stringify(coachThread));
-  const div = document.createElement('div');
-  if (role === 'user') {
-    div.innerHTML = `<div class="chat-bubble-user">${escHtml(text)}</div>`;
-  } else {
-    div.innerHTML = `<div class="chat-time">${time}</div><div class="chat-bubble-coach">${mdToHtml(text)}</div>`;
-  }
-  thread.appendChild(div);
-  div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  CoachUtils.renderCoachMessage(thread, role, text, time, mdToHtml, escHtml);
 }
 
 function clearCoach() {
@@ -1570,15 +1644,10 @@ function restoreCoachThread() {
   if (!coachThread.length) return;
   const thread  = document.getElementById('coach-thread');
   const emptyEl = document.getElementById('coach-empty');
+  if (!thread) return;
   if (emptyEl) emptyEl.style.display = 'none';
   coachThread.forEach(msg => {
-    const div = document.createElement('div');
-    if (msg.role === 'user') {
-      div.innerHTML = `<div class="chat-bubble-user">${escHtml(msg.content)}</div>`;
-    } else {
-      div.innerHTML = `<div class="chat-time">${msg.time || ''}</div><div class="chat-bubble-coach">${mdToHtml(msg.content)}</div>`;
-    }
-    thread.appendChild(div);
+    CoachUtils.renderCoachMessage(thread, msg.role, msg.content, msg.time || '', mdToHtml, escHtml);
   });
 }
 
