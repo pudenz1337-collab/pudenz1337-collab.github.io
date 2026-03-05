@@ -3253,9 +3253,10 @@ async function init() {
     if (!WORKER_URL || !isToday(viewDate)) return;
     try {
       const remote = await wFetch(`/api/daily/${viewDate}`);
-      if (!remote.exists) return;
+      if (!remote.exists) { console.log('[Sync] No KV data for today yet'); return; }
       const remoteSavedAt = new Date(remote.savedAt || 0).getTime();
       const localSavedAt  = new Date(dayData.savedAt  || 0).getTime();
+      console.log('[Sync] remote:', new Date(remoteSavedAt).toLocaleTimeString(), '| local:', new Date(localSavedAt).toLocaleTimeString(), '| will update:', remoteSavedAt > localSavedAt);
       if (remoteSavedAt <= localSavedAt) return;
       dayData = remote;
       saveDayToCache(viewDate, dayData);
