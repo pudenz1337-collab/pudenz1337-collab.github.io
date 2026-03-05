@@ -837,7 +837,7 @@ body{
       </div>
     </div>
     <div class="coach-input-bar">
-      <div id="ask-status" style="display:none;font-size:11px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:6px">
+      <div id="ask-status" style="display:none;font-size:11px;color:var(--muted);margin-bottom:6px;align-items:center;gap:6px">
         <div class="spin"></div> Thinking…
       </div>
       <div class="coach-input-row">
@@ -1457,10 +1457,14 @@ function saveDayDebounced(immediate = false) {
 
 async function pushDayToKV(dateStr) {
   try {
+    const now = new Date().toISOString();
     await wFetch(`/api/daily/${dateStr}`, {
       method: 'PUT',
       body:   JSON.stringify(dayData),
     });
+    // Mirror the savedAt the worker will stamp, so syncFromKV on THIS device
+    // won't treat its own data as "stale" and re-render unnecessarily.
+    if (dateStr === viewDate) dayData.savedAt = now;
   } catch (e) { /* silent — offline or worker unreachable */ }
 }
 
@@ -2578,11 +2582,13 @@ function buildCoachPayload(question = null, mode = 'checkin') {
     currentTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
     timezoneOffset: new Date().getTimezoneOffset(),
     tirzepatide: { ...tirz, daysPostInjection: daysPostInj },
+    // Only last 3 exchanges (6 msgs) — prevents stale context from old check-ins
+    // bleeding into new responses (e.g. coach referencing an 8pm meal from yesterday)
     history:     (typeof CoachUtils !== 'undefined')
-                   ? CoachUtils.normalizeCoachHistory(coachThread)
+                   ? CoachUtils.normalizeCoachHistory(coachThread).slice(-6)
                    : coachThread.filter(m => m.role !== 'time')
                        .map(m => ({ role: m.role === 'coach' ? 'assistant' : 'user', content: m.content }))
-                       .slice(-16),
+                       .slice(-6),
     question:    question || null,
   };
 }
@@ -3238,9 +3244,11 @@ async function init() {
   setInterval(renderHeroTime, 60000);
   setInterval(renderInsights, 300000); // refresh insights every 5min
 
-  // ── Cross-device sync: foreground-only ────────────────────────────────────
-  // Re-fetch from KV when app comes back to foreground. If remote is newer,
-  // update UI and show the coach badge so user can check in manually.
+  // ── Cross-device sync ─────────────────────────────────────────────────────
+  // Pull from KV whenever remote is newer than local.
+  // Polls every 30s ONLY while the tab is visible — stops when hidden so it
+  // doesn't waste requests while the user is on their phone.
+  // Also fires immediately on tab focus (phone → PC hand-off).
   async function syncFromKV() {
     if (!WORKER_URL || !isToday(viewDate)) return;
     try {
@@ -3253,13 +3261,30 @@ async function init() {
       saveDayToCache(viewDate, dayData);
       renderAll();
       markCoachBadge();
-      console.log('[Sync] Updated from KV — remote was newer');
-    } catch (e) { /* silent */ }
+      console.log('[Sync] Updated from KV at', new Date(remoteSavedAt).toLocaleTimeString());
+    } catch (e) { /* silent — offline */ }
   }
 
+  let _syncInterval = null;
+  function startSyncPoll() {
+    if (_syncInterval) return;
+    syncFromKV(); // immediate on focus
+    _syncInterval = setInterval(syncFromKV, 30000);
+  }
+  function stopSyncPoll() {
+    clearInterval(_syncInterval);
+    _syncInterval = null;
+  }
+
+  // Start/stop poll based on tab visibility
+  if (document.visibilityState === 'visible') startSyncPoll();
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') syncFromKV();
+    if (document.visibilityState === 'visible') startSyncPoll();
+    else stopSyncPoll();
   });
+
+  // Also update dayData.savedAt after each successful push so comparison works
+  // (worker stamps savedAt on the stored record — we mirror it locally)
 
   // Close day button visibility
   const closeSec = document.getElementById('close-day-section');
