@@ -1,54 +1,112 @@
 /**
- * FuelStrong Progress — Cloudflare Worker
+ * FuelStrong — Cloudflare Worker
  *
- * Required Secrets (set in Cloudflare dashboard → Worker → Settings → Variables):
+ * Required Secrets (Cloudflare dashboard → Worker → Settings → Variables):
  *   ANTHROPIC_API_KEY  — your Anthropic API key
- *   GITHUB_TOKEN       — your GitHub personal access token
+ *   GITHUB_TOKEN       — your GitHub personal access token (optional, for backup)
  *
- * Required KV Namespace binding (Cloudflare dashboard → Worker → Settings → Bindings):
- *   FUELSTRONG_KV      — create a KV namespace called "fuelstrong-data" and bind it
+ * Required KV Namespace binding:
+ *   FUELSTRONG_KV      — bind a KV namespace called "fuelstrong-data"
  */
 
-const GITHUB_REPO = 'pudenz1337-collab/pudenz1337-collab.github.io';
+const GITHUB_REPO    = 'pudenz1337-collab/pudenz1337-collab.github.io';
 const ALLOWED_ORIGIN = 'https://pudenz1337-collab.github.io';
 
 const CORS = {
-  'Access-Control-Allow-Origin': '*', // tighten to ALLOWED_ORIGIN after testing
+  'Access-Control-Allow-Origin':  '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-// ─── Router ────────────────────────────────────────────────────────────────────
+// ─── Permanent Coaching Foundation ────────────────────────────────────────────
+// This document is the foundation for every coaching response.
+// It is written into KV as coach_context_enriched via POST /api/context/enrich,
+// but is also baked here as a constant so coaching always has context even
+// before that endpoint is called, and as a fallback if KV is empty.
+// Update this when Hanna's situation changes (tirzepatide status, goals shift, etc.)
+const HANNA_PERMANENT_CONTEXT = `
+COACHING FOUNDATION — HANNA (read before every response)
+
+WHO YOU ARE COACHING:
+Hanna is a 50-year-old woman in active physical transformation. She has two nearly-grown kids and is approaching an empty-nester phase. She is investing in herself in a way she hasn't before — not for anyone else. She discovered she loves strength training and wants to see what her body is actually capable of.
+
+She is not a beginner. She has 18 months of gym attendance behind her and has trained with real intention since November 2024. She uses Fitbod (Get Stronger / Hypertrophy setting), trains 3-4 days per week at Anytime Fitness, sessions are 40-45 minutes with free weights, cables, and machines. She knows how to work out. Do not explain basics.
+
+WHERE SHE IS IN HER JOURNEY:
+- Started tirzepatide in July 2025. Down 34 lbs. Would like to lose approximately 25 more.
+- Goal shifted in November 2025 from weight loss to body recomposition: build visible muscle while losing fat.
+- Real success = seeing her muscles in the mirror. Not a scale number. Arms, shoulders, definition.
+- She has never been a bad eater — just a busy person who loses track of meals.
+
+TIRZEPATIDE — CURRENT CONTEXT (not a permanent condition):
+Tirzepatide is suppressing her appetite significantly. Her hunger cues cannot be trusted as a reliable signal that she has eaten enough. She does not undereat on purpose — she gets busy and the medication removes the natural reminder to eat. This is the single biggest practical risk: undereating while strength training accelerates muscle loss and undermines every hour she puts in at the gym. Eating slightly too much is far less harmful than consistently undereating.
+
+When tirzepatide use ends — whether through tapering or stopping — hunger signals will return, possibly strongly. The habits we are building now around consistent protein and hitting calorie targets will be the foundation for maintaining results without medication. Coach with that transition in mind. Update this section when her tirzepatide status changes.
+
+THE ONE BEHAVIORAL PATTERN THAT MATTERS MOST:
+She tends to undereat — not through restriction, through forgetting. Any day under 1200 calories is a warning signal. Any period with three or more days under 1200 is a pattern that needs direct attention. Frame it as muscle protection: "You need to eat more to see the muscle you're building." Not discipline — investment in what she's working toward.
+
+NUTRITION PICTURE:
+- Protein has been more manageable. Calories are the consistent gap.
+- Front-loading protein earlier in the day matters more at 50 than at 30.
+- She does not have a complicated relationship with food. She needs practical reminders, not lectures.
+
+SUCCESS DEFINITION:
+Visible muscle. Not a weight target. Not a body fat percentage. The feeling of looking in the mirror and seeing what she's built. Arms. Shoulders. Definition. Evolt scans are the report card — specifically skeletal muscle mass trending up and body fat percentage trending down. The scale is almost meaningless for her actual goals and should be actively reframed when it comes up.
+
+WHAT A GOOD WEEK LOOKS LIKE:
+4 training sessions. Protein goal hit 5+ of 7 days. No more than 1 day under 1200 calories. Energy and mood stable or improving. These are the conditions that build toward visible muscle.
+
+WHAT A CONCERNING WEEK LOOKS LIKE:
+Multiple days under 1200 calories. Protein missing on training days. Training below 3 sessions for 2+ consecutive weeks. These patterns will show up in the next Evolt scan as muscle loss.
+
+HOW TO COACH HER:
+- Be direct. She is smart and busy. One clear priority beats five balanced suggestions.
+- Be specific. "Protein was low your last 3 training days" is useful. "Make sure you're getting enough protein" is not.
+- Be honest about the timeline. Visible muscle at 50 during recomposition is a 6-12 month project. Reinforce this when the scale is frustrating her.
+- Connect everything to her actual goal: visible muscle. When she is doing the right things, say so. When she isn't, say so once, clearly, with a specific fix.
+- Do not give generic fitness advice. She comes here for analysis of her specific data and situation.
+- Respect that she is doing something hard and doing it consistently. Acknowledge that without being patronizing.
+`;
+
+// ─── Router ───────────────────────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
 
-    const url   = new URL(request.url);
-    const path  = url.pathname;
+    const url    = new URL(request.url);
+    const path   = url.pathname;
     const method = request.method;
 
     try {
-      if (path === '/api/health'  && method === 'GET')    return health();
-      if (path === '/api/data'    && method === 'GET')    return getData(env);
-      if (path === '/api/data'    && method === 'POST')   return saveData(request, env);
-      if (path === '/api/parse'   && method === 'POST')   return parseFile(request, env);
-      if (path === '/api/coach'   && method === 'POST')   return getCoaching(request, env);
-      if (path === '/api/coach'   && method === 'GET')    return getKVKey(env, 'last_coaching');
-      if (path === '/api/backup'  && method === 'POST')   return backupToGitHub(env);
-      if (path === '/api/goals'   && method === 'POST')   return saveKVKey(request, env, 'goals');
-      if (path === '/api/context' && method === 'POST')   return saveKVKey(request, env, 'coach_context');
-      if (path === '/api/context' && method === 'GET')    return getKVKey(env, 'coach_context');
-      if (path === '/api/profile'  && method === 'GET')    return getProfile(env);
-      if (path === '/api/profile'  && method === 'POST')   return saveProfile(request, env);
-      if (path === '/api/live'     && method === 'GET')    return getKVKey(env, 'today_live');
-      if (path === '/api/live'     && method === 'POST')   return saveKVKey(request, env, 'today_live');
-      if (path === '/api/estimate' && method === 'POST')   return estimateMacros(request, env);
-      if (path === '/api/insights'     && method === 'GET')  return getInsights(env);
-      if (path === '/api/insights'     && method === 'POST') return generateInsights(env);
-      if (path === '/api/intelligence' && method === 'POST') return getIntelligence(env);
-      if (path.startsWith('/api/daily/') && method === 'GET')  return getDailyDay(env, path);
-      if (path.startsWith('/api/daily/') && method === 'PUT')  return putDailyDay(request, env, path);
-      if (path.startsWith('/api/data/') && method === 'DELETE') return deleteEntry(request, env, path);
+      if (path === '/api/health'           && method === 'GET')    return health();
+      if (path === '/api/data'             && method === 'GET')    return getData(env);
+      if (path === '/api/data'             && method === 'POST')   return saveData(request, env);
+      if (path === '/api/parse'            && method === 'POST')   return parseFile(request, env);
+      if (path === '/api/coach'            && method === 'POST')   return getCoaching(request, env);
+      if (path === '/api/coach'            && method === 'GET')    return getKVKey(env, 'last_coaching');
+      if (path === '/api/backup'           && method === 'POST')   return backupToGitHub(env);
+      if (path === '/api/goals'            && method === 'POST')   return saveKVKey(request, env, 'goals');
+      if (path === '/api/context'          && method === 'POST')   return saveKVKey(request, env, 'coach_context');
+      if (path === '/api/context'          && method === 'GET')    return getKVKey(env, 'coach_context');
+      if (path === '/api/context/enrich'   && method === 'POST')   return enrichContext(request, env);
+      if (path === '/api/context/enrich'   && method === 'GET')    return getKVKey(env, 'coach_context_enriched');
+      if (path === '/api/profile'          && method === 'GET')    return getProfile(env);
+      if (path === '/api/profile'          && method === 'POST')   return saveProfile(request, env);
+      // /api/live removed — writes go direct to /api/daily/:date
+      if (path === '/api/food-library'     && method === 'GET')    return getKVKey(env, 'food_library');
+      if (path === '/api/food-library'     && method === 'POST')   return saveKVKey(request, env, 'food_library');
+      if (path === '/api/search-food'      && method === 'GET')    return searchFood(request, env);
+      if (path === '/api/scan-label'       && method === 'POST')   return scanLabel(request, env);
+      if (path === '/api/estimate'         && method === 'POST')   return estimateMacros(request, env);
+      if (path === '/api/insights'         && method === 'GET')    return getInsights(env);
+      if (path === '/api/insights'         && method === 'POST')   return generateInsights(env);
+      if (path === '/api/intelligence'     && method === 'POST')   return getIntelligence(env);
+      if (path === '/api/momentum'         && method === 'GET')    return getMomentum(env);
+      if (path === '/api/scan-intervals'   && method === 'GET')    return getScanIntervals(env);
+      if (path.startsWith('/api/daily/')   && method === 'GET')    return getDailyDay(env, path);
+      if (path.startsWith('/api/daily/')   && method === 'PUT')    return putDailyDay(request, env, path);
+      if (path.startsWith('/api/data/')    && method === 'DELETE') return deleteEntry(request, env, path);
 
       return reply({ error: 'Not found' }, 404);
     } catch (e) {
@@ -58,16 +116,14 @@ export default {
   }
 };
 
-// ─── Health ─────────────────────────────────────────────────────────────────────
+// ─── Health ───────────────────────────────────────────────────────────────────
 function health() {
   return reply({ status: 'ok', time: new Date().toISOString() });
 }
 
-// ─── Get all data ───────────────────────────────────────────────────────────────
+// ─── Get all data ─────────────────────────────────────────────────────────────
 async function getData(env) {
-  if (!env.FUELSTRONG_KV) {
-    return reply({ error: 'KV namespace not bound. Add FUELSTRONG_KV binding in Cloudflare Worker settings.' }, 500);
-  }
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV namespace not bound. Add FUELSTRONG_KV binding in Cloudflare Worker settings.' }, 500);
   const [evolt, fitbod, fuelstrong] = await Promise.all([
     env.FUELSTRONG_KV.get('evolt').catch(() => null),
     env.FUELSTRONG_KV.get('fitbod').catch(() => null),
@@ -80,17 +136,12 @@ async function getData(env) {
   });
 }
 
-// ─── Save parsed data ───────────────────────────────────────────────────────────
+// ─── Save parsed data ─────────────────────────────────────────────────────────
 async function saveData(request, env) {
-  if (!env.FUELSTRONG_KV) {
-    return reply({ error: 'KV namespace not bound.' }, 500);
-  }
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV namespace not bound.' }, 500);
   const { type, data } = await request.json();
-  if (!['evolt','fitbod','fuelstrong'].includes(type)) {
-    return reply({ error: 'Invalid data type' }, 400);
-  }
+  if (!['evolt','fitbod','fuelstrong'].includes(type)) return reply({ error: 'Invalid data type' }, 400);
 
-  // Empty array = clear operation — overwrite KV, do not merge
   if (Array.isArray(data) && data.length === 0) {
     await env.FUELSTRONG_KV.put(type, '[]');
     return reply({ success: true, total: 0, added: 0, cleared: true });
@@ -99,36 +150,30 @@ async function saveData(request, env) {
   const existing = JSON.parse(await env.FUELSTRONG_KV.get(type).catch(() => null) || '[]');
   const incoming = Array.isArray(data) ? data : [data];
   const merged   = [...existing];
-
   for (const entry of incoming) {
     const key = entry.id || entry.date;
-    const dup = merged.some(e => (e.id || e.date) === key);
-    if (!dup) merged.push({ ...entry, savedAt: new Date().toISOString() });
+    if (!merged.some(e => (e.id || e.date) === key)) merged.push({ ...entry, savedAt: new Date().toISOString() });
   }
-
   merged.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
   await env.FUELSTRONG_KV.put(type, JSON.stringify(merged));
-
   return reply({ success: true, total: merged.length, added: incoming.length });
 }
 
-// ─── Delete entry ───────────────────────────────────────────────────────────────
+// ─── Delete entry ─────────────────────────────────────────────────────────────
 async function deleteEntry(request, env, path) {
-  // DELETE /api/data/{type}/{id}
-  const parts  = path.split('/').filter(Boolean);
-  const type   = parts[2];
-  const id     = parts[3];
+  const parts    = path.split('/').filter(Boolean);
+  const type     = parts[2];
+  const id       = parts[3];
   const existing = JSON.parse(await env.FUELSTRONG_KV.get(type) || '[]');
   const filtered = existing.filter(e => (e.id || e.date) !== decodeURIComponent(id));
   await env.FUELSTRONG_KV.put(type, JSON.stringify(filtered));
   return reply({ success: true, remaining: filtered.length });
 }
 
-// ─── Parse uploaded file (image → Claude vision) ────────────────────────────────
+// ─── Parse uploaded file ──────────────────────────────────────────────────────
 async function parseFile(request, env) {
   const { imageBase64, mimeType, filename, fileType } = await request.json();
 
-  // ── Fitbod screenshot ──
   if (fileType === 'fitbod') {
     const prompt = `Analyze this Fitbod workout app screenshot carefully. Extract every piece of workout data visible.
 
@@ -140,9 +185,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     {
       "name": "Exercise Name",
       "muscleGroup": "Chest|Back|Legs|Shoulders|Arms|Core|Full Body",
-      "sets": [
-        { "reps": number, "weight": number, "unit": "lbs" }
-      ],
+      "sets": [{ "reps": number, "weight": number, "unit": "lbs" }],
       "totalVolume": number,
       "maxWeight": number,
       "notes": "string or null"
@@ -157,259 +200,232 @@ Return ONLY valid JSON (no markdown, no explanation):
 If this is NOT a Fitbod workout screenshot, return: { "error": "not_workout", "description": "what you see" }`;
 
     const resp = await callClaude(env, {
-      model: 'claude-opus-4-6',
+      model:      'claude-opus-4-6',
       max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: imageBase64 } },
-          { type: 'text', text: prompt }
-        ]
-      }]
+      messages:   [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: imageBase64 } },
+        { type: 'text',  text: prompt }
+      ]}]
     });
 
-    const text  = resp.content?.[0]?.text || '{}';
-    const match = text.match(/\{[\s\S]*\}/);
+    const text   = resp.content?.[0]?.text || '{}';
+    const match  = text.match(/\{[\s\S]*\}/);
     const parsed = safeJson(match?.[0]);
-    if (parsed && !parsed.error) {
-      parsed.id         = uid('fitbod');
-      parsed.sourceFile = filename;
-    }
+    if (parsed && !parsed.error) { parsed.id = uid('fitbod'); parsed.sourceFile = filename; }
     return reply(parsed || { error: 'parse_failed', raw: text.slice(0, 500) });
   }
 
   return reply({ error: 'unknown_file_type' }, 400);
 }
 
-// ─── Generic KV helpers ─────────────────────────────────────────────────────────
+// ─── Generic KV helpers ───────────────────────────────────────────────────────
 async function saveKVKey(request, env, key) {
   if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
   const body = await request.json().catch(() => ({}));
   await env.FUELSTRONG_KV.put(key, JSON.stringify(body));
   return reply({ success: true });
 }
+
 async function getKVKey(env, key) {
   if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
   const raw = await env.FUELSTRONG_KV.get(key).catch(() => null);
   return reply(raw ? JSON.parse(raw) : {});
 }
 
-// ─── Profile (goals, tirz, custom foods, pins) ─────────────────────────────────
+// ─── Enrich context ───────────────────────────────────────────────────────────
+// Write an updated permanent context document to KV.
+// Called via POST /api/context/enrich with { context: "updated document text" }
+// If no body provided, seeds KV with the baked-in HANNA_PERMANENT_CONTEXT constant.
+async function enrichContext(request, env) {
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
+  const body        = await request.json().catch(() => ({}));
+  const contextText = body.context || HANNA_PERMANENT_CONTEXT;
+  await env.FUELSTRONG_KV.put('coach_context_enriched', JSON.stringify({
+    context:   contextText,
+    updatedAt: new Date().toISOString(),
+  }));
+  return reply({ success: true, updatedAt: new Date().toISOString() });
+}
+
+// ─── Profile ──────────────────────────────────────────────────────────────────
 async function getProfile(env) {
   if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
-  const [goalsRaw, tirzRaw, customRaw, pinsRaw] = await Promise.all([
+  const [goalsRaw, tirzRaw, customRaw, pinsRaw, libRaw] = await Promise.all([
     env.FUELSTRONG_KV.get('profile_goals').catch(() => null),
     env.FUELSTRONG_KV.get('profile_tirz').catch(() => null),
     env.FUELSTRONG_KV.get('profile_custom_foods').catch(() => null),
     env.FUELSTRONG_KV.get('profile_food_pins').catch(() => null),
+    env.FUELSTRONG_KV.get('food_library').catch(() => null),
   ]);
   return reply({
-    goals:       goalsRaw ? JSON.parse(goalsRaw) : null,
-    tirz:        tirzRaw  ? JSON.parse(tirzRaw)  : null,
+    goals:       goalsRaw ? JSON.parse(goalsRaw)  : null,
+    tirz:        tirzRaw  ? JSON.parse(tirzRaw)   : null,
     customFoods: customRaw ? JSON.parse(customRaw) : null,
-    foodPins:    pinsRaw  ? JSON.parse(pinsRaw)  : null,
+    foodPins:    pinsRaw  ? JSON.parse(pinsRaw)   : null,
+    foodLibrary: libRaw   ? JSON.parse(libRaw)    : null,
   });
 }
 
 async function saveProfile(request, env) {
   if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
   const body = await request.json().catch(() => ({}));
-  const ops = [];
-  if (body.goals       !== undefined) ops.push(env.FUELSTRONG_KV.put('profile_goals',       JSON.stringify(body.goals)));
-  if (body.tirz        !== undefined) ops.push(env.FUELSTRONG_KV.put('profile_tirz',        JSON.stringify(body.tirz)));
+  const ops  = [];
+  if (body.goals       !== undefined) ops.push(env.FUELSTRONG_KV.put('profile_goals',        JSON.stringify(body.goals)));
+  if (body.tirz        !== undefined) ops.push(env.FUELSTRONG_KV.put('profile_tirz',         JSON.stringify(body.tirz)));
   if (body.customFoods !== undefined) ops.push(env.FUELSTRONG_KV.put('profile_custom_foods', JSON.stringify(body.customFoods)));
   if (body.foodPins    !== undefined) ops.push(env.FUELSTRONG_KV.put('profile_food_pins',    JSON.stringify(body.foodPins)));
   await Promise.all(ops);
   return reply({ success: true });
 }
 
-// ─── AI Coaching ────────────────────────────────────────────────────────────────
+// ─── AI Coaching ──────────────────────────────────────────────────────────────
 async function getCoaching(request, env) {
-  const body = await request.json().catch(() => ({}));
-  // Fix 3: safe defaults — prevent Claude API errors from incomplete payloads
-  body.history  = body.history  || [];
-  body.foodLog  = body.foodLog  || [];
-  body.workouts = body.workouts || [];
-  body.hem      = body.hem      || [];
-  const question = body.question || '';
+  const body      = await request.json().catch(() => ({}));
+  body.history    = body.history  || [];
+  body.foodLog    = body.foodLog  || [];
+  body.workouts   = body.workouts || [];
+  body.hem        = body.hem      || [];
+  const question  = body.question || '';
 
-  if (!env.FUELSTRONG_KV) {
-    return reply({ error: 'KV namespace not bound. Check Worker bindings in Cloudflare dashboard — variable must be named FUELSTRONG_KV.' }, 500);
-  }
-  if (!env.ANTHROPIC_API_KEY) {
-    return reply({ error: 'ANTHROPIC_API_KEY secret not set in Worker environment variables.' }, 500);
-  }
+  if (!env.FUELSTRONG_KV)    return reply({ error: 'KV namespace not bound. Check Worker bindings in Cloudflare dashboard — variable must be named FUELSTRONG_KV.' }, 500);
+  if (!env.ANTHROPIC_API_KEY) return reply({ error: 'ANTHROPIC_API_KEY secret not set in Worker environment variables.' }, 500);
 
-  const [evoltRaw, fitbodRaw, fuelstrongRaw, goalsRaw, contextRaw, liveRaw, profGoalsRaw] = await Promise.all([
+  // Load everything in parallel — enriched context document comes first
+  const [evoltRaw, fitbodRaw, fuelstrongRaw, goalsRaw, contextRaw, enrichedRaw, profGoalsRaw] = await Promise.all([
     env.FUELSTRONG_KV.get('evolt').catch(() => null),
     env.FUELSTRONG_KV.get('fitbod').catch(() => null),
     env.FUELSTRONG_KV.get('fuelstrong').catch(() => null),
     env.FUELSTRONG_KV.get('goals').catch(() => null),
     env.FUELSTRONG_KV.get('coach_context').catch(() => null),
-    env.FUELSTRONG_KV.get('today_live').catch(() => null),
+    env.FUELSTRONG_KV.get('coach_context_enriched').catch(() => null),
     env.FUELSTRONG_KV.get('profile_goals').catch(() => null),
   ]);
 
   const evolt      = JSON.parse(evoltRaw      || '[]');
   const fitbod     = JSON.parse(fitbodRaw     || '[]');
   const fuelstrong = JSON.parse(fuelstrongRaw || '[]');
-  // profile_goals takes precedence over legacy goals key
   const goals      = profGoalsRaw ? JSON.parse(profGoalsRaw) : (goalsRaw ? JSON.parse(goalsRaw) : (body.goals || {}));
-  const savedCtx   = contextRaw ? JSON.parse(contextRaw) : {};
-  // today_live from KV — supplement/override with client-sent data
-  const liveKV     = liveRaw ? JSON.parse(liveRaw) : {};
-  const context    = savedCtx.context || body.context || '';
-  const woSummary  = body.workoutSummary || null;
   const mode       = body.mode || 'dashboard';
 
-  // New context fields from Phase 1 rebuild
+  // Permanent context: KV-stored enriched version, falling back to baked-in constant
+  const enrichedObj    = enrichedRaw ? JSON.parse(enrichedRaw) : null;
+  const permanentCtx   = enrichedObj?.context || HANNA_PERMANENT_CONTEXT;
+  const savedCtx       = contextRaw ? JSON.parse(contextRaw) : {};
+  const additionalNotes = savedCtx.context || body.context || '';
+
   const supplements  = body.supplements  || '';
   const tirzepatide  = body.tirzepatide  || {};
   const measurements = body.measurements || [];
   const sessionLogs  = body.sessionLogs  || [];
+  const woSummary    = body.workoutSummary || null;
 
-  // ── Format Evolt data ──
+  // ── Tirzepatide block ──
+  let tirzBlock = '';
+  if (tirzepatide?.dose || tirzepatide?.day !== undefined) {
+    const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const injDay   = tirzepatide.day !== '' ? parseInt(tirzepatide.day) : null;
+    const todayDow = new Date().getDay();
+    const daysAgo  = injDay !== null ? ((todayDow - injDay) + 7) % 7 : null;
+    tirzBlock = `\nTirzepatide: ${tirzepatide.dose ? tirzepatide.dose+'mg' : ''}${injDay !== null ? ', injected '+dayNames[injDay] : ''}${tirzepatide.weeks ? ' ('+tirzepatide.weeks+' weeks on dose)' : ''}${daysAgo !== null ? ' — '+daysAgo+' days since last injection' : ''}`;
+  }
+
+  const suppBlock    = supplements ? `\nSupplement stack: ${supplements}` : '';
+  const measBlock    = measurements.length ? `\nMeasurements: ${measurements.map(m => `${m.date}: waist=${m.waist}"${m.hips?' hips='+m.hips+'"':''}${m.arm?' arm='+m.arm+'"':''}`).join(' | ')}` : '';
+  const sessionBlock = sessionLogs.length  ? `\nSession logs: ${sessionLogs.map(s => `${s.date}: feel=${s.feel||'?'}/5, RPE=${s.rpe||'?'}/10${s.note?' ('+s.note+')':''}`).join(' | ')}` : '';
+  const goalsBlock   = goals && Object.keys(goals).length ? `\nLogged goals: protein ${goals.protein||150}g/day | calories ${goals.cal||1800}/day | water ${goals.water||80}oz/day` : '';
+
+  // ── Evolt lines ──
   const evoltLines = evolt.map(s =>
-    `${s.date}: Weight=${s.weight}lbs | BF%=${s.bodyFatPct}% | SkeletalMuscle=${s.skeletalMuscleMass}lbs | ` +
-    `LBM=${s.leanBodyMass}lbs | VisceralFatMass=${s.visceralFatMass}lbs | VisceralFatArea=${s.visceralFatArea}cm² | ` +
-    `BWI=${s.bwiScore} | BMR=${s.bmr}kcal`
+    `${s.date}: Weight=${s.weight}lbs | BF%=${s.bodyFatPct}% | SkeletalMuscle=${s.skeletalMuscleMass}lbs | LBM=${s.leanBodyMass}lbs | VisceralFat=${s.visceralFatMass}lbs | BMR=${s.bmr}kcal`
   ).join('\n');
 
   const evoltDelta = evolt.length >= 2 ? (() => {
     const f = evolt[0], l = evolt[evolt.length-1];
-    return `Change ${f.date}→${l.date}: Weight ${f.weight}→${l.weight}lbs (${(l.weight-f.weight).toFixed(1)}), ` +
-      `BF% ${f.bodyFatPct}→${l.bodyFatPct}% (${(l.bodyFatPct-f.bodyFatPct).toFixed(1)}%), ` +
-      `Muscle ${f.skeletalMuscleMass}→${l.skeletalMuscleMass}lbs (${(l.skeletalMuscleMass-f.skeletalMuscleMass).toFixed(1)}), ` +
-      `VisceralFatMass ${f.visceralFatMass}→${l.visceralFatMass}lbs, BWI ${f.bwiScore}→${l.bwiScore}`;
+    return `Change ${f.date}→${l.date}: Weight ${f.weight}→${l.weight}lbs (${(l.weight-f.weight).toFixed(1)}), BF% ${f.bodyFatPct}→${l.bodyFatPct}% (${(l.bodyFatPct-f.bodyFatPct).toFixed(1)}%), Muscle ${f.skeletalMuscleMass}→${l.skeletalMuscleMass}lbs (${(l.skeletalMuscleMass-f.skeletalMuscleMass).toFixed(1)})`;
   })() : 'Only one scan available.';
 
-  const nutritionLines = fuelstrong.length > 0
-    ? fuelstrong.slice(-14).map(n => `${n.date}: Protein=${n.protein}g | Cal=${n.calories}kcal | Water=${n.water}oz`).join('\n')
-    : 'No nutrition data.';
+  const nutritionLines = fuelstrong.length
+    ? fuelstrong.slice(-14).map(n => `${n.date}: Protein=${n.protein}g | Cal=${n.calories}kcal | Water=${n.water}oz${n.flags?.trainingDay?' 💪':''}${n.flags?.injectionDay?' 💉':''}`).join('\n')
+    : 'No nutrition data logged yet.';
 
-  // ── Format workout analytics ──
-  const woLines = woSummary ? `
-Total workouts: ${woSummary.totalWorkouts}
-Avg per week: ${woSummary.avgWorkoutsPerWeek}
-Recent weeks: ${woSummary.recentWeeks}
-Compound vs Isolation: ${woSummary.compoundPct}% compound / ${woSummary.isolationPct}% isolation
-Muscle balance (volume): ${woSummary.muscleBalance}
-Rep zone breakdown: ${woSummary.repZones}
-Top PRs: ${woSummary.topPRs}
-Recovery status: ${woSummary.recoveryStatus}` : fitbod.slice(-20).map(w =>
-    `${w.date}: ${w.workoutName||'Workout'} | ${(w.muscleGroupsWorked||[]).join(', ')} | ${w.totalVolume}lbs | ${(w.exercises||[]).map(e=>`${e.name}(${e.maxWeight}lbs max)`).join(', ')}`
-  ).join('\n') || 'No workout data.';
+  const woLines = woSummary
+    ? `Total workouts: ${woSummary.totalWorkouts}\nAvg per week: ${woSummary.avgWorkoutsPerWeek}\nCompound/Isolation: ${woSummary.compoundPct}% compound\nTop PRs: ${woSummary.topPRs}`
+    : fitbod.slice(-20).map(w => `${w.date}: ${w.workoutName||'Workout'} | ${(w.muscleGroupsWorked||[]).join(', ')} | ${w.totalVolume}lbs`).join('\n') || 'No workout data.';
 
-  // ── Goals context block ──
-  const goalsBlock = goals && Object.keys(goals).length ? `
-User's stated fitness goals:
-- Primary goal: ${goals.primary || 'not set'}
-- Training focus: ${goals.training || 'not set'} (${goals.training === 'hypertrophy' ? '6-12 rep range' : goals.training === 'strength' ? '1-5 rep range' : goals.training === 'endurance' ? '13+ reps' : 'mixed'})
-- Target training frequency: ${goals.freq || 'not set'}x/week
-- Medication: ${goals.med || 'not specified'}
-- Priority muscle groups: ${(goals.muscles||[]).join(', ') || 'not set'}` : '';
-
-  const contextBlock = context ? `\nCoach context notes from user:\n${context}` : '';
-
-  // ── Supplement/tirzepatide/measurement context ──
-  const suppBlock = supplements ? `\nSupplement stack: ${supplements}` : '';
-
-  let tirzBlock = '';
-  if (tirzepatide?.dose || tirzepatide?.day !== undefined) {
-    const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    const injDay = tirzepatide.day !== '' ? parseInt(tirzepatide.day) : null;
-    const todayDow = new Date().getDay();
-    const daysAgo = injDay !== null ? ((todayDow - injDay) + 7) % 7 : null;
-    tirzBlock = `\nTirzepatide: ${tirzepatide.dose ? tirzepatide.dose+'mg' : ''}${injDay!==null?' injected '+dayNames[injDay]:''}${tirzepatide.weeks?' ('+tirzepatide.weeks+' weeks on current dose)':''}${daysAgo!==null?' — '+daysAgo+' days since last injection':''}`;
+  // ── Scan interval summary for coaching context ──
+  // These are the personal cause-effect data points that make coaching specific
+  let scanIntervalContext = '';
+  if (evolt.length >= 2) {
+    const lines = [];
+    for (let i = 1; i < evolt.length; i++) {
+      const prev = evolt[i-1], curr = evolt[i];
+      const days = Math.round((new Date(curr.date) - new Date(prev.date)) / 86400000);
+      const iNutrition = fuelstrong.filter(d => d.date > prev.date && d.date <= curr.date && (d.protein>0||d.calories>0));
+      const avgP = iNutrition.length ? Math.round(iNutrition.reduce((a,d)=>a+(d.protein||0),0)/iNutrition.length) : null;
+      const avgC = iNutrition.length ? Math.round(iNutrition.reduce((a,d)=>a+(d.calories||0),0)/iNutrition.length) : null;
+      const iWo  = fitbod.filter(w => w.date > prev.date && w.date <= curr.date);
+      const freq = days > 0 ? (iWo.length / (days/7)).toFixed(1) : null;
+      const mChg = (curr.skeletalMuscleMass!=null&&prev.skeletalMuscleMass!=null) ? (curr.skeletalMuscleMass-prev.skeletalMuscleMass).toFixed(1) : '?';
+      const fChg = (curr.bodyFatPct!=null&&prev.bodyFatPct!=null) ? (curr.bodyFatPct-prev.bodyFatPct).toFixed(1) : '?';
+      lines.push(`Interval ${i} (${prev.date}→${curr.date}, ${days}d): Muscle ${mChg>0?'+':''}${mChg}lbs, BF% ${fChg>0?'+':''}${fChg}% | Avg protein ${avgP!==null?avgP+'g':'not logged'}, avg cal ${avgC!==null?avgC:'not logged'} | Training ${freq!==null?freq+'/wk':'not logged'}`);
+    }
+    scanIntervalContext = `\n\nSCAN INTERVAL ANALYSIS — your personal cause-effect record:\n${lines.join('\n')}`;
   }
 
-  const measBlock = measurements.length
-    ? `\nRecent body measurements (inches): ${measurements.map(m =>
-        `${m.date}: waist=${m.waist}"${m.hips?' hips='+m.hips+'"':''}${m.arm?' arm='+m.arm+'"':''}`
-      ).join(' | ')}`
-    : '';
+  // ── Base system prompt: permanent context document is the foundation ──
+  const baseSystem = `${permanentCtx}
 
-  const sessionBlock = sessionLogs.length
-    ? `\nRecent session logs: ${sessionLogs.map(s =>
-        `${s.date}: feel=${s.feel||'?'}/5, RPE=${s.rpe||'?'}/10${s.note?' ('+s.note+')':''}`
-      ).join(' | ')}`
-    : '';
-
-  // ── Base system prompt ──
-  const baseSystem = `You are a direct, evidence-based fitness coach specializing in body recomposition — building visible muscle while simultaneously reducing body fat. You coach Hanna, a 50-year-old woman who:
-
-PROFILE:
-- 5'5", peri/post-menopausal (affects muscle building rate and fat distribution)
-- On tirzepatide (GLP-1/GIP agonist) — suppresses appetite significantly, can make hitting protein targets challenging
-- Takes creatine daily — NOTE: creatine causes 2-4 lb water retention in muscle tissue, which inflates BIA body fat % readings and inflates lean mass on scans. This is NOT actual muscle gain, it is intracellular water.
-- Uses Evolt 360 BIA scanner — BIA accuracy depends on hydration. Results fluctuate 2-4% based on time of day, hydration, recent eating. Compare TRENDS not individual scans.
-- Uses Fitbod (progressive overload workouts), FuelStrong (nutrition tracking)
-- GOAL: Preserve and build skeletal muscle while losing fat mass — "body recomp"
-${goalsBlock}${contextBlock}${tirzBlock}${suppBlock}${measBlock}${sessionBlock}
-
-EVIDENCE-BASED COACHING RULES (no myths, no broscience):
-1. PROTEIN: 0.7-1.0g per lb of bodyweight is evidence-supported for muscle retention during a deficit. Higher end (~1g/lb) when in caloric deficit and training hard.
-2. MUSCLE BUILDING REALITY: Women over 50 build muscle more slowly. 0.25-0.5 lbs of ACTUAL muscle per month is realistic and excellent. Do not set unrealistic expectations.
-3. SCALE WEIGHT is NOT a good metric for body recomp — reframe toward skeletal muscle mass % and fat mass lbs from scans, plus measurements
-4. TIRZEPATIDE + MUSCLE: GLP-1 agonists reduce appetite — this is useful for fat loss but can lead to inadequate protein intake and muscle loss if not managed. Priority: hit protein goal even when not hungry.
-5. CREATINE + BIA SCANS: When interpreting Evolt data, note that creatine causes water retention in muscle that inflates lean mass readings by 2-4 lbs and can temporarily show higher body fat % due to increased total mass. This is beneficial (fuller muscles, better performance) not negative.
-6. DEFICIT DEPTH: 300-500 kcal/day deficit is optimal for fat loss while preserving muscle. More aggressive = faster muscle loss, slower recovery, worse workouts.
-7. TRAINING SPECIFICITY: Progressive overload is the driver of muscle retention/growth — weight going up over time matters. Track this trend, not just whether she trained.
-8. AVOID MYTHS: Do not recommend "muscle turns to fat," "toning vs building," "cardio burns muscle," "eat less move more is all that matters," or "detoxes/cleanses." Use specific mechanisms.
-9. Format responses with clear emoji-headed sections: 🧠 Overall Analysis, 💪 Training, 🥗 Nutrition, 🎯 Top 3 Priorities`;
+EVIDENCE-BASED COACHING RULES:
+1. PROTEIN: 0.7-1.0g per lb of bodyweight supports muscle retention during a deficit. Higher end (~1g/lb) when in caloric deficit and training hard.
+2. MUSCLE BUILDING AT 50: Women over 50 build muscle more slowly — 0.25-0.5 lbs of actual muscle per month is realistic and excellent. Do not set unrealistic expectations.
+3. SCALE WEIGHT is NOT a good metric for body recomposition. Reframe toward skeletal muscle mass and fat mass from Evolt scans.
+4. TIRZEPATIDE + MUSCLE: GLP-1 agonists reduce appetite — useful for fat loss, but can lead to muscle loss if protein and calories are too low. Priority: hit protein goal even when not hungry.
+5. DEFICIT DEPTH: 300-500 kcal/day deficit is optimal for fat loss while preserving muscle. More aggressive = faster muscle loss, slower recovery, worse workouts.
+6. PROGRESSIVE OVERLOAD is the driver of muscle retention and growth — weights going up over time matters.
+7. SCAN INTERVALS are the most valuable data. Connect each interval's nutrition and training behavior to its body composition outcome.
+8. AVOID MYTHS: No "muscle turns to fat," "toning vs building," "cardio burns muscle," "detoxes." Use specific mechanisms.
+${goalsBlock}${tirzBlock}${suppBlock}${measBlock}${sessionBlock}${additionalNotes ? '\nAdditional coach notes: '+additionalNotes : ''}`;
 
   // ── Mode-specific prompt ──
   let userMsg, systemAddition = '';
 
   if (mode === 'dashboard') {
-    // Include per-week muscle group breakdown from client
-    const workoutDetail = body.workoutDetail || null;
+    const workoutDetail  = body.workoutDetail || null;
     const weeklyBreakdown = workoutDetail?.weekLines?.length
       ? `\nPer-week muscle breakdown (last 8 weeks):\n${workoutDetail.weekLines.join('\n')}\nAll-time muscle frequency: ${workoutDetail.muscleRanking}`
       : '';
 
     systemAddition = `
-You are the Performance & Pattern Coach inside FuelStrong Progress. Your job is to connect the dots across Fitbod workouts, Evolt body composition scans, and FuelStrong nutrition data — not just summarize each in isolation. Every key finding must tie at least two data sources together.
+You are the Performance & Pattern Coach inside FuelStrong Progress. Your job is to connect the dots across Fitbod workouts, Evolt body composition scans, and FuelStrong nutrition data — not just summarize each in isolation. If scan interval data is present, use it to make coaching specific: what did behavior look like during each interval, and what did the scan show at the end?
 
 RESPONSE STRUCTURE — use these exact emoji headers in this order:
 
 **🧠 Big Picture** (1–2 sentences)
-Honest overall trajectory. Direct and specific. Example: "You're in solid recomposition — muscle is holding while fat trends down, but leg volume is the consistent gap week over week."
+Honest overall trajectory. Direct and specific.
 
 **📊 Pattern Findings** (4–6 bullets citing actual numbers)
-Tie cause to effect explicitly across data sources:
-• Between scans [date] → [date], you trained [X]×/week — skeletal muscle changed [result]
-• Training days averaged [X]g protein vs rest days [Y]g — [what that means for muscle]
-• [Muscle group] sees [X] sessions/week vs [other group] [Y] — [over/undertrained conclusion]
-• BMR changed [X]→[Y] kcal — signal of [muscle health / intake / deficit depth]
-• Weeks with [pattern] lined up with [outcome]; lower weeks → [other outcome]
-Connect them explicitly: "High volume + near-target protein → [result]. Low volume + low protein → [result]."
+Tie cause to effect explicitly. Use scan interval data where available to connect behavior to outcome.
+• If intervals exist: "Between scans [date]→[date], you trained X/week and averaged Xg protein — muscle changed [result]"
+• Connect patterns: "High protein weeks + consistent training → [outcome]; low calorie periods → [other outcome]"
 
 **💪 Workout-Focused Coaching** (3–5 specific actions)
-Lead with training. Nutrition and recovery framed as support only:
-• Which muscle groups need more work and why (cite actual volume data from Fitbod)
-• Whether to push volume or deload (cite streak length, fatigue signals, consistency trend)
-• Pre/post-workout nutrition adjustment based on patterns you see across the data
-• Frequency or load tweak based on the cross-dataset trend
-• GLP-1 specific adjustments if relevant (injection day timing, low-appetite protein strategies)
-Keep actions small and implementable. Not a full program rewrite.
+Lead with training. Nutrition and recovery framed as support.
+• Which muscle groups need more work (cite Fitbod data)
+• Whether to push volume or maintain
+• Specific nutrition adjustment for training days
+• One GLP-1 note if relevant
 
 **🎯 Why This Matters** (1–2 sentences)
-Link these tweaks explicitly to what the next Evolt scan should show.
+Link these tweaks to what the next Evolt scan should show.
 
 **📅 Check Back When**
-One sentence: after next Evolt scan, or after X weeks of this adjustment.
+One sentence: after next Evolt scan, or after X weeks.
 
-TONE: Direct, coach-like, encouraging but not vague. Specific numbers over reassurance. Cause-and-effect over theory. Bullets not paragraphs. Start directly with Big Picture — no preamble, no date stamps, no dividers.`;
+TONE: Direct, specific, coach-like. Numbers over reassurance. Start directly — no preamble.`;
 
-    userMsg = `Generate my coaching dashboard.\n\nEvolt Scans (chronological):\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}${weeklyBreakdown}\n\nNutrition (last 14 days from FuelStrong):\n${nutritionLines}`;
+    userMsg = `Generate my coaching dashboard.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}${scanIntervalContext}\n\nWorkout Analytics:\n${woLines}${weeklyBreakdown}\n\nNutrition (last 14 days):\n${nutritionLines}`;
 
   } else if (mode === 'fuelstrong_daily' || mode === 'checkin') {
-    // ── Data from client (new model) ──────────────────────────────────────
-    // foodLog  : flat array  { timestamp(ISO), name, displayName, calories, protein, carbs, fat, fiber, mealHint }
-    // workouts : array       { startTime(ISO), endTime(ISO|null), durationMinutes, rpe, notes }
-    // hem      : array       { timestamp(ISO), h, e, m, note }
-    // waterLog : array       { timestamp(ISO), oz }
     const foodLog    = body.foodLog  || [];
     const workouts   = body.workouts || [];
     const hemEntries = body.hem      || body.hemLog || [];
@@ -417,104 +433,76 @@ TONE: Direct, coach-like, encouraging but not vague. Specific numbers over reass
     const currentTime = body.currentTime || new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
     const msgHistory  = body.history || [];
 
-    // Derive totals directly from the flat arrays (fresh, not pre-summed)
-    const todayProtein = Math.round(foodLog.reduce((a,i) => a + (i.protein  || 0), 0));
-    const todayCal     = Math.round(foodLog.reduce((a,i) => a + (i.calories || 0), 0));
-    const todayWater   = Math.round(waterLog.reduce((a,w) => a + (w.oz      || 0), 0));
+    const todayProtein = Math.round(foodLog.reduce((a,i) => a+(i.protein||0), 0));
+    const todayCal     = Math.round(foodLog.reduce((a,i) => a+(i.calories||0), 0));
+    const todayWater   = Math.round(waterLog.reduce((a,w) => a+(w.oz||0), 0));
     const proteinGoal  = goals.protein || 150;
     const calGoal      = goals.cal     || 1800;
     const waterGoal    = goals.water   || 80;
 
-    // Helper: format ISO timestamp → "3:00 PM"
     const fmtISO = iso => {
       if (!iso) return '';
-      try { return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
-      catch(e) { return ''; }
+      try { return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); } catch { return ''; }
     };
 
-    // ── H-E-M timeline (.timestamp ISO, not legacy .time string) ─────────
     const hemTimeline = hemEntries.length
-      ? [...hemEntries]
-          .sort((a,b) => (a.timestamp||'').localeCompare(b.timestamp||''))
+      ? [...hemEntries].sort((a,b) => (a.timestamp||'').localeCompare(b.timestamp||''))
           .map(e => {
-            const t      = fmtISO(e.timestamp);
-            const hLabel = e.h === 1 ? 'H1(not hungry)' : e.h === 2 ? 'H2(moderate)'  : e.h === 3 ? 'H3(very hungry)' : '';
-            const eLabel = e.e === 1 ? 'E1(low)'        : e.e === 2 ? 'E2(moderate)'  : e.e === 3 ? 'E3(high)'        : '';
-            const mLabel = e.m === 1 ? 'M1(low)'        : e.m === 2 ? 'M2(ok)'        : e.m === 3 ? 'M3(good)'        : '';
-            return `${t}: ${[hLabel,eLabel,mLabel].filter(Boolean).join(' ')}${e.note?' — '+e.note:''}`;
+            const hL = e.h===1?'H1(not hungry)':e.h===2?'H2(moderate)':e.h===3?'H3(very hungry)':'';
+            const eL = e.e===1?'E1(low)':e.e===2?'E2(moderate)':e.e===3?'E3(high)':'';
+            const mL = e.m===1?'M1(low)':e.m===2?'M2(ok)':e.m===3?'M3(good)':'';
+            return `${fmtISO(e.timestamp)}: ${[hL,eL,mL].filter(Boolean).join(' ')}${e.note?' — '+e.note:''}`;
           }).join(' | ')
       : 'No H-E-M logged yet';
 
-    // ── Food log — sorted by timestamp, grouped by time-of-day period ───────
     const sortedFood = [...foodLog].sort((a,b) => (a.timestamp||'').localeCompare(b.timestamp||''));
     let mealLines = [];
     if (sortedFood.length) {
-      const groups = {};
-      const groupOrder = [];
+      const groups = {}, groupOrder = [];
       sortedFood.forEach(item => {
-        const t    = fmtISO(item.timestamp);
-        const hour = item.timestamp ? new Date(item.timestamp).getHours() : 12;
-        // Time-of-day period — no meal labels
-        const period =
-          hour <  9  ? 'Morning (before 9am)'    :
-          hour <  12 ? 'Late Morning (9–12pm)'   :
-          hour <  14 ? 'Midday (12–2pm)'         :
-          hour <  17 ? 'Afternoon (2–5pm)'        :
-          hour <  20 ? 'Evening (5–8pm)'          : 'Night (after 8pm)';
-        if (!groups[period]) { groups[period] = { items:[], firstTime: t }; groupOrder.push(period); }
+        const hour   = item.timestamp ? new Date(item.timestamp).getHours() : 12;
+        const period = hour<9?'Morning (before 9am)':hour<12?'Late Morning (9–12pm)':hour<14?'Midday (12–2pm)':hour<17?'Afternoon (2–5pm)':hour<20?'Evening (5–8pm)':'Night (after 8pm)';
+        if (!groups[period]) { groups[period] = { items:[], firstTime: fmtISO(item.timestamp) }; groupOrder.push(period); }
         groups[period].items.push(item);
       });
-      mealLines = groupOrder.map(period => {
-        const g      = groups[period];
-        const periodP = Math.round(g.items.reduce((a,i) => a+(i.protein||0), 0));
-        const periodC = Math.round(g.items.reduce((a,i) => a+(i.calories||0), 0));
-        const foods   = g.items.map(i => `${i.displayName||i.name}(${i.protein||0}g P)`).join(', ');
-        return `${period} [${g.firstTime}]: ${periodP}g protein, ${periodC}kcal — ${foods}`;
+      mealLines = groupOrder.map(p => {
+        const g  = groups[p];
+        const pp = Math.round(g.items.reduce((a,i) => a+(i.protein||0), 0));
+        const pc = Math.round(g.items.reduce((a,i) => a+(i.calories||0), 0));
+        return `${p} [${g.firstTime}]: ${pp}g protein, ${pc}kcal — ${g.items.map(i => `${i.displayName||i.name}(${i.protein||0}g P)`).join(', ')}`;
       });
     }
-    const mealSummary = mealLines.length ? mealLines.join('\n') : 'No food logged yet';
 
-    // ── Workouts — build block from workouts array ────────────────────────
     let woBlock = '';
     if (workouts.length) {
-      const woLines2 = workouts.map((w, i) => {
-        const start = fmtISO(w.startTime);
-        const end   = w.endTime ? fmtISO(w.endTime) : null;
-        const dur   = w.durationMinutes ? `${w.durationMinutes} min` : null;
-        const rpe   = w.rpe ? `RPE ${w.rpe}` : null;
-        const label = workouts.length > 1 ? `Workout ${i+1}` : 'Workout';
-        const parts = [start, end ? `→ ${end}` : '(no end logged)', dur, rpe].filter(Boolean).join(' ');
-        return `${label}: ${parts}${w.notes ? ' — '+w.notes : ''}`;
-      });
-      woBlock = woLines2.join('\n');
+      woBlock = workouts.map((w,i) => {
+        const dur = w.durationMinutes ? `${w.durationMinutes} min` : null;
+        const rpe = w.rpe ? `RPE ${w.rpe}` : null;
+        return `${workouts.length>1?'Workout '+(i+1):'Workout'}: ${[fmtISO(w.startTime),dur,rpe].filter(Boolean).join(' ')}${w.notes?' — '+w.notes:''}`;
+      }).join('\n');
     } else {
       woBlock = 'No workout logged today';
     }
 
-    // ── Latest HEM entry for follow-up refresh line ───────────────────────
     const latestHEM = hemEntries.length
-      ? (() => {
-          const e = [...hemEntries].sort((a,b)=>(a.timestamp||'').localeCompare(b.timestamp||'')).pop();
-          return `H${e.h||'?'} E${e.e||'?'} M${e.m||'?'}${e.note?' ('+e.note+')':''}`;
-        })()
+      ? (() => { const e=[...hemEntries].sort((a,b)=>(a.timestamp||'').localeCompare(b.timestamp||'')).pop(); return `H${e.h||'?'} E${e.e||'?'} M${e.m||'?'}${e.note?' ('+e.note+')':''}`; })()
       : 'none';
 
-    // Historical averages
     const recentDays = fuelstrong.slice(-14);
-    const avgP   = recentDays.length ? Math.round(recentDays.reduce((a,d)=>a+d.protein,0)/recentDays.length) : null;
-    const avgCal = recentDays.length ? Math.round(recentDays.reduce((a,d)=>a+(d.calories||0),0)/recentDays.length) : null;
+    const avgP   = recentDays.length ? Math.round(recentDays.reduce((a,d) => a+d.protein,0)/recentDays.length) : null;
+    const avgCal = recentDays.length ? Math.round(recentDays.reduce((a,d) => a+(d.calories||0),0)/recentDays.length) : null;
 
     systemAddition = `
-You are coaching Hanna in real-time throughout the day using the check-in format below. Keep it conversational — like a coach texting her.
+You are coaching Hanna in real-time throughout the day. Keep it conversational — like a coach texting her.
 
-RESPONSE FORMAT (follow exactly every time):
+RESPONSE FORMAT:
 1. **Status** (1-2 sentences): Where she is in the day and how she's tracking.
-2. **Snapshot** (3-4 bullets): Current protein vs goal, water vs goal, workout status, one body comp trend note if relevant.
-3. **What This Means** (2-3 sentences): Connect the numbers to her muscle-building and fat-loss goals in plain language.
-4. **Next Steps** (2-4 specific actions for the next 2-4 hours): Use her actual logged foods and times. Reference specific time windows, not meal names.
-5. **Check Back When**: One sentence telling her when to update you (after workout, after 6pm, etc.)
+2. **Snapshot** (3-4 bullets): Protein vs goal, water vs goal, workout status, one scan trend note if relevant.
+3. **What This Means** (2-3 sentences): Connect numbers to muscle-building and fat-loss in plain language.
+4. **Next Steps** (2-4 actions for the next 2-4 hours): Use actual logged foods and times. Time of day only — never breakfast/lunch/dinner.
+5. **Check Back When**: One sentence.
 
-Keep responses SHORT and direct. No long paragraphs. Coach texting style. Never reference breakfast/lunch/dinner — use time of day instead (e.g., "before 2pm", "after your workout").`;
+SHORT and direct. Coach texting style.`;
 
     const systemData = `
 TODAY'S DATA (${currentTime}):
@@ -524,108 +512,90 @@ Water: ${todayWater}oz / ${waterGoal}oz goal
 ${woBlock}
 
 MEALS LOGGED:
-${mealSummary}
+${mealLines.length ? mealLines.join('\n') : 'No food logged yet'}
 
-H-E-M TIMELINE (H=Hunger, E=Energy, M=Mood all scale 1-3):
+H-E-M TIMELINE (H=Hunger, E=Energy, M=Mood, 1-3 scale):
 ${hemTimeline}
 
-TIRZEPATIDE:
-Dose: ${tirzepatide.dose||'unknown'}mg | Days since injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
+TIRZEPATIDE: ${tirzepatide.dose||'unknown'}mg | Days since injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
 
 14-DAY AVERAGES: Protein ${avgP||'no data'}g/day | Calories ${avgCal||'no data'}/day
 
 EVOLT TREND:
-${evoltLines}`;
+${evoltLines || 'No scans uploaded yet'}`;
 
-    // Build message history for conversational coaching
     if (msgHistory.length === 0) {
-      // First message — inject all data as context
-      userMsg = `${systemData}
-
-Give me my coaching check-in.`;
+      userMsg = `${systemData}\n\nGive me my coaching check-in.`;
     } else {
-      // Follow-up — add fresh data header + new question
-      const lastUserMsg = body.question || 'Update my coaching based on current data.';
-      userMsg = `[Data update at ${currentTime}]
+      userMsg = `[Update at ${currentTime}]
 Protein: ${todayProtein}g / ${proteinGoal}g | Water: ${todayWater}oz
 ${woBlock}
 Latest HEM: ${latestHEM}
-Food logged: ${mealLines.join('; ') || 'none yet'}
+Food: ${mealLines.join('; ') || 'none yet'}
 
-${lastUserMsg}`;
+${body.question || 'Update my coaching based on current data.'}`;
     }
 
   } else if (mode === 'ask') {
-    systemAddition = '\nAnswer the specific question directly and specifically. Use actual numbers from the data. Keep it to 3-5 sentences. Coach texting style.';
-    // Include today context if provided
+    systemAddition = '\nAnswer the specific question directly and specifically. Use actual numbers from the data. 3-5 sentences. Coach texting style.';
     const todayCtx = body.todayContext || '';
-    userMsg = `${todayCtx ? 'TODAY: '+todayCtx+'\n\n' : ''}Evolt Scans:\n${evoltLines}\nDelta: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition:\n${nutritionLines}\n\nQuestion: ${question}`;
+    userMsg = `${todayCtx ? 'TODAY: '+todayCtx+'\n\n' : ''}Evolt Scans:\n${evoltLines}\nDelta: ${evoltDelta}${scanIntervalContext}\n\nWorkout Analytics:\n${woLines}\n\nNutrition:\n${nutritionLines}\n\nQuestion: ${question}`;
 
   } else if (mode === 'body') {
-    systemAddition = '\nFocus: Deep dive into body composition trends only. What do the Evolt numbers mean? What is the trajectory? What specific behaviors are driving changes? End with: "Your Top 3 Body Composition Priorities."';
-    userMsg = `Analyze my body composition data in depth.\n\nEvolt Scans:\n${evoltLines}\nOverall delta: ${evoltDelta}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+    systemAddition = '\nFocus: Deep dive into body composition trends. Use scan interval analysis to explain which behaviors drove each outcome. End with: "Your Top 3 Body Composition Priorities."';
+    userMsg = `Analyze my body composition.\n\nEvolt Scans:\n${evoltLines}\nOverall delta: ${evoltDelta}${scanIntervalContext}\n\nNutrition (last 14 days):\n${nutritionLines}`;
 
   } else if (mode === 'weekly') {
-    // ── Weekly deep analysis — runs Friday evening, checks full week ─────────
-    const recentWeek = fuelstrong.slice(-7);
+    const recentWeek  = fuelstrong.slice(-7);
     const weekProtein = recentWeek.length
-      ? recentWeek.map(d => `${d.date}: ${d.protein}g protein, ${d.calories||'?'}kcal, ${d.water||'?'}oz water${d.flags?.trainingDay ? ' 💪' : ''}${d.flags?.injectionDay ? ' 💉' : ''}`).join('\n')
+      ? recentWeek.map(d => `${d.date}: ${d.protein}g protein, ${d.calories||'?'}kcal${d.flags?.trainingDay?' 💪':''}${d.flags?.injectionDay?' 💉':''}`).join('\n')
       : 'No logged days this week';
-
-    const avgWeekP   = recentWeek.length ? Math.round(recentWeek.reduce((a,d)=>a+d.protein,0) / recentWeek.length) : null;
-    const avgWeekCal = recentWeek.length ? Math.round(recentWeek.reduce((a,d)=>a+(d.calories||0),0) / recentWeek.length) : null;
+    const avgWeekP   = recentWeek.length ? Math.round(recentWeek.reduce((a,d) => a+d.protein,0)/recentWeek.length) : null;
+    const avgWeekCal = recentWeek.length ? Math.round(recentWeek.reduce((a,d) => a+(d.calories||0),0)/recentWeek.length) : null;
     const workoutDays = recentWeek.filter(d => d.flags?.trainingDay).length;
-    const injDays    = recentWeek.filter(d => d.flags?.injectionDay).length;
 
     systemAddition = `
-You are giving Hanna her weekly performance review. Be concise, direct, and data-driven. No fluff.
+You are giving Hanna her weekly performance review. Concise, direct, data-driven. No fluff.
 
-OUTPUT FORMAT (use exactly):
+OUTPUT FORMAT:
 ### What Worked This Week
-2-3 specific wins with numbers (protein averages, workout days, body comp improvements).
-
+2-3 specific wins with numbers.
 ### What Limited Progress
-2-3 specific gaps or patterns holding her back. Use actual data.
-
+2-3 specific gaps with data.
 ### Adjustments for Next Week
-3 concrete, numbered actions she can take next week. Be specific — name foods, times, targets.
-
+3 concrete numbered actions. Specific — name foods, times, targets.
 ### Trend Check
-One sentence on where her body composition trajectory is heading if she keeps this pattern.
+One sentence on body composition trajectory if she keeps this pattern.
 
-Keep the whole response under 300 words. No motivation fluff. Coach data review style.`;
+Under 300 words. Coach data review style.`;
 
-    userMsg = `Weekly review — week ending ${new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}.
+    userMsg = `Weekly review — ${new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}.
 
 DAILY LOG (last 7 days):
 ${weekProtein}
 
-WEEKLY AVERAGES:
-Protein: ${avgWeekP||'no data'}g/day | Calories: ${avgWeekCal||'no data'}/day
-Training days: ${workoutDays}/7 | Injection days: ${injDays} this week
+WEEKLY AVERAGES: Protein ${avgWeekP||'no data'}g/day | Calories ${avgWeekCal||'no data'}/day
+Training days: ${workoutDays}/7
+Tirzepatide: ${tirzepatide.dose||'unknown'}mg | Days since injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
 
-BODY COMPOSITION (recent Evolt):
-${evoltLines || 'No scans available'}
-Overall delta: ${evoltDelta}
+BODY COMPOSITION:
+${evoltLines || 'No scans'}
+Overall delta: ${evoltDelta}${scanIntervalContext}
 
-14-DAY NUTRITION TREND:
+NUTRITION TREND (14 days):
 ${nutritionLines}
-
-TIRZEPATIDE: ${tirzepatide.dose||'unknown'}mg | Days since last injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
 
 Generate my weekly review.`;
 
   } else if (mode === 'training') {
-    systemAddition = '\nFocus: Deep analysis of training quality for muscle building. Analyze rep ranges, exercise selection, consistency, recovery, progressive overload. End with: "Your Top 3 Training Adjustments."';
-    userMsg = `Analyze my training data in depth.\n\nWorkout Analytics:\n${woLines}\n\nBody Composition Impact:\n${evoltDelta}\n\nMuscle trend:\n${evolt.slice(-6).map(s=>`${s.date}: ${s.skeletalMuscleMass}lbs muscle`).join(', ')}`;
+    systemAddition = '\nFocus: Deep analysis of training quality for muscle building. Rep ranges, exercise selection, consistency, progressive overload. Connect training patterns to scan outcomes using interval analysis. End with: "Your Top 3 Training Adjustments."';
+    userMsg = `Analyze my training in depth.\n\nWorkout Analytics:\n${woLines}\n\nBody comp impact:\n${evoltDelta}${scanIntervalContext}\n\nMuscle trend:\n${evolt.slice(-6).map(s=>`${s.date}: ${s.skeletalMuscleMass}lbs muscle`).join(', ')}`;
 
   } else {
-    // full (legacy)
-    systemAddition = '\nFull synthesis: Connect ALL three data sources. What story do the numbers tell together? Where is she winning? What is the most important thing to fix? End with: "Your Top 3 Priorities Right Now."';
-    userMsg = `Full coaching analysis.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+    systemAddition = '\nFull synthesis: Connect ALL three data sources. Use scan interval analysis. What story do the numbers tell together? Where is she winning? Most important thing to fix? End with: "Your Top 3 Priorities Right Now."';
+    userMsg = `Full coaching analysis.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}${scanIntervalContext}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
   }
 
-  // Build messages array — support conversation history for daily coaching
   let messagesArr;
   if ((mode === 'fuelstrong_daily' || mode === 'checkin') && body.history && body.history.length > 0) {
     messagesArr = [...body.history, { role: 'user', content: userMsg }];
@@ -634,175 +604,242 @@ Generate my weekly review.`;
   }
 
   const resp = await callClaude(env, {
-    model: 'claude-sonnet-4-6',
+    model:      'claude-sonnet-4-6',
     max_tokens: (mode === 'dashboard' || mode === 'weekly') ? 1600 : 1200,
-    system: baseSystem + systemAddition,
-    messages: messagesArr
+    system:     baseSystem + systemAddition,
+    messages:   messagesArr,
   });
 
   const coaching = resp.content?.[0]?.text || 'Could not generate coaching.';
-
   await env.FUELSTRONG_KV.put('last_coaching', JSON.stringify({
-    text: coaching, mode, question: question || null,
-    generatedAt: new Date().toISOString()
+    text: coaching, mode, question: question || null, generatedAt: new Date().toISOString()
   }));
-
   return reply({ coaching, generatedAt: new Date().toISOString() });
 }
 
-// ─── GitHub Backup ──────────────────────────────────────────────────────────────
+// ─── Momentum Signal ──────────────────────────────────────────────────────────
+// GET /api/momentum — pure computation, no Claude call, fast
+// Returns { state: 'Building'|'Holding'|'Drifting', headline, priority, metrics }
+async function getMomentum(env) {
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
+
+  const [fsRaw, evoltRaw, goalsRaw, profGoalsRaw] = await Promise.all([
+    env.FUELSTRONG_KV.get('fuelstrong').catch(() => null),
+    env.FUELSTRONG_KV.get('evolt').catch(() => null),
+    env.FUELSTRONG_KV.get('goals').catch(() => null),
+    env.FUELSTRONG_KV.get('profile_goals').catch(() => null),
+  ]);
+
+  const fuelstrong  = JSON.parse(fsRaw    || '[]');
+  const evolt       = JSON.parse(evoltRaw || '[]');
+  const goals       = profGoalsRaw ? JSON.parse(profGoalsRaw) : (goalsRaw ? JSON.parse(goalsRaw) : {});
+  const proteinGoal = goals.protein || 150;
+
+  // Only use days with actual logged data
+  const last14 = fuelstrong.slice(-14).filter(d => (d.calories||0) > 0 || (d.protein||0) > 0);
+
+  if (last14.length < 3) {
+    return reply({
+      state:        'Building',
+      headline:     'Getting started — keep logging to unlock pattern analysis',
+      priority:     'Log your first full week of food to see your momentum',
+      insufficient: true,
+      metrics:      { loggedDays: last14.length },
+    });
+  }
+
+  const avgProtein     = last14.reduce((a,d) => a+(d.protein||0), 0) / last14.length;
+  const avgCal         = last14.reduce((a,d) => a+(d.calories||0), 0) / last14.length;
+  const lowCalDays     = last14.filter(d => (d.calories||0) > 0 && (d.calories||0) < 1200).length;
+  const trainingDays   = last14.filter(d => d.flags?.trainingDay || (d.workouts||0) > 0).length;
+  const weeklyTraining = parseFloat((trainingDays / (last14.length / 7)).toFixed(1));
+
+  // Last scan direction
+  const latestScan = evolt.length ? evolt[evolt.length-1] : null;
+  const prevScan   = evolt.length > 1 ? evolt[evolt.length-2] : null;
+  const muscleUp   = (latestScan && prevScan && latestScan.skeletalMuscleMass != null && prevScan.skeletalMuscleMass != null)
+    ? latestScan.skeletalMuscleMass > prevScan.skeletalMuscleMass : null;
+  const fatDown    = (latestScan && prevScan && latestScan.bodyFatPct != null && prevScan.bodyFatPct != null)
+    ? latestScan.bodyFatPct < prevScan.bodyFatPct : null;
+
+  // Composite score: protein 40%, calories 35%, training 25%
+  const proteinScore = avgProtein / proteinGoal;
+  const calScore     = avgCal >= 1500 ? 1 : avgCal >= 1300 ? 0.75 : avgCal >= 1200 ? 0.5 : 0.2;
+  const trainScore   = weeklyTraining >= 3.5 ? 1 : weeklyTraining >= 2.5 ? 0.7 : weeklyTraining >= 1.5 ? 0.4 : 0.15;
+  const composite    = (proteinScore * 0.4) + (calScore * 0.35) + (trainScore * 0.25);
+
+  let state, headline, priority;
+
+  if (composite >= 0.78 && lowCalDays <= 2) {
+    state    = 'Building';
+    headline = proteinScore >= 0.9
+      ? `Protein strong at ${Math.round(avgProtein)}g avg, training consistent — muscle-building conditions are right`
+      : `Good momentum — protein at ${Math.round(avgProtein)}g avg, tighten it on training days`;
+    priority = weeklyTraining < 3.5
+      ? `Push for one more training session this week`
+      : `Hold this pattern through your next Evolt scan`;
+
+  } else if (composite >= 0.52 || lowCalDays <= 3) {
+    state = 'Holding';
+    if (lowCalDays > 2) {
+      headline = `${lowCalDays} days under 1,200 calories in the last ${last14.length} logged days — muscle is protected but not actively building`;
+      priority = `Add a protein-dense snack on your next low-appetite day — Greek yogurt, cottage cheese, or a shake`;
+    } else if (proteinScore < 0.8) {
+      headline = `Calories adequate but protein averaging ${Math.round(avgProtein)}g — ${Math.round(proteinGoal - avgProtein)}g below target`;
+      priority = `Front-load protein: aim for 50g before noon on training days`;
+    } else {
+      headline = `Training at ${weeklyTraining}/week — one more session would shift this from Holding to Building`;
+      priority = `Schedule your next workout right now`;
+    }
+
+  } else {
+    state = 'Drifting';
+    if (lowCalDays > 4) {
+      headline = `${lowCalDays} of ${last14.length} logged days under 1,200 calories — this is actively working against the muscle you're building in the gym`;
+      priority = `Today: add 300+ calories before your next workout, even if you're not hungry`;
+    } else if (proteinScore < 0.6) {
+      headline = `Protein averaging ${Math.round(avgProtein)}g — significantly below the ${proteinGoal}g needed to protect muscle during fat loss`;
+      priority = `Today: log your first protein source before 9am`;
+    } else {
+      headline = `Training at ${weeklyTraining}/week over the last ${last14.length} days — consistency is the gap right now`;
+      priority = `Schedule your next 3 workouts in your calendar today`;
+    }
+  }
+
+  return reply({
+    state,
+    headline,
+    priority,
+    metrics: {
+      avgProtein:    Math.round(avgProtein),
+      proteinGoal,
+      proteinPct:    Math.round(proteinScore * 100),
+      avgCal:        Math.round(avgCal),
+      lowCalDays,
+      trainingDays,
+      weeklyTraining,
+      loggedDays:    last14.length,
+    },
+    scanDirection: muscleUp !== null ? { muscleUp, fatDown } : null,
+    computedAt:    new Date().toISOString(),
+  });
+}
+
+// ─── Scan Interval Analysis ───────────────────────────────────────────────────
+// GET /api/scan-intervals — pure computation, personal cause-effect library
+async function getScanIntervals(env) {
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
+
+  const [evoltRaw, fitbodRaw, fsRaw] = await Promise.all([
+    env.FUELSTRONG_KV.get('evolt').catch(() => null),
+    env.FUELSTRONG_KV.get('fitbod').catch(() => null),
+    env.FUELSTRONG_KV.get('fuelstrong').catch(() => null),
+  ]);
+
+  const evolt      = JSON.parse(evoltRaw  || '[]').sort((a,b) => new Date(a.date)-new Date(b.date));
+  const fitbod     = JSON.parse(fitbodRaw || '[]');
+  const fuelstrong = JSON.parse(fsRaw     || '[]');
+
+  if (evolt.length < 2) {
+    return reply({
+      intervals:   [],
+      totalScans:  evolt.length,
+      message: evolt.length === 0
+        ? 'No scans yet — upload your Evolt PDFs in the Upload tab'
+        : 'Upload your next Evolt scan to unlock interval analysis — this will show you exactly what worked and what didn\'t',
+    });
+  }
+
+  const intervals = [];
+  for (let i = 1; i < evolt.length; i++) {
+    const prev = evolt[i-1], curr = evolt[i];
+    const days = Math.round((new Date(curr.date) - new Date(prev.date)) / 86400000);
+
+    const iNutrition = fuelstrong.filter(d => d.date > prev.date && d.date <= curr.date && ((d.protein||0)>0||(d.calories||0)>0));
+    const avgProtein  = iNutrition.length ? Math.round(iNutrition.reduce((a,d) => a+(d.protein||0),0)/iNutrition.length) : null;
+    const avgCal      = iNutrition.length ? Math.round(iNutrition.reduce((a,d) => a+(d.calories||0),0)/iNutrition.length) : null;
+    const lowCalDays  = iNutrition.filter(d => (d.calories||0) < 1200).length;
+
+    const iWorkouts = fitbod.filter(w => w.date > prev.date && w.date <= curr.date);
+    const weeklyFreq = days > 0 ? parseFloat((iWorkouts.length / (days/7)).toFixed(1)) : null;
+    const mgCounts   = {};
+    iWorkouts.forEach(w => { (w.muscleGroupsWorked||[]).forEach(mg => { mgCounts[mg] = (mgCounts[mg]||0)+1; }); });
+    const topGroups  = Object.entries(mgCounts).sort((a,b) => b[1]-a[1]).slice(0,4).map(e => `${e[0]}(${e[1]}×)`);
+
+    const muscleChange = (curr.skeletalMuscleMass!=null&&prev.skeletalMuscleMass!=null) ? parseFloat((curr.skeletalMuscleMass-prev.skeletalMuscleMass).toFixed(1)) : null;
+    const fatChange    = (curr.bodyFatPct!=null&&prev.bodyFatPct!=null)                 ? parseFloat((curr.bodyFatPct-prev.bodyFatPct).toFixed(1))                 : null;
+    const weightChange = (curr.weight!=null&&prev.weight!=null)                         ? parseFloat((curr.weight-prev.weight).toFixed(1))                         : null;
+
+    // Plain-language outcome classification
+    let outcome = 'unknown', outcomeLabel = 'Unknown';
+    if (muscleChange !== null && fatChange !== null) {
+      if      (muscleChange > 0.2 && fatChange < -0.3) { outcome = 'recomp';       outcomeLabel = 'Recomp ✦';   }
+      else if (muscleChange > 0.1)                      { outcome = 'building';     outcomeLabel = 'Building 💪'; }
+      else if (fatChange < -0.3)                        { outcome = 'cutting';      outcomeLabel = 'Fat loss 📉'; }
+      else if (muscleChange >= -0.3)                    { outcome = 'maintaining';  outcomeLabel = 'Holding 🔒'; }
+      else                                              { outcome = 'muscle_loss';  outcomeLabel = 'Muscle loss ⚠️'; }
+    }
+
+    intervals.push({
+      interval:    i,
+      startDate:   prev.date,
+      endDate:     curr.date,
+      days,
+      outcome,
+      outcomeLabel,
+      bodyComp: { muscleChange, fatChange, weightChange, muscleStart: prev.skeletalMuscleMass, muscleEnd: curr.skeletalMuscleMass, fatStart: prev.bodyFatPct, fatEnd: curr.bodyFatPct },
+      nutrition: { avgProtein, avgCal, loggedDays: iNutrition.length, lowCalDays, coveragePct: days > 0 ? Math.round(iNutrition.length/days*100) : null },
+      training:  { totalWorkouts: iWorkouts.length, weeklyFreq, topMuscleGroups: topGroups },
+    });
+  }
+
+  return reply({ intervals, totalScans: evolt.length, computedAt: new Date().toISOString() });
+}
+
+// ─── GitHub Backup ────────────────────────────────────────────────────────────
 async function backupToGitHub(env) {
   const [e, f, fs] = await Promise.all([
     env.FUELSTRONG_KV.get('evolt'),
     env.FUELSTRONG_KV.get('fitbod'),
     env.FUELSTRONG_KV.get('fuelstrong'),
   ]);
-
   const files = [
     { path: 'data/evolt.json',      content: e  || '[]' },
     { path: 'data/fitbod.json',     content: f  || '[]' },
     { path: 'data/fuelstrong.json', content: fs || '[]' },
   ];
-
   const results = [];
   for (const file of files) {
     try {
       let sha;
-      const check = await fetch(
-        `https://api.github.com/repos/${GITHUB_REPO}/contents/${file.path}`,
-        { headers: githubHeaders(env) }
-      );
+      const check = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${file.path}`, { headers: githubHeaders(env) });
       if (check.ok) sha = (await check.json()).sha;
-
-      const body = {
-        message: `data: update ${file.path} ${new Date().toISOString().split('T')[0]}`,
-        content: b64encode(file.content),
-        ...(sha && { sha }),
-      };
-
-      const res = await fetch(
-        `https://api.github.com/repos/${GITHUB_REPO}/contents/${file.path}`,
-        { method: 'PUT', headers: githubHeaders(env), body: JSON.stringify(body) }
-      );
+      const body = { message: `data: update ${file.path} ${new Date().toISOString().split('T')[0]}`, content: b64encode(file.content), ...(sha && { sha }) };
+      const res  = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${file.path}`, { method: 'PUT', headers: githubHeaders(env), body: JSON.stringify(body) });
       results.push({ file: file.path, ok: res.ok, status: res.status });
-    } catch (e) {
-      results.push({ file: file.path, ok: false, error: e.message });
-    }
+    } catch (e) { results.push({ file: file.path, ok: false, error: e.message }); }
   }
-
   return reply({ backed_up: results });
 }
 
-// ─── Macro Estimator ────────────────────────────────────────────────────────
+// ─── Macro Estimator ──────────────────────────────────────────────────────────
 async function estimateMacros(request, env) {
   const body = await request.json();
   const name = (body.name || '').trim();
   if (!name) return reply({ error: 'Food name required' }, 400);
   const resp = await callClaude(env, {
-    model: 'claude-haiku-4-5-20251001',
+    model:      'claude-haiku-4-5-20251001',
     max_tokens: 200,
-    system: 'You are a nutrition database. Return ONLY valid JSON with no other text, preamble, or markdown.',
-    messages: [{ role: 'user', content: `Estimate nutrition for one standard serving of: "${name}". Return ONLY this JSON: {"cal":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"serving":"description","confidence":"high|medium|low"}` }]
+    system:     'You are a nutrition database. Return ONLY valid JSON with no other text, preamble, or markdown.',
+    messages:   [{ role: 'user', content: `Estimate nutrition for one standard serving of: "${name}". Return ONLY: {"cal":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"serving":"description","confidence":"high|medium|low"}` }]
   });
-  const raw = resp.content?.[0]?.text || '';
+  const raw   = resp.content?.[0]?.text || '';
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) return reply({ error: 'Could not parse' }, 500);
-  try { return reply({ estimate: JSON.parse(match[0]) }); }
-  catch(e) { return reply({ error: 'Invalid JSON' }, 500); }
+  try { return reply({ estimate: JSON.parse(match[0]) }); } catch { return reply({ error: 'Invalid JSON' }, 500); }
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────────
-async function callClaude(env, body) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const STATUS_MESSAGES = {
-      400: 'Bad request to Anthropic — likely an invalid model name. Valid models: claude-sonnet-4-6, claude-opus-4-6, claude-haiku-4-5-20251001.',
-      401: 'Invalid Anthropic API key — check ANTHROPIC_API_KEY in Worker secrets. Make sure you set the secret (not just a variable) in the Cloudflare dashboard.',
-      402: 'Anthropic account out of credits — add credits at console.anthropic.com/billing.',
-      429: 'Anthropic rate limit hit — wait a moment and try again.',
-      529: 'Anthropic API quota exceeded or account paused — check console.anthropic.com/billing.',
-      500: 'Anthropic API internal error — try again in a moment.',
-    };
-    const msg = STATUS_MESSAGES[res.status] || `Anthropic API error ${res.status}`;
-    throw new Error(msg);
-  }
-  return res.json();
-}
-
-function githubHeaders(env) {
-  return {
-    'Authorization': `token ${env.GITHUB_TOKEN}`,
-    'Content-Type': 'application/json',
-    'User-Agent': 'FuelStrong-App/1.0',
-  };
-}
-
-// ─── Daily day GET ─────────────────────────────────────────────────────────────
-// Returns the stored day object for a specific ISO date.
-// The tracker calls GET /api/daily/2026-03-05 on startup and navigation.
-async function getDailyDay(env, path) {
-  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
-  const dateStr = path.replace('/api/daily/', '').split('?')[0];
-  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return reply({ error: 'Invalid date format' }, 400);
-  }
-  const raw = await env.FUELSTRONG_KV.get(`day_${dateStr}`).catch(() => null);
-  if (!raw) return reply({ exists: false });
-  const day = JSON.parse(raw);
-  return reply({ ...day, exists: true });
-}
-
-// ─── Daily day PUT ─────────────────────────────────────────────────────────────
-// Saves the full day object for a specific ISO date.
-// The tracker calls PUT /api/daily/2026-03-05 after every save and on close-day.
-async function putDailyDay(request, env, path) {
-  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
-  const dateStr = path.replace('/api/daily/', '').split('?')[0];
-  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return reply({ error: 'Invalid date format' }, 400);
-  }
-  const body = await request.json().catch(() => null);
-  if (!body) return reply({ error: 'Invalid JSON body' }, 400);
-
-  await env.FUELSTRONG_KV.put(`day_${dateStr}`, JSON.stringify({ ...body, date: dateStr }));
-
-  // If the day is being closed (status === 'complete'), also append a summary
-  // entry to the fuelstrong history array so the coaching engine can read it.
-  if (body.status === 'complete') {
-    const raw      = await env.FUELSTRONG_KV.get('fuelstrong').catch(() => null);
-    const history  = JSON.parse(raw || '[]');
-    const foodLog  = body.foodLog  || [];
-    const waterLog = body.waterLog || [];
-    const protein  = Math.round(foodLog.reduce((a, f) => a + (f.protein  || 0), 0));
-    const calories = Math.round(foodLog.reduce((a, f) => a + (f.calories || 0), 0));
-    const water    = Math.round(waterLog.reduce((a, w) => a + (w.oz      || 0), 0));
-    // Upsert: replace existing entry for this date if already present
-    const idx = history.findIndex(d => d.date === dateStr);
-    const summary = {
-      date:    dateStr,
-      protein, calories, water,
-      workouts: (body.workouts || []).length,
-      flags:   body.flags || {},
-    };
-    if (idx >= 0) history[idx] = summary;
-    else          history.push(summary);
-    history.sort((a, b) => a.date.localeCompare(b.date));
-    await env.FUELSTRONG_KV.put('fuelstrong', JSON.stringify(history));
-  }
-
-  return reply({ ok: true });
-}
-
-// ─── Insights GET ──────────────────────────────────────────────────────────────
-// Returns the last cached insights object from KV.
+// ─── Insights GET ─────────────────────────────────────────────────────────────
 async function getInsights(env) {
   if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
   const raw = await env.FUELSTRONG_KV.get('insights_cache').catch(() => null);
@@ -810,10 +847,9 @@ async function getInsights(env) {
   return reply(JSON.parse(raw));
 }
 
-// ─── Insights POST ─────────────────────────────────────────────────────────────
-// Generates fresh AI insights from all available data and caches them in KV.
+// ─── Insights POST ────────────────────────────────────────────────────────────
 async function generateInsights(env) {
-  if (!env.FUELSTRONG_KV)    return reply({ error: 'KV not bound' }, 500);
+  if (!env.FUELSTRONG_KV)     return reply({ error: 'KV not bound' }, 500);
   if (!env.ANTHROPIC_API_KEY) return reply({ error: 'ANTHROPIC_API_KEY not set' }, 500);
 
   const [evoltRaw, fitbodRaw, fsRaw] = await Promise.all([
@@ -826,106 +862,48 @@ async function generateInsights(env) {
   const fitbod     = JSON.parse(fitbodRaw || '[]');
   const fuelstrong = JSON.parse(fsRaw     || '[]');
 
-  // Require at least some data before calling Claude
   const hasData = evolt.length > 0 || fitbod.length > 0 || fuelstrong.length > 0;
-  if (!hasData) {
-    return reply({
-      insights: [],
-      generatedAt: new Date().toISOString(),
-      insufficient_data: true,
-      dataPoints: { evolt: 0, workouts: 0, nutrition: 0 },
-    });
-  }
+  if (!hasData) return reply({ insights: [], generatedAt: new Date().toISOString(), insufficient_data: true, dataPoints: { evolt: 0, workouts: 0, nutrition: 0 } });
 
-  // Build compact data summaries for the prompt
-  const latestScan = evolt.length ? evolt[evolt.length - 1] : null;
-  const prevScan   = evolt.length > 1 ? evolt[evolt.length - 2] : null;
-  const scanLines  = evolt.slice(-5).map(s =>
-    `${s.date}: weight=${s.weight}kg bodyFat=${s.bodyFatPercent}% muscle=${s.skeletalMuscleMass}kg BMR=${s.bmr}kcal`
-  ).join('\n');
+  const scanLines      = evolt.slice(-5).map(s => `${s.date}: weight=${s.weight}lbs bodyFat=${s.bodyFatPct}% muscle=${s.skeletalMuscleMass}lbs BMR=${s.bmr}kcal`).join('\n');
+  const last4w         = fitbod.filter(s => (Date.now()-new Date(s.date+'T12:00:00'))/86400000 <= 28);
+  const woFreq         = (last4w.length / 4).toFixed(1);
+  const last14         = fuelstrong.slice(-14);
+  const avgProtein     = last14.length ? Math.round(last14.reduce((a,d) => a+(d.protein||0),0)/last14.length) : null;
+  const avgCal         = last14.length ? Math.round(last14.reduce((a,d) => a+(d.calories||0),0)/last14.length) : null;
+  const nutLines       = last14.map(d => `${d.date}: ${d.protein}g protein | ${d.calories}kcal${d.flags?.trainingDay?' 💪':''}${d.flags?.injectionDay?' 💉':''}`).join('\n');
 
-  const last4wWorkouts = fitbod.filter(s => {
-    const d = new Date(s.date + 'T12:00:00');
-    return (Date.now() - d) / 86400000 <= 28;
-  });
-  const woFreq = (last4wWorkouts.length / 4).toFixed(1);
-
-  const last14Nutrition = fuelstrong.slice(-14);
-  const avgProtein = last14Nutrition.length
-    ? Math.round(last14Nutrition.reduce((a, d) => a + (d.protein || 0), 0) / last14Nutrition.length)
-    : null;
-  const avgCal = last14Nutrition.length
-    ? Math.round(last14Nutrition.reduce((a, d) => a + (d.calories || 0), 0) / last14Nutrition.length)
-    : null;
-  const nutLines = last14Nutrition.map(d =>
-    `${d.date}: ${d.protein}g protein | ${d.calories}kcal | ${d.water}oz water${d.flags?.trainingDay ? ' 💪' : ''}${d.flags?.injectionDay ? ' 💉' : ''}`
-  ).join('\n');
-
-  const prompt = `You are the FuelStrong Insights Engine. Analyze this personal fitness data and return ONLY a valid JSON object with no other text.
+  const prompt = `You are analyzing fitness data for Hanna: 50-year-old woman on tirzepatide, body recomposition goal (build visible muscle + lose fat). Return ONLY valid JSON with no other text.
 
 BODY COMPOSITION (Evolt scans):
 ${scanLines || 'No scans available'}
 
-TRAINING (Fitbod):
-${last4wWorkouts.length} workouts in last 4 weeks (${woFreq}/week avg)
+TRAINING (Fitbod): ${last4w.length} workouts in last 4 weeks (${woFreq}/week avg)
 
 NUTRITION (last 14 days):
-${nutLines || 'No nutrition data'}
-Average: ${avgProtein !== null ? avgProtein + 'g protein' : 'unknown'}, ${avgCal !== null ? avgCal + 'kcal' : 'unknown'}
+${nutLines || 'No data'}
+Average: ${avgProtein !== null ? avgProtein+'g protein' : 'unknown'}, ${avgCal !== null ? avgCal+'kcal' : 'unknown'}
 
-Return ONLY this JSON structure — no markdown, no explanation:
-{
-  "insights": [
-    {
-      "type": "muscle_gain_pattern | protein_pattern | hydration_pattern | energy_pattern | fat_loss_pattern | workout_consistency | recovery_pattern | tirzepatide_pattern",
-      "confidence": "high | medium | low",
-      "observation": "one specific sentence citing actual numbers",
-      "recommendation": "one concrete action"
-    }
-  ]
-}
+Return ONLY:
+{"insights":[{"type":"muscle_gain_pattern|protein_pattern|hydration_pattern|energy_pattern|fat_loss_pattern|workout_consistency|recovery_pattern|tirzepatide_pattern","confidence":"high|medium|low","observation":"one specific sentence citing actual numbers","recommendation":"one concrete action"}]}
 
-Rules:
-- Generate 3–5 insights maximum
-- Each insight must cite specific numbers from the data
-- No generic advice — every recommendation must be data-specific
-- If data is insufficient for an insight, skip it entirely`;
+Rules: 3-5 insights max. Cite specific numbers. No generic advice. If data is insufficient, skip the insight entirely.`;
 
   let resp;
-  try {
-    resp = await callClaude(env, {
-      model:      'claude-sonnet-4-6',
-      max_tokens: 800,
-      system:     'You are a fitness data analyst. Return only valid JSON with no other text or markdown.',
-      messages:   [{ role: 'user', content: prompt }],
-    });
-  } catch (e) {
-    return reply({ error: 'Claude API error: ' + e.message }, 502);
-  }
+  try { resp = await callClaude(env, { model: 'claude-sonnet-4-6', max_tokens: 800, system: 'Return only valid JSON with no other text or markdown.', messages: [{ role: 'user', content: prompt }] }); }
+  catch (e) { return reply({ error: 'Claude API error: ' + e.message }, 502); }
 
   const raw = resp.content?.[0]?.text || '{}';
   let parsed;
-  try {
-    // Strip any accidental markdown fences before parsing
-    const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-    parsed = JSON.parse(cleaned);
-  } catch {
-    return reply({ error: 'Insights parse error — Claude returned invalid JSON', raw }, 500);
-  }
+  try { parsed = JSON.parse(raw.replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/i,'').trim()); }
+  catch { return reply({ error: 'Insights parse error', raw }, 500); }
 
-  const result = {
-    insights:    parsed.insights || [],
-    generatedAt: new Date().toISOString(),
-    dataPoints:  { evolt: evolt.length, workouts: fitbod.length, nutrition: fuelstrong.length },
-  };
-
+  const result = { insights: parsed.insights || [], generatedAt: new Date().toISOString(), dataPoints: { evolt: evolt.length, workouts: fitbod.length, nutrition: fuelstrong.length } };
   await env.FUELSTRONG_KV.put('insights_cache', JSON.stringify(result));
   return reply(result);
 }
 
-// ─── Performance Intelligence Engine ──────────────────────────────────────────
-// POST /api/intelligence — calculates objective metrics from KV data.
-// No Claude call — pure math. Fast and cheap to call frequently.
+// ─── Performance Intelligence ─────────────────────────────────────────────────
 async function getIntelligence(env) {
   if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
 
@@ -936,69 +914,136 @@ async function getIntelligence(env) {
     env.FUELSTRONG_KV.get('profile_goals').catch(() => null),
   ]);
 
-  const fuelstrong = JSON.parse(fsRaw    || '[]');
-  const evolt      = JSON.parse(evoltRaw || '[]');
-  const goals      = profGoalsRaw ? JSON.parse(profGoalsRaw) : (goalsRaw ? JSON.parse(goalsRaw) : {});
-  const proteinGoal = goals.protein || 150;
+  const fuelstrong   = JSON.parse(fsRaw    || '[]');
+  const evolt        = JSON.parse(evoltRaw || '[]');
+  const goals        = profGoalsRaw ? JSON.parse(profGoalsRaw) : (goalsRaw ? JSON.parse(goalsRaw) : {});
+  const proteinGoal  = goals.protein || 150;
+  const last14       = fuelstrong.slice(-14);
+  const proteinAdherence = last14.length ? Math.round(last14.filter(d => (d.protein||0) >= proteinGoal).length / last14.length * 100) : null;
+  const last28       = fuelstrong.filter(d => (Date.now() - new Date(d.date+'T12:00:00')) / 86400000 <= 28);
+  const trainingDays = last28.filter(d => d.flags?.trainingDay || (d.workouts||0) > 0).length;
+  const trainingFrequency = last28.length >= 7 ? parseFloat((trainingDays / (last28.length/7)).toFixed(1)) : null;
+  const latestScan   = evolt.length ? evolt[evolt.length-1] : null;
+  const prevScan     = evolt.length > 1 ? evolt[evolt.length-2] : null;
+  const muscleTrend  = (latestScan?.skeletalMuscleMass != null && prevScan?.skeletalMuscleMass != null) ? parseFloat((latestScan.skeletalMuscleMass - prevScan.skeletalMuscleMass).toFixed(2)) : null;
+  const fatTrend     = (latestScan?.bodyFatPct != null && prevScan?.bodyFatPct != null)                 ? parseFloat((latestScan.bodyFatPct - prevScan.bodyFatPct).toFixed(2))                 : null;
 
-  // Protein adherence — % of last 14 logged days that met the protein goal
-  const last14 = fuelstrong.slice(-14);
-  const proteinAdherence = last14.length
-    ? Math.round(last14.filter(d => (d.protein || 0) >= proteinGoal).length / last14.length * 100)
-    : null;
+  return reply({ proteinAdherence, trainingFrequency, muscleTrend, fatTrend, basedOn: { nutritionDays: last14.length, evoltScans: evolt.length, latestScan: latestScan?.date || null, prevScan: prevScan?.date || null } });
+}
 
-  // Training frequency — workouts per week based on fuelstrong history flags
-  const last28 = fuelstrong.filter(d => {
-    const daysAgo = (Date.now() - new Date(d.date + 'T12:00:00')) / 86400000;
-    return daysAgo <= 28;
+// ─── Daily day GET ────────────────────────────────────────────────────────────
+async function getDailyDay(env, path) {
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
+  const dateStr = path.replace('/api/daily/','').split('?')[0];
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return reply({ error: 'Invalid date format' }, 400);
+  const raw = await env.FUELSTRONG_KV.get(`day_${dateStr}`).catch(() => null);
+  if (!raw) return reply({ exists: false });
+  return reply({ ...JSON.parse(raw), exists: true });
+}
+
+// ─── Daily day PUT ────────────────────────────────────────────────────────────
+async function putDailyDay(request, env, path) {
+  if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
+  const dateStr = path.replace('/api/daily/','').split('?')[0];
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return reply({ error: 'Invalid date format' }, 400);
+  const body = await request.json().catch(() => null);
+  if (!body) return reply({ error: 'Invalid JSON body' }, 400);
+
+  await env.FUELSTRONG_KV.put(`day_${dateStr}`, JSON.stringify({ ...body, date: dateStr, savedAt: new Date().toISOString() }));
+
+  // Mirror into fuelstrong array for coaching and history
+  const existing = JSON.parse(await env.FUELSTRONG_KV.get('fuelstrong').catch(() => null) || '[]');
+  const idx      = existing.findIndex(d => d.date === dateStr);
+  const summary  = {
+    date:     dateStr,
+    protein:  Math.round((body.foodLog  || []).reduce((a,i) => a+(i.protein||0), 0)),
+    calories: Math.round((body.foodLog  || []).reduce((a,i) => a+(i.calories||0), 0)),
+    water:    Math.round((body.waterLog || []).reduce((a,w) => a+(w.oz||0), 0)),
+    workouts: (body.workouts || []).length,
+    flags:    body.flags || {},
+    savedAt:  new Date().toISOString(),
+  };
+  if (idx >= 0) existing[idx] = summary; else existing.push(summary);
+  existing.sort((a,b) => new Date(a.date)-new Date(b.date));
+  await env.FUELSTRONG_KV.put('fuelstrong', JSON.stringify(existing));
+  return reply({ success: true });
+}
+
+// ─── Food Library Sync ────────────────────────────────────────────────────────
+// getKVKey/saveKVKey with key 'food_library' handle GET/POST via router above.
+
+// ─── Search Food (Open Food Facts proxy) ─────────────────────────────────────
+async function searchFood(request, env) {
+  const url = new URL(request.url);
+  const q   = url.searchParams.get('q') || '';
+  if (!q.trim()) return reply({ products: [] });
+  try {
+    const offUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=20&fields=product_name,brands,nutriments,serving_size,code`;
+    const res    = await fetch(offUrl, { headers: { 'User-Agent': 'FuelStrong/1.0' } });
+    const data   = await res.json();
+    const products = (data.products || [])
+      .filter(p => p.product_name && p.nutriments)
+      .map(p => ({
+        id:       'off_' + (p.code || Math.random().toString(36).slice(2)),
+        name:     [p.product_name, p.brands].filter(Boolean).join(' — ').trim(),
+        calories: Math.round(p.nutriments['energy-kcal_100g'] || p.nutriments['energy-kcal'] || 0),
+        protein:  Math.round((p.nutriments.proteins_100g || 0) * 10) / 10,
+        carbs:    Math.round((p.nutriments.carbohydrates_100g || 0) * 10) / 10,
+        fat:      Math.round((p.nutriments.fat_100g || 0) * 10) / 10,
+        fiber:    Math.round((p.nutriments.fiber_100g || 0) * 10) / 10,
+        serving:  p.serving_size || '100g',
+        source:   'off',
+      }))
+      .filter(p => p.calories > 0 || p.protein > 0);
+    return reply({ products });
+  } catch (e) {
+    return reply({ products: [], error: e.message });
+  }
+}
+
+// ─── Scan Label (AI nutrition extraction from photo) ──────────────────────────
+async function scanLabel(request, env) {
+  if (!env.ANTHROPIC_API_KEY) return reply({ error: 'ANTHROPIC_API_KEY not set' }, 500);
+  const body = await request.json().catch(() => ({}));
+  const { imageBase64, mimeType = 'image/jpeg' } = body;
+  if (!imageBase64) return reply({ error: 'imageBase64 required' }, 400);
+  try {
+    const res = await callClaude(env, {
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 300,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
+          { type: 'text',  text: 'Extract nutrition facts from this food label image. Respond ONLY with JSON: {"name":"product name or empty string","calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"serving":"serving size string","confidence":"high|medium|low"}. All numbers are per serving. If a value is not visible use 0.' }
+        ]
+      }]
+    });
+    const text    = res.content?.[0]?.text || '{}';
+    const cleaned = text.replace(/```json\n?|\n?```/g, '').trim();
+    const food    = JSON.parse(cleaned);
+    return reply({ food });
+  } catch (e) {
+    return reply({ error: e.message }, 500);
+  }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+async function callClaude(env, body) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body:    JSON.stringify(body),
   });
-  const trainingDays = last28.filter(d => d.flags?.trainingDay || (d.workouts || 0) > 0).length;
-  const trainingFrequency = last28.length >= 7
-    ? parseFloat((trainingDays / (last28.length / 7)).toFixed(1))
-    : null;
-
-  // Muscle trend — change in skeletal muscle mass between last two Evolt scans (kg)
-  const latestScan = evolt.length ? evolt[evolt.length - 1] : null;
-  const prevScan   = evolt.length > 1 ? evolt[evolt.length - 2] : null;
-  const muscleTrend = (latestScan?.skeletalMuscleMass != null && prevScan?.skeletalMuscleMass != null)
-    ? parseFloat((latestScan.skeletalMuscleMass - prevScan.skeletalMuscleMass).toFixed(2))
-    : null;
-
-  // Fat trend — change in body fat % between last two Evolt scans
-  const fatTrend = (latestScan?.bodyFatPercent != null && prevScan?.bodyFatPercent != null)
-    ? parseFloat((latestScan.bodyFatPercent - prevScan.bodyFatPercent).toFixed(2))
-    : null;
-
-  return reply({
-    proteinAdherence,    // % (0–100) or null if no data
-    trainingFrequency,   // workouts/week or null if insufficient data
-    muscleTrend,         // kg change (positive = gained) or null
-    fatTrend,            // % change (negative = lost) or null
-    basedOn: {
-      nutritionDays: last14.length,
-      evoltScans:    evolt.length,
-      latestScan:    latestScan?.date || null,
-      prevScan:      prevScan?.date   || null,
-    },
-  });
+  if (!res.ok) {
+    const msgs = { 400:'Bad request — likely invalid model name. Valid: claude-sonnet-4-6, claude-opus-4-6, claude-haiku-4-5-20251001.', 401:'Invalid Anthropic API key — check ANTHROPIC_API_KEY in Worker secrets.', 402:'Anthropic account out of credits — add credits at console.anthropic.com/billing.', 429:'Rate limit hit — wait a moment and try again.', 529:'Quota exceeded — check console.anthropic.com/billing.', 500:'Anthropic internal error — try again.' };
+    throw new Error(msgs[res.status] || `Anthropic API error ${res.status}`);
+  }
+  return res.json();
 }
 
-function reply(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
-  });
-}
-
-function safeJson(str) {
-  try { return JSON.parse(str); } catch { return null; }
-}
-
-function uid(prefix = '') {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function b64encode(str) {
-  // Cloudflare Workers compatible base64 encode
-  return btoa(unescape(encodeURIComponent(str)));
-}
+function githubHeaders(env) { return { 'Authorization': `token ${env.GITHUB_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'FuelStrong-App/1.0' }; }
+function reply(data, status = 200) { return new Response(JSON.stringify(data), { status, headers: { ...CORS, 'Content-Type': 'application/json' } }); }
+function safeJson(str) { try { return JSON.parse(str); } catch { return null; } }
+function uid(prefix = '') { return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,9)}`; }
+function b64encode(str) { return btoa(unescape(encodeURIComponent(str))); }

@@ -464,13 +464,26 @@ body{
 }
 
 /* ── COACHING ── */
-.coach-thread{display:flex;flex-direction:column;gap:10px;margin-bottom:10px}
+.coach-thread{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
 .chat-msg{animation:fadeIn .25s ease}
-.chat-bubble-coach{
-  background:var(--card);border:1px solid var(--border);
-  border-radius:14px 14px 14px 3px;
-  padding:13px 15px;font-size:13px;line-height:1.75;
 
+/* Accordion coach messages */
+.coach-accordion{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card)}
+.coach-acc-header{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 13px;cursor:pointer;user-select:none;
+  background:var(--card2);
+}
+.coach-acc-header:active{opacity:.8}
+.chat-time-inline{font-size:10px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.coach-acc-preview{flex:1;font-size:12px;color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.coach-acc-chevron{font-size:10px;color:var(--muted);flex-shrink:0;margin-left:4px}
+.coach-accordion.expanded .coach-acc-header{border-bottom:1px solid var(--border)}
+.coach-acc-body{padding:0}
+.chat-bubble-coach{
+  background:var(--card);
+  padding:13px 15px;font-size:13px;line-height:1.75;
+  border-radius:0;border:none;
 }
 .chat-bubble-user{
   background:var(--accent-dim);border:1px solid rgba(0,229,160,.2);
@@ -486,9 +499,7 @@ body{
 .chat-bubble-coach p:last-child{margin-bottom:0}
 .coach-stamp{display:block;margin-top:8px;font-size:10px;color:var(--muted);opacity:.7;border-top:1px solid var(--border);padding-top:6px}
 .chat-time{font-size:10px;color:var(--muted);margin-bottom:4px}
-.chat-empty{
-  text-align:center;padding:50px 20px 30px;color:var(--muted);
-}
+.chat-empty{text-align:center;padding:50px 20px 30px;color:var(--muted)}
 .chat-empty-icon{font-size:42px;margin-bottom:12px}
 .coach-input-bar{
   position:sticky;bottom:0;
@@ -1203,17 +1214,14 @@ let dayData = {
 };
 
 // Coach state
-let coachThread   = [];  // [{role, content, time}]
-let coachStale    = false;
-let coachLoaded   = false;
-let coachInFlight = false;  // prevents concurrent API calls
-let _coachAbortCtrl = null; // AbortController for in-flight coach call
-let _coachGeneration = 0;   // increments on each new call; stale finally blocks self-disqualify
+let coachThread   = [];   // [{role, content, time, date}]
+let coachInFlight = false;
+let _coachAbortCtrl = null;
 
 // Momentum state
 let momentumData  = null;
 
-// Scanning
+// Scanning / food sheet
 let barcodeScanner = null;
 let scanStream     = null;
 let _editFoodId    = null;
@@ -1221,7 +1229,7 @@ let _scannedFood   = null;
 let activeTab      = 'pinned';
 
 // Debounce timers
-let _saveDayTimer, _coachTimer, _liveSyncTimer, _searchTimer;
+let _saveDayTimer, _searchTimer;
 
 // History (completed days)
 let history = JSON.parse(localStorage.getItem('fs3-hist') || '[]');
@@ -1274,8 +1282,7 @@ function showPanel(id, btn) {
   if (id === 'history') { renderHistory(); }
   if (id === 'coach')   {
     document.getElementById('coach-badge').classList.remove('show');
-    checkWeeklyCoaching();  // run weekly session if due before regular checkin
-    if (coachStale && WORKER_URL) triggerCoaching('checkin', true);
+    checkWeeklyCoaching();  // run weekly session if due
   }
 }
 
@@ -1444,7 +1451,6 @@ function saveDayDebounced(immediate = false) {
   const delay = immediate ? 0 : 1200;
   _saveDayTimer = setTimeout(() => {
     saveDayToCache(viewDate, dayData);
-    if (WORKER_URL && isToday(viewDate)) pushLive();
     if (WORKER_URL) pushDayToKV(viewDate);
   }, delay);
 }
@@ -1455,24 +1461,7 @@ async function pushDayToKV(dateStr) {
       method: 'PUT',
       body:   JSON.stringify(dayData),
     });
-  } catch (e) { /* silent */ }
-}
-
-async function pushLive() {
-  if (!WORKER_URL || !isToday(viewDate)) return;
-  clearTimeout(_liveSyncTimer);
-  _liveSyncTimer = setTimeout(async () => {
-    try {
-      await wFetch('/api/live', { method: 'POST', body: JSON.stringify({
-        date:     viewDate,
-        foodLog:  dayData.foodLog,
-        waterLog: dayData.waterLog,
-        hem:      dayData.hem,
-        workouts: dayData.workouts,
-        flags:    dayData.flags,
-      })});
-    } catch (e) { /* silent */ }
-  }, 8000);
+  } catch (e) { /* silent — offline or worker unreachable */ }
 }
 
 // ══════════════════════════════════════════════════
@@ -1519,7 +1508,7 @@ function toggleFlag(flagKey, btn, cssClass) {
   renderHeroFlags();
   renderInsights();
   saveDayDebounced();
-  scheduleCoachRefresh(60000);
+  markCoachBadge();
 }
 
 function restoreFlags() {
@@ -1589,7 +1578,7 @@ function addWater(oz) {
     renderWater();
     renderRings();
     saveDayDebounced();
-    scheduleCoachRefresh(180000); // 3 min
+    markCoachBadge();
   }
 }
 
@@ -1653,7 +1642,7 @@ function logHEM() {
   renderHEMTimeline();
   renderInsights();
   saveDayDebounced();
-  scheduleCoachRefresh(180000);
+  markCoachBadge();
 }
 
 function renderHEMTimeline() {
@@ -1727,7 +1716,7 @@ function addFoodToLog(food, qty = 1) {
   renderRings();
   renderInsights();
   saveDayDebounced();
-  scheduleCoachRefresh(180000);
+  markCoachBadge();
 }
 
 function removeFood(id) {
@@ -1736,7 +1725,7 @@ function removeFood(id) {
   renderRings();
   renderInsights();
   saveDayDebounced();
-  scheduleCoachRefresh(180000);
+  markCoachBadge();
 }
 
 // ── Qty Edit (logged entry) ───────────────────────────────────────────────────
@@ -1800,7 +1789,7 @@ function saveQtyEdit() {
   renderRings();
   renderInsights();
   saveDayDebounced();
-  scheduleCoachRefresh(180000);
+  markCoachBadge();
   toast(`✓ Updated to ×${newQty}`);
 }
 
@@ -1895,7 +1884,7 @@ function saveWorkout() {
   renderWorkouts();
   renderInsights();
   saveDayDebounced();
-  scheduleCoachRefresh(5000); // Immediate — workout logged is high signal
+  markCoachBadge();
   toast('💪 Workout saved!');
 }
 
@@ -2598,199 +2587,213 @@ function buildCoachPayload(question = null, mode = 'checkin') {
   };
 }
 
-async function triggerCoaching(mode = 'checkin', silent = false) {
-  if (!WORKER_URL) { if (!silent) toast('Set Worker URL in Settings', true); return; }
+// ══════════════════════════════════════════════════
+// COACHING — clean, manual-only, accordion history
+// ══════════════════════════════════════════════════
 
-  // Manual check-in (not silent) cancels any in-flight auto call and takes over.
-  if (coachInFlight) {
-    if (silent) {
-      console.log('[Coach] Skipped — already in flight');
-      return;
-    }
-    // Abort the in-flight request; our generation counter prevents its finally
-    // block from clobbering our new call's state.
-    if (_coachAbortCtrl) {
-      _coachAbortCtrl.abort();
-      console.log('[Coach] Aborted stale in-flight call for manual check-in');
-    }
-  }
+// Mark the Coach badge whenever data changes. No timers, no auto-fire.
+function markCoachBadge() {
+  document.getElementById('coach-badge')?.classList.add('show');
+}
 
-  // Claim this generation. Any finally block from an older generation will see
-  // its gen !== _coachGeneration and skip resetting coachInFlight.
-  const myGen = ++_coachGeneration;
+// ── triggerCoaching ───────────────────────────────────────────────────────────
+// Only called by: Check-In button, Get Check-In button, weekly session, Q&A.
+// Never called automatically.
+async function triggerCoaching(mode = 'checkin') {
+  if (!WORKER_URL) { toast('Set Worker URL in Settings', true); return; }
+  if (coachInFlight) { toast('Coach is already thinking…', true); return; }
 
-  // Snapshot data NOW (synchronous, before any await), so we know exactly
-  // what the coach will see and can stamp it on the response.
-  const t = getTotals();
-  const dataStamp = `${Math.round(t.protein)}g protein · ${Math.round(t.calories)} cal · ${Math.round(t.water)}oz water`;
-
-  console.log(`[Coach] Gen${myGen} started — mode:${mode} | ${dataStamp}`);
-  _coachAbortCtrl = new AbortController();
-  coachInFlight = true;
-  coachStale = false;
-  document.getElementById('coach-badge').classList.remove('show');
-  const spinEl   = document.getElementById('coach-spin');
-  const sendBtn  = document.getElementById('coach-send');
-  const emptyEl  = document.getElementById('thread-empty');
+  document.getElementById('coach-badge')?.classList.remove('show');
+  const spinEl  = document.getElementById('coach-spin');
+  const sendBtn = document.getElementById('coach-send');
+  const checkin = document.getElementById('checkin-btn');
+  const emptyEl = document.getElementById('thread-empty');
   if (spinEl)  spinEl.style.display = 'block';
   if (sendBtn) sendBtn.disabled = true;
+  if (checkin) checkin.disabled = true;
   if (emptyEl) emptyEl.style.display = 'none';
 
-  // 25s timeout (coach responses can be wordy)
-  let timeoutId;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error('timeout')), 25000);
-  });
+  _coachAbortCtrl = new AbortController();
+  coachInFlight   = true;
 
-  // Build payload synchronously right now — captures current dayData snapshot
   const payload = buildCoachPayload(null, mode);
+  const t       = getTotals();
+  const stamp   = `${Math.round(t.protein)}g protein · ${Math.round(t.calories)} cal · ${Math.round(t.water)}oz water`;
+
+  let timeoutId;
+  const timeoutP = new Promise((_, rej) => { timeoutId = setTimeout(() => rej(new Error('timeout')), 25000); });
 
   try {
     const res = await Promise.race([
-      wFetch('/api/coach', {
-        method: 'POST',
-        body:   JSON.stringify(payload),
-        signal: _coachAbortCtrl.signal,
-      }),
-      timeoutPromise
+      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(payload), signal: _coachAbortCtrl.signal }),
+      timeoutP,
     ]);
     clearTimeout(timeoutId);
-    // Only use result if we're still the current generation
-    if (myGen !== _coachGeneration) {
-      console.log(`[Coach] Gen${myGen} result discarded — superseded by Gen${_coachGeneration}`);
-      return;
-    }
     const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    appendMsg('coach', res.coaching + `\n\n<span class="coach-stamp">📊 ${dataStamp}</span>`, now);
+    appendMsg('coach', res.coaching, now, stamp);
     document.getElementById('coach-time').textContent = 'Last check-in: ' + now;
-    localStorage.setItem('fs3-last-coach-hash', buildDataFingerprint());
-    coachLoaded = true;
-    console.log(`[Coach] Gen${myGen} finished`);
   } catch (e) {
     clearTimeout(timeoutId);
-    if (e.name === 'AbortError') {
-      console.log(`[Coach] Gen${myGen} aborted — superseded`);
-      return; // don't touch UI; new call is already running
-    }
-    if (myGen !== _coachGeneration) return; // stale error from old gen
-    if (e.message === 'timeout') {
-      const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      if (!silent) toast('Coaching timed out — try again.', true);
-      appendMsg('coach', '⚠️ Coaching timed out. Tap Check-In to retry.', now);
-      console.log(`[Coach] Gen${myGen} timed out`);
-    } else {
-      if (!silent) toast('Coach error: ' + e.message, true);
-      console.log(`[Coach] Gen${myGen} failed — ${e.message}`);
-    }
+    if (e.name === 'AbortError') return;
+    const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const msg = e.message === 'timeout'
+      ? '⚠️ Timed out — please try again.'
+      : '⚠️ ' + e.message;
+    appendMsg('coach', msg, now);
+    if (e.message !== 'timeout') console.error('[Coach]', e.message);
   } finally {
-    // Only reset global state if we're still the current generation.
-    // A superseded gen must NEVER clear coachInFlight for its successor.
-    if (myGen === _coachGeneration) {
-      coachInFlight = false;
-      _coachAbortCtrl = null;
-      if (spinEl)  spinEl.style.display = 'none';
-      if (sendBtn) sendBtn.disabled = false;
-      console.log(`[Coach] Gen${myGen} lock released`);
-    }
+    coachInFlight   = false;
+    _coachAbortCtrl = null;
+    if (spinEl)  spinEl.style.display = 'none';
+    if (sendBtn) sendBtn.disabled = false;
+    if (checkin) checkin.disabled = false;
   }
 }
 
+// ── askCoach (Q&A) ────────────────────────────────────────────────────────────
 async function askCoach() {
   const input = document.getElementById('coach-q');
-  const q     = input?.value.trim();
+  const q     = (input?.value || '').trim();
   if (!q) return;
   if (!WORKER_URL) { toast('Set Worker URL in Settings', true); return; }
   if (coachInFlight) { toast('Coach is thinking — try in a moment', true); return; }
 
   input.value = '';
-  const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const now   = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   appendMsg('user', q, now);
 
   const askStatus = document.getElementById('ask-status');
   const sendBtn   = document.getElementById('coach-send');
-  if (askStatus) askStatus.style.display = 'flex';
+  if (askStatus) { askStatus.style.display = 'flex'; }
   if (sendBtn)   sendBtn.disabled = true;
   coachInFlight = true;
+  _coachAbortCtrl = new AbortController();
 
   let timeoutId;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error('timeout')), 15000);
-  });
+  const timeoutP = new Promise((_, rej) => { timeoutId = setTimeout(() => rej(new Error('timeout')), 25000); });
 
   try {
     const res = await Promise.race([
-      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(buildCoachPayload(q, 'ask')) }),
-      timeoutPromise
+      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(buildCoachPayload(q, 'ask')), signal: _coachAbortCtrl.signal }),
+      timeoutP,
     ]);
     clearTimeout(timeoutId);
     const now2 = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     appendMsg('coach', res.coaching, now2);
   } catch (e) {
     clearTimeout(timeoutId);
-    const msg = e.message === 'timeout' ? '⚠️ Response timed out — try again.' : '⚠️ ' + e.message;
+    if (e.name === 'AbortError') return;
+    const msg = e.message === 'timeout' ? '⚠️ Timed out — try again.' : '⚠️ ' + e.message;
     appendMsg('coach', msg, now);
   } finally {
-    coachInFlight = false;
+    coachInFlight   = false;
+    _coachAbortCtrl = null;
     if (askStatus) askStatus.style.display = 'none';
     if (sendBtn)   sendBtn.disabled = false;
   }
 }
 
-const MAX_VISIBLE_MSGS = 5;
+// ── Thread storage: daily reset ───────────────────────────────────────────────
+// Thread is tied to a date. When a new day starts, it auto-clears.
+function loadCoachThread() {
+  const stored = JSON.parse(localStorage.getItem('fs3-coach') || 'null');
+  const today  = todayISO();
+  if (stored && stored.date === today && Array.isArray(stored.msgs)) {
+    coachThread = stored.msgs;
+  } else {
+    // New day — start fresh
+    coachThread = [];
+    localStorage.removeItem('fs3-coach');
+  }
+}
 
-function appendMsg(role, text, time, isErr = false) {
-  const thread  = document.getElementById('coach-thread');
+function saveCoachThread() {
+  localStorage.setItem('fs3-coach', JSON.stringify({ date: todayISO(), msgs: coachThread }));
+}
+
+// ── appendMsg ─────────────────────────────────────────────────────────────────
+function appendMsg(role, text, time, stamp) {
+  if (!text) return;
+  // Dedup: skip if identical content to the last coach message
+  if (role === 'coach') {
+    const last = [...coachThread].reverse().find(m => m.role === 'coach');
+    if (last && last.content === text) return;
+  }
   const emptyEl = document.getElementById('thread-empty');
-  if (!thread) return;
-
-  // Dedup: skip if identical to last coach message
-  const isDup = typeof CoachUtils !== 'undefined'
-    ? CoachUtils.isDuplicateCoachMessage(coachThread, text)
-    : coachThread.slice().reverse().find(m => m.role === 'coach' || m.role === 'assistant')?.content === text;
-  if (role === 'coach' && isDup) return;
-
   if (emptyEl) emptyEl.style.display = 'none';
-  coachThread.push({ role, content: text, time });
-  localStorage.setItem('fs3-coach', JSON.stringify(coachThread));
-
-  // Render last MAX_VISIBLE_MSGS messages
+  coachThread.push({ role, content: text, time, stamp: stamp || null });
+  saveCoachThread();
   renderThreadDOM();
 }
 
+// ── renderThreadDOM — accordion ───────────────────────────────────────────────
+// All messages render. Each coach message is collapsible.
+// Most recent coach message starts expanded; all others start collapsed.
 function renderThreadDOM() {
   const thread  = document.getElementById('coach-thread');
   const emptyEl = document.getElementById('thread-empty');
   if (!thread) return;
 
-  // Clear all chat-msg children, keep emptyEl
-  Array.from(thread.children).forEach(c => { if (!c.id || c.id !== 'thread-empty') c.remove(); });
+  Array.from(thread.children).forEach(c => { if (c.id !== 'thread-empty') c.remove(); });
 
-  const visible = coachThread.slice(-MAX_VISIBLE_MSGS);
-  const hidden  = coachThread.length - visible.length;
-
-  // Show "X earlier messages" hint if thread is longer than window
-  if (hidden > 0) {
-    const hint = document.createElement('div');
-    hint.style.cssText = 'text-align:center;font-size:11px;color:var(--muted);padding:6px 0 2px';
-    hint.textContent = `↑ ${hidden} earlier message${hidden > 1 ? 's' : ''} (cleared from view)`;
-    thread.appendChild(hint);
+  if (!coachThread.length) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    return;
   }
+  if (emptyEl) emptyEl.style.display = 'none';
 
-  visible.forEach(msg => {
-    const div = document.createElement('div');
-    div.className = 'chat-msg';
+  // Find index of last coach message (the one that starts expanded)
+  let lastCoachIdx = -1;
+  coachThread.forEach((m, i) => { if (m.role === 'coach') lastCoachIdx = i; });
+
+  coachThread.forEach((msg, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'chat-msg';
+
     if (msg.role === 'user') {
-      div.innerHTML = `<div class="chat-bubble-user">${escHtml(msg.content)}</div>`;
+      wrap.innerHTML = `<div class="chat-bubble-user">${escHtml(msg.content)}</div>`;
     } else {
-      div.innerHTML = `<div class="chat-time">${msg.time || ''}</div>
-        <div class="chat-bubble-coach">${mdToHtml(msg.content)}</div>`;
+      // Coach message — accordion
+      const isLatest  = idx === lastCoachIdx;
+      const msgId     = 'cmsg-' + idx;
+      const bodyId    = 'cbody-' + idx;
+      const preview   = escHtml(msg.content.replace(/<[^>]+>/g, '').slice(0, 72)).replace(/
+.*/,'') + (msg.content.length > 72 ? '…' : '');
+
+      wrap.innerHTML = `
+        <div class="coach-accordion ${isLatest ? 'expanded' : ''}" id="${msgId}">
+          <div class="coach-acc-header" onclick="toggleAccordion('${msgId}','${bodyId}')">
+            <span class="chat-time-inline">${msg.time || ''}</span>
+            <span class="coach-acc-preview" id="prev-${idx}">${isLatest ? '' : preview}</span>
+            <span class="coach-acc-chevron">${isLatest ? '▲' : '▼'}</span>
+          </div>
+          <div class="coach-acc-body" id="${bodyId}" style="display:${isLatest ? 'block' : 'none'}">
+            <div class="chat-bubble-coach">${mdToHtml(msg.content)}${msg.stamp ? `<span class="coach-stamp">📊 ${msg.stamp}</span>` : ''}</div>
+          </div>
+        </div>`;
     }
-    thread.appendChild(div);
+    thread.appendChild(wrap);
   });
 
-  // Scroll last message into view
-  const last = thread.lastElementChild;
-  if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  // Scroll to last message
+  thread.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function toggleAccordion(msgId, bodyId) {
+  const wrapper = document.getElementById(msgId);
+  const body    = document.getElementById(bodyId);
+  if (!wrapper || !body) return;
+  const isOpen = wrapper.classList.contains('expanded');
+  wrapper.classList.toggle('expanded', !isOpen);
+  body.style.display = isOpen ? 'none' : 'block';
+  // Update chevron
+  const chevron = wrapper.querySelector('.coach-acc-chevron');
+  if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
+  // Hide preview when expanded, show when collapsed
+  const previewEl = wrapper.querySelector('.coach-acc-preview');
+  if (previewEl) {
+    previewEl.style.display = isOpen ? 'inline' : 'none';
+  }
 }
 
 function clearThread() {
@@ -2798,74 +2801,35 @@ function clearThread() {
   localStorage.removeItem('fs3-coach');
   const thread  = document.getElementById('coach-thread');
   const emptyEl = document.getElementById('thread-empty');
-  Array.from(thread.children).forEach(c => { if (c !== emptyEl) c.remove(); });
+  if (thread) Array.from(thread.children).forEach(c => { if (c.id !== 'thread-empty') c.remove(); });
   if (emptyEl) emptyEl.style.display = 'block';
-  coachLoaded = false;
   toast('Cleared');
 }
 
 function restoreThread() {
-  coachThread = JSON.parse(localStorage.getItem('fs3-coach') || '[]');
+  loadCoachThread();
   if (!coachThread.length) return;
-  const emptyEl = document.getElementById('thread-empty');
-  if (emptyEl) emptyEl.style.display = 'none';
   renderThreadDOM();
-  coachLoaded = true;
 }
 
-// Auto-refresh: mark stale, show badge
-// Returns a lightweight string fingerprint of today's loggable data.
-// scheduleCoachRefresh compares this to the hash stored at last coaching run —
-// if nothing changed, coachStale is NOT set and no new session is triggered.
-function buildDataFingerprint() {
-  const t = getTotals();
-  const lastHEM = dayData.hem.length ? dayData.hem[dayData.hem.length - 1].timestamp : '';
-  const woCount = dayData.workouts.length;
-  return `${t.calories}|${t.protein}|${t.water}|${woCount}|${lastHEM}`;
-}
-
-function scheduleCoachRefresh(delayMs) {
-  if (!WORKER_URL) return;
-  clearTimeout(_coachTimer);
-  _coachTimer = setTimeout(() => {
-    // Only mark stale if data has actually changed since last coaching run
-    const currentHash = buildDataFingerprint();
-    const lastHash    = localStorage.getItem('fs3-last-coach-hash') || '';
-    if (currentHash === lastHash) {
-      console.log('[Coach] Refresh skipped — data unchanged since last session');
-      return;
-    }
-    coachStale = true;
-    const coachPanel = document.getElementById('panel-coach');
-    if (coachPanel?.classList.contains('active')) {
-      triggerCoaching('checkin', true);
-    } else {
-      document.getElementById('coach-badge').classList.add('show');
-    }
-  }, delayMs);
+// ── markCoachBadge ────────────────────────────────────────────────────────────
+// Called after any data mutation (food add/remove, water, HEM, workout, flags).
+// Simply shows the badge dot on the Coach tab — no timers, no auto-fire.
+function markCoachBadge() {
+  document.getElementById('coach-badge')?.classList.add('show');
 }
 
 // ── Weekly coaching ───────────────────────────────────────────────────────────
 function checkWeeklyCoaching() {
   if (!WORKER_URL || coachInFlight) return;
-
-  if (typeof CoachUtils === 'undefined') {
-    console.log('[Coach] CoachUtils not loaded — weekly check skipped');
-    return;
-  }
-
-  if (!CoachUtils.shouldRunWeeklyCoaching('fs3-weekly-date')) {
-    console.log('[Coach] Weekly analysis skipped — not due yet or already completed');
-    return;
-  }
-
-  console.log('[Coach] Weekly analysis triggered for week of ' + CoachUtils.thisWeekFridayISO());
+  if (typeof CoachUtils === 'undefined') return;
+  if (!CoachUtils.shouldRunWeeklyCoaching('fs3-weekly-date')) return;
   CoachUtils.markWeeklyDone('fs3-weekly-date');
-
   const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   appendMsg('coach', '📊 Running your weekly performance analysis…', now);
-  triggerCoaching('weekly', true);
+  triggerCoaching('weekly');
 }
+
 
 // ══════════════════════════════════════════════════
 // CLOSE DAY
@@ -3275,55 +3239,33 @@ async function init() {
   setInterval(renderHeroTime, 60000);
   setInterval(renderInsights, 300000); // refresh insights every 5min
 
-  // ── Cross-device sync ─────────────────────────────────────────────────────
-  // Poll KV every 60s so changes made on another device appear automatically.
-  // Also re-sync whenever the tab comes back to the foreground (e.g. phone→PC).
-  let _syncPollTimer;
+  // ── Cross-device sync: foreground-only ────────────────────────────────────
+  // Re-fetch from KV when app comes back to foreground. If remote is newer,
+  // update UI and show the coach badge so user can check in manually.
   async function syncFromKV() {
     if (!WORKER_URL || !isToday(viewDate)) return;
     try {
       const remote = await wFetch(`/api/daily/${viewDate}`);
       if (!remote.exists) return;
-      // Only update if remote is newer than what we have
       const remoteSavedAt = new Date(remote.savedAt || 0).getTime();
       const localSavedAt  = new Date(dayData.savedAt  || 0).getTime();
       if (remoteSavedAt <= localSavedAt) return;
-      // Remote is newer — merge in
       dayData = remote;
       saveDayToCache(viewDate, dayData);
       renderAll();
-      console.log('[Sync] Pulled fresher data from KV — updated UI');
-      // If coach panel is open and data changed, mark stale
-      const currentHash = buildDataFingerprint();
-      const lastHash    = localStorage.getItem('fs3-last-coach-hash') || '';
-      if (currentHash !== lastHash) {
-        coachStale = true;
-        const coachPanel = document.getElementById('panel-coach');
-        if (coachPanel?.classList.contains('active')) {
-          triggerCoaching('checkin', true);
-        } else {
-          document.getElementById('coach-badge')?.classList.add('show');
-        }
-      }
-    } catch (e) { /* silent — worker may be temporarily unavailable */ }
+      markCoachBadge();
+      console.log('[Sync] Updated from KV — remote was newer');
+    } catch (e) { /* silent */ }
   }
 
-  _syncPollTimer = setInterval(syncFromKV, 60000);
-
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      clearInterval(_syncPollTimer);
-      _syncPollTimer = setInterval(syncFromKV, 60000);
-      syncFromKV(); // immediate re-sync on foreground
-    }
+    if (document.visibilityState === 'visible') syncFromKV();
   });
 
   // Close day button visibility
   const closeSec = document.getElementById('close-day-section');
   const updateCloseSec = () => {
-    if (closeSec) {
-      closeSec.style.display = (isToday(viewDate) && new Date().getHours() >= 18) ? 'block' : 'none';
-    }
+    if (closeSec) closeSec.style.display = (isToday(viewDate) && new Date().getHours() >= 18) ? 'block' : 'none';
   };
   updateCloseSec();
   setInterval(updateCloseSec, 300000);
