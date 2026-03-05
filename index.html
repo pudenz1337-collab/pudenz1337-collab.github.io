@@ -1208,6 +1208,7 @@ let coachStale    = false;
 let coachLoaded   = false;
 let coachInFlight = false;  // prevents concurrent API calls
 let _coachAbortCtrl = null; // AbortController for in-flight coach call
+let _coachGeneration = 0;   // increments on each new call; stale finally blocks self-disqualify
 
 // Momentum state
 let momentumData  = null;
@@ -1483,11 +1484,9 @@ async function loadRemoteProfile() {
     const p = await wFetch('/api/profile');
     if (p.goals) { goals = p.goals; localStorage.setItem('fs3-goals', JSON.stringify(goals)); setGoalInputs(); }
     if (p.tirz)  { tirz  = p.tirz;  localStorage.setItem('fs3-tirz',  JSON.stringify(tirz));  setTirzInputs(); }
-  } catch (e) { /* offline */ }
-  try {
-    const lib = await wFetch('/api/food-library');
-    if (lib.foods) {
-      library = lib;
+    // food library bundled in profile response — no second round-trip needed
+    if (p.foodLibrary?.foods?.length) {
+      library = p.foodLibrary;
       localStorage.setItem('fs3-lib', JSON.stringify(library));
     }
   } catch (e) { /* offline */ }
@@ -1728,7 +1727,7 @@ function addFoodToLog(food, qty = 1) {
   renderRings();
   renderInsights();
   saveDayDebounced();
-  scheduleCoachRefresh(90000);
+  scheduleCoachRefresh(180000);
 }
 
 function removeFood(id) {
@@ -1737,7 +1736,7 @@ function removeFood(id) {
   renderRings();
   renderInsights();
   saveDayDebounced();
-  scheduleCoachRefresh(90000);
+  scheduleCoachRefresh(180000);
 }
 
 // ── Qty Edit (logged entry) ───────────────────────────────────────────────────
@@ -1801,7 +1800,7 @@ function saveQtyEdit() {
   renderRings();
   renderInsights();
   saveDayDebounced();
-  scheduleCoachRefresh(90000);
+  scheduleCoachRefresh(180000);
   toast(`✓ Updated to ×${newQty}`);
 }
 
@@ -2602,27 +2601,30 @@ function buildCoachPayload(question = null, mode = 'checkin') {
 async function triggerCoaching(mode = 'checkin', silent = false) {
   if (!WORKER_URL) { if (!silent) toast('Set Worker URL in Settings', true); return; }
 
-  // Manual check-in (not silent) aborts any in-flight auto-refresh so it
-  // always runs immediately with the latest data.
+  // Manual check-in (not silent) cancels any in-flight auto call and takes over.
   if (coachInFlight) {
     if (silent) {
       console.log('[Coach] Skipped — already in flight');
       return;
     }
-    // Manual: cancel the in-flight call and restart
+    // Abort the in-flight request; our generation counter prevents its finally
+    // block from clobbering our new call's state.
     if (_coachAbortCtrl) {
       _coachAbortCtrl.abort();
-      console.log('[Coach] Aborted previous in-flight call for manual check-in');
+      console.log('[Coach] Aborted stale in-flight call for manual check-in');
     }
-    // brief yield so the abort propagates before we reset
-    await new Promise(r => setTimeout(r, 50));
   }
 
-  // Snapshot current totals NOW (before any await) to stamp on the response
+  // Claim this generation. Any finally block from an older generation will see
+  // its gen !== _coachGeneration and skip resetting coachInFlight.
+  const myGen = ++_coachGeneration;
+
+  // Snapshot data NOW (synchronous, before any await), so we know exactly
+  // what the coach will see and can stamp it on the response.
   const t = getTotals();
   const dataStamp = `${Math.round(t.protein)}g protein · ${Math.round(t.calories)} cal · ${Math.round(t.water)}oz water`;
 
-  console.log(`[Coach] Started — mode: ${mode} | data: ${dataStamp}`);
+  console.log(`[Coach] Gen${myGen} started — mode:${mode} | ${dataStamp}`);
   _coachAbortCtrl = new AbortController();
   coachInFlight = true;
   coachStale = false;
@@ -2634,52 +2636,62 @@ async function triggerCoaching(mode = 'checkin', silent = false) {
   if (sendBtn) sendBtn.disabled = true;
   if (emptyEl) emptyEl.style.display = 'none';
 
-  // 15s hard timeout
+  // 25s timeout (coach responses can be wordy)
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error('timeout')), 15000);
+    timeoutId = setTimeout(() => reject(new Error('timeout')), 25000);
   });
 
+  // Build payload synchronously right now — captures current dayData snapshot
   const payload = buildCoachPayload(null, mode);
 
   try {
     const res = await Promise.race([
       wFetch('/api/coach', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body:   JSON.stringify(payload),
         signal: _coachAbortCtrl.signal,
       }),
       timeoutPromise
     ]);
     clearTimeout(timeoutId);
+    // Only use result if we're still the current generation
+    if (myGen !== _coachGeneration) {
+      console.log(`[Coach] Gen${myGen} result discarded — superseded by Gen${_coachGeneration}`);
+      return;
+    }
     const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    // Append response with a small data stamp so stale responses are obvious
     appendMsg('coach', res.coaching + `\n\n<span class="coach-stamp">📊 ${dataStamp}</span>`, now);
     document.getElementById('coach-time').textContent = 'Last check-in: ' + now;
     localStorage.setItem('fs3-last-coach-hash', buildDataFingerprint());
     coachLoaded = true;
-    console.log(`[Coach] Finished — mode: ${mode}`);
+    console.log(`[Coach] Gen${myGen} finished`);
   } catch (e) {
     clearTimeout(timeoutId);
     if (e.name === 'AbortError') {
-      console.log('[Coach] Call aborted — superseded by manual check-in');
-      return; // don't show error, the new call is taking over
+      console.log(`[Coach] Gen${myGen} aborted — superseded`);
+      return; // don't touch UI; new call is already running
     }
+    if (myGen !== _coachGeneration) return; // stale error from old gen
     if (e.message === 'timeout') {
       const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      if (!silent) toast('Coaching temporarily unavailable.', true);
-      appendMsg('coach', '⚠️ Coaching temporarily unavailable. Try again in a moment.', now);
-      console.log('[Coach] Timed out after 15s');
+      if (!silent) toast('Coaching timed out — try again.', true);
+      appendMsg('coach', '⚠️ Coaching timed out. Tap Check-In to retry.', now);
+      console.log(`[Coach] Gen${myGen} timed out`);
     } else {
       if (!silent) toast('Coach error: ' + e.message, true);
-      console.log(`[Coach] Failed — ${e.message}`);
+      console.log(`[Coach] Gen${myGen} failed — ${e.message}`);
     }
   } finally {
-    coachInFlight = false;
-    _coachAbortCtrl = null;
-    if (spinEl)  spinEl.style.display = 'none';
-    if (sendBtn) sendBtn.disabled = false;
-    console.log('[Coach] Spinner hidden, lock released');
+    // Only reset global state if we're still the current generation.
+    // A superseded gen must NEVER clear coachInFlight for its successor.
+    if (myGen === _coachGeneration) {
+      coachInFlight = false;
+      _coachAbortCtrl = null;
+      if (spinEl)  spinEl.style.display = 'none';
+      if (sendBtn) sendBtn.disabled = false;
+      console.log(`[Coach] Gen${myGen} lock released`);
+    }
   }
 }
 
@@ -3262,6 +3274,49 @@ async function init() {
   // Hero clock
   setInterval(renderHeroTime, 60000);
   setInterval(renderInsights, 300000); // refresh insights every 5min
+
+  // ── Cross-device sync ─────────────────────────────────────────────────────
+  // Poll KV every 60s so changes made on another device appear automatically.
+  // Also re-sync whenever the tab comes back to the foreground (e.g. phone→PC).
+  let _syncPollTimer;
+  async function syncFromKV() {
+    if (!WORKER_URL || !isToday(viewDate)) return;
+    try {
+      const remote = await wFetch(`/api/daily/${viewDate}`);
+      if (!remote.exists) return;
+      // Only update if remote is newer than what we have
+      const remoteSavedAt = new Date(remote.savedAt || 0).getTime();
+      const localSavedAt  = new Date(dayData.savedAt  || 0).getTime();
+      if (remoteSavedAt <= localSavedAt) return;
+      // Remote is newer — merge in
+      dayData = remote;
+      saveDayToCache(viewDate, dayData);
+      renderAll();
+      console.log('[Sync] Pulled fresher data from KV — updated UI');
+      // If coach panel is open and data changed, mark stale
+      const currentHash = buildDataFingerprint();
+      const lastHash    = localStorage.getItem('fs3-last-coach-hash') || '';
+      if (currentHash !== lastHash) {
+        coachStale = true;
+        const coachPanel = document.getElementById('panel-coach');
+        if (coachPanel?.classList.contains('active')) {
+          triggerCoaching('checkin', true);
+        } else {
+          document.getElementById('coach-badge')?.classList.add('show');
+        }
+      }
+    } catch (e) { /* silent — worker may be temporarily unavailable */ }
+  }
+
+  _syncPollTimer = setInterval(syncFromKV, 60000);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      clearInterval(_syncPollTimer);
+      _syncPollTimer = setInterval(syncFromKV, 60000);
+      syncFromKV(); // immediate re-sync on foreground
+    }
+  });
 
   // Close day button visibility
   const closeSec = document.getElementById('close-day-section');
