@@ -3257,8 +3257,12 @@ async function init() {
       if (!remote.exists) { console.log('[Sync] No KV data for today yet'); return; }
       const remoteSavedAt = new Date(remote.savedAt || 0).getTime();
       const localSavedAt  = new Date(dayData.savedAt  || 0).getTime();
-      console.log('[Sync] remote:', new Date(remoteSavedAt).toLocaleTimeString(), '| local:', new Date(localSavedAt).toLocaleTimeString(), '| will update:', remoteSavedAt > localSavedAt);
-      if (remoteSavedAt <= localSavedAt) return;
+      // Secondary signal: food item count changed (catches today_live updates with no savedAt)
+      const remoteItems = (remote.foodLog||[]).length + (remote.waterLog||[]).length + (remote.workouts||[]).length;
+      const localItems  = (dayData.foodLog||[]).length + (dayData.waterLog||[]).length + (dayData.workouts||[]).length;
+      const hasNewItems = remoteItems > localItems;
+      console.log('[Sync] remote:', new Date(remoteSavedAt).toLocaleTimeString(), '| local:', new Date(localSavedAt).toLocaleTimeString(), '| remoteItems:', remoteItems, '| localItems:', localItems, '| will update:', remoteSavedAt > localSavedAt || hasNewItems);
+      if (remoteSavedAt <= localSavedAt && !hasNewItems) return;
       dayData = remote;
       saveDayToCache(viewDate, dayData);
       renderAll();

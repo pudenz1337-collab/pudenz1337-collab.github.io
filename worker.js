@@ -951,7 +951,11 @@ async function getDailyDay(env, path) {
   const live = await env.FUELSTRONG_KV.get('today_live').catch(() => null);
   if (live) {
     const liveData = JSON.parse(live);
-    if (liveData.date === dateStr) return reply({ ...liveData, exists: true });
+    if (liveData.date === dateStr) {
+      // Stamp savedAt if missing (old phone code didn't write it)
+      if (!liveData.savedAt) liveData.savedAt = new Date().toISOString();
+      return reply({ ...liveData, exists: true });
+    }
   }
   return reply({ exists: false });
 }
