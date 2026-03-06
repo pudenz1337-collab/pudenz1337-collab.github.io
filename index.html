@@ -2402,7 +2402,7 @@ async function estimateByName() {
     const r = await wFetch('/api/estimate', { method: 'POST', body: JSON.stringify({ name }) });
     if (r.error) throw new Error(r.error);
     const est = r.estimate;
-    const map = { calories:'lib-cal', protein:'lib-prot', carbs:'lib-carb', fat:'lib-fat', fiber:'lib-fiber' };
+    const map = { cal:'lib-cal', protein:'lib-prot', carbs:'lib-carb', fat:'lib-fat', fiber:'lib-fiber' };
     Object.entries(map).forEach(([k, id]) => {
       const el = document.getElementById(id);
       if (el && !el.value && est[k] != null) el.value = est[k];

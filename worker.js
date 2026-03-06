@@ -14,7 +14,7 @@ const ALLOWED_ORIGIN = 'https://pudenz1337-collab.github.io';
 
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
@@ -525,6 +525,7 @@ ${mealLines.length ? mealLines.join('\n') : 'No food logged yet'}
 H-E-M TIMELINE (H=Hunger, E=Energy, M=Mood, 1-3 scale):
 ${hemTimeline}
 
+FLAGS: ${[body.flags?.trainingDay?'Training day ✓':null, body.flags?.recoveryDay?'Recovery day ✓':null, body.flags?.injectionDay?'Injection day ✓':null].filter(Boolean).join(', ')||'None set'}
 TIRZEPATIDE: ${tirzepatide.dose||'unknown'}mg | Days since injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
 
 14-DAY AVERAGES: Protein ${avgP||'no data'}g/day | Calories ${avgCal||'no data'}/day
@@ -545,9 +546,46 @@ ${body.question || 'Update my coaching based on current data.'}`;
     }
 
   } else if (mode === 'ask') {
-    systemAddition = '\nAnswer the specific question directly and specifically. Use actual numbers from the data. 3-5 sentences. Coach texting style.';
-    const todayCtx = body.todayContext || '';
-    userMsg = `${todayCtx ? 'TODAY: '+todayCtx+'\n\n' : ''}Evolt Scans:\n${evoltLines}\nDelta: ${evoltDelta}${scanIntervalContext}\n\nWorkout Analytics:\n${woLines}\n\nNutrition:\n${nutritionLines}\n\nQuestion: ${question}`;
+    systemAddition = '\nAnswer the specific question directly and specifically. Use actual numbers from the data. 3-5 sentences max. Coach texting style — direct, specific, no fluff.';
+    // Build today's context the same way checkin does
+    const foodLog    = body.foodLog  || [];
+    const workouts   = body.workouts || [];
+    const waterLog   = body.waterLog || [];
+    const flags      = body.flags    || {};
+    const tzOffset   = body.timezoneOffset ?? 0;
+    const currentTime = body.currentTime || new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const todayProtein = Math.round(foodLog.reduce((a,i) => a+(i.protein||0), 0));
+    const todayCal     = Math.round(foodLog.reduce((a,i) => a+(i.calories||0), 0));
+    const todayWater   = Math.round(waterLog.reduce((a,w) => a+(w.oz||0), 0));
+    const fmtISO2 = iso => {
+      if (!iso) return '';
+      try {
+        const d = new Date(new Date(iso).getTime() - (tzOffset * 60000));
+        const h = d.getUTCHours(), m = d.getUTCMinutes();
+        return `${h%12||12}:${String(m).padStart(2,'0')} ${h>=12?'PM':'AM'}`;
+      } catch { return ''; }
+    };
+    const sortedFood2 = [...foodLog].sort((a,b) => (a.timestamp||'').localeCompare(b.timestamp||''));
+    const mealLines2 = sortedFood2.length
+      ? sortedFood2.map(i => `${fmtISO2(i.timestamp)} ${i.displayName||i.name} (${i.protein||0}g P, ${i.calories||0} cal)`).join('\n')
+      : 'No food logged yet';
+    const woBlock2 = workouts.length
+      ? workouts.map(w => `Workout: ${fmtISO2(w.startTime)}${w.durationMinutes?' '+w.durationMinutes+'min':''}${w.rpe?' RPE '+w.rpe:''}`).join('\n')
+      : 'No workout logged today';
+    const flagBlock = [
+      flags.trainingDay  ? 'Training day ✓' : null,
+      flags.recoveryDay  ? 'Recovery day ✓' : null,
+      flags.injectionDay ? 'Injection day ✓' : null,
+    ].filter(Boolean).join(', ') || 'No flags set';
+
+    const askTodayCtx = `TODAY (${currentTime}):
+Protein: ${todayProtein}g / ${goals.protein||150}g | Calories: ${todayCal} / ${goals.cal||1800} | Water: ${todayWater}oz
+Flags: ${flagBlock}
+${woBlock2}
+Food logged:
+${mealLines2}`;
+
+    userMsg = `${askTodayCtx}\n\nRecent nutrition (14 days):\n${nutritionLines}\n\nEvolt trend:\n${evoltLines}\n\nQuestion: ${question}`;
 
   } else if (mode === 'body') {
     systemAddition = '\nFocus: Deep dive into body composition trends. Use scan interval analysis to explain which behaviors drove each outcome. End with: "Your Top 3 Body Composition Priorities."';
@@ -605,7 +643,7 @@ Generate my weekly review.`;
   }
 
   let messagesArr;
-  if ((mode === 'fuelstrong_daily' || mode === 'checkin') && body.history && body.history.length > 0) {
+  if ((mode === 'fuelstrong_daily' || mode === 'checkin' || mode === 'ask') && body.history && body.history.length > 0) {
     messagesArr = [...body.history, { role: 'user', content: userMsg }];
   } else {
     messagesArr = [{ role: 'user', content: userMsg }];
