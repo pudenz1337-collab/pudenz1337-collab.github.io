@@ -944,20 +944,33 @@ async function getDailyDay(env, path) {
   if (!env.FUELSTRONG_KV) return reply({ error: 'KV not bound' }, 500);
   const dateStr = path.replace('/api/daily/','').split('?')[0];
   if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return reply({ error: 'Invalid date format' }, 400);
-  const raw = await env.FUELSTRONG_KV.get(`day_${dateStr}`).catch(() => null);
-  if (raw) return reply({ ...JSON.parse(raw), exists: true });
-  // Fallback: check today_live for devices still on old code
-  // Don't check date — just use today_live if it has matching date field
-  const live = await env.FUELSTRONG_KV.get('today_live').catch(() => null);
-  if (live) {
-    const liveData = JSON.parse(live);
-    if (liveData.date === dateStr) {
-      // Stamp savedAt if missing (old phone code didn't write it)
-      if (!liveData.savedAt) liveData.savedAt = new Date().toISOString();
-      return reply({ ...liveData, exists: true });
-    }
-  }
-  return reply({ exists: false });
+
+  // Fetch both keys in parallel — return whichever is newer
+  const [raw, live] = await Promise.all([
+    env.FUELSTRONG_KV.get(`day_${dateStr}`).catch(() => null),
+    env.FUELSTRONG_KV.get('today_live').catch(() => null),
+  ]);
+
+  const dayData  = raw  ? JSON.parse(raw)  : null;
+  const liveData = live ? JSON.parse(live) : null;
+
+  // Only consider today_live if its date matches the requested date
+  const liveValid = liveData && liveData.date === dateStr;
+
+  if (!dayData && !liveValid) return reply({ exists: false });
+
+  // Pick the newer of the two
+  const daySavedAt  = dayData  ? new Date(dayData.savedAt  || 0).getTime() : 0;
+  const liveSavedAt = liveValid ? new Date(liveData.savedAt || 0).getTime() : 0;
+  const liveFoodCount = liveValid ? ((liveData.foodLog||[]).length + (liveData.waterLog||[]).length) : 0;
+  const dayFoodCount  = dayData  ? ((dayData.foodLog||[]).length  + (dayData.waterLog||[]).length)  : 0;
+
+  // Prefer today_live if it has more items OR a newer timestamp
+  const useLive = liveValid && (liveFoodCount > dayFoodCount || liveSavedAt > daySavedAt);
+  const result  = useLive ? liveData : dayData;
+  if (!result.savedAt) result.savedAt = new Date().toISOString();
+
+  return reply({ ...result, exists: true });
 }
 
 // ─── Daily day PUT ────────────────────────────────────────────────────────────

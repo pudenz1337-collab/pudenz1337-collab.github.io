@@ -1230,6 +1230,7 @@ let activeTab      = 'pinned';
 
 // Debounce timers
 let _saveDayTimer, _searchTimer;
+let _localDirty = false; // true only when THIS device made a change
 
 // History (completed days)
 let history = JSON.parse(localStorage.getItem('fs3-hist') || '[]');
@@ -1448,6 +1449,7 @@ async function fetchDayData(dateStr) {
 }
 
 function saveDayDebounced(immediate = false) {
+  _localDirty = true; // this device made a change
   clearTimeout(_saveDayTimer);
   const delay = immediate ? 0 : 1200;
   _saveDayTimer = setTimeout(() => {
@@ -1457,14 +1459,14 @@ function saveDayDebounced(immediate = false) {
 }
 
 async function pushDayToKV(dateStr) {
+  if (!_localDirty) return; // only push when this device actually changed something
   try {
     const now = new Date().toISOString();
     await wFetch(`/api/daily/${dateStr}`, {
       method: 'PUT',
       body:   JSON.stringify(dayData),
     });
-    // Mirror the savedAt the worker will stamp, so syncFromKV on THIS device
-    // won't treat its own data as "stale" and re-render unnecessarily.
+    _localDirty = false;
     if (dateStr === viewDate) dayData.savedAt = now;
   } catch (e) { /* silent — offline or worker unreachable */ }
 }
@@ -3264,6 +3266,7 @@ async function init() {
       console.log('[Sync] remote:', new Date(remoteSavedAt).toLocaleTimeString(), '| local:', new Date(localSavedAt).toLocaleTimeString(), '| remoteItems:', remoteItems, '| localItems:', localItems, '| will update:', remoteSavedAt > localSavedAt || hasNewItems);
       if (remoteSavedAt <= localSavedAt && !hasNewItems) return;
       dayData = remote;
+      _localDirty = false; // we received remote data — don't push it back
       saveDayToCache(viewDate, dayData);
       renderAll();
       markCoachBadge();
