@@ -3263,14 +3263,16 @@ async function init() {
       renderAll();
       markCoachBadge();
       console.log('[Sync] Updated from KV at', new Date(remoteSavedAt).toLocaleTimeString());
-    } catch (e) { /* silent — offline */ }
+    } catch (e) { console.log('[Sync] poll error:', e.message); }
   }
 
   let _syncInterval = null;
   function startSyncPoll() {
-    if (_syncInterval) return;
+    console.log('[Sync] startSyncPoll called — WORKER_URL:', WORKER_URL ? 'set' : 'EMPTY', '| isToday:', isToday(viewDate));
+    if (_syncInterval) { console.log('[Sync] poll already running'); return; }
     syncFromKV(); // immediate on focus
     _syncInterval = setInterval(syncFromKV, 30000);
+    console.log('[Sync] poll started, interval id:', _syncInterval);
   }
   function stopSyncPoll() {
     clearInterval(_syncInterval);
