@@ -1459,7 +1459,8 @@ function saveDayDebounced(immediate = false) {
 }
 
 async function pushDayToKV(dateStr) {
-  if (!_localDirty) return; // only push when this device actually changed something
+  console.log('[Push] pushDayToKV called — dirty:', _localDirty, 'dateStr:', dateStr);
+  if (!_localDirty) { console.log('[Push] SKIPPED — not dirty'); return; }
   try {
     const now = new Date().toISOString();
     await wFetch(`/api/daily/${dateStr}`, {
@@ -1468,7 +1469,8 @@ async function pushDayToKV(dateStr) {
     });
     _localDirty = false;
     if (dateStr === viewDate) dayData.savedAt = now;
-  } catch (e) { /* silent — offline or worker unreachable */ }
+    console.log('[Push] SUCCESS — pushed', (dayData.foodLog||[]).length, 'food items');
+  } catch (e) { console.log('[Push] ERROR:', e.message); }
 }
 
 // ══════════════════════════════════════════════════
@@ -3265,6 +3267,7 @@ async function init() {
       const hasNewItems = remoteItems > localItems;
       console.log('[Sync] remote:', new Date(remoteSavedAt).toLocaleTimeString(), '| local:', new Date(localSavedAt).toLocaleTimeString(), '| remoteItems:', remoteItems, '| localItems:', localItems, '| will update:', remoteSavedAt > localSavedAt || hasNewItems);
       if (remoteSavedAt <= localSavedAt && !hasNewItems) return;
+      console.log('[Sync] Applying remote data —', (remote.foodLog||[]).length, 'food items, dirty was:', _localDirty);
       dayData = remote;
       _localDirty = false; // we received remote data — don't push it back
       saveDayToCache(viewDate, dayData);
