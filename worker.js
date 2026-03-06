@@ -431,6 +431,7 @@ TONE: Direct, specific, coach-like. Numbers over reassurance. Start directly —
     const hemEntries = body.hem      || body.hemLog || [];
     const waterLog   = body.waterLog || [];
     const currentTime = body.currentTime || new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const tzOffset    = body.timezoneOffset ?? 0;  // minutes behind UTC (e.g. CST = 360)
     const msgHistory  = body.history || [];
 
     const todayProtein = Math.round(foodLog.reduce((a,i) => a+(i.protein||0), 0));
@@ -442,7 +443,14 @@ TONE: Direct, specific, coach-like. Numbers over reassurance. Start directly —
 
     const fmtISO = iso => {
       if (!iso) return '';
-      try { return new Date(iso).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); } catch { return ''; }
+      try {
+        // Cloudflare Workers run UTC — apply client timezone offset manually
+        const d = new Date(new Date(iso).getTime() - (tzOffset * 60000));
+        const h = d.getUTCHours(), m = d.getUTCMinutes();
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const h12  = h % 12 || 12;
+        return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+      } catch { return ''; }
     };
 
     const hemTimeline = hemEntries.length
@@ -460,7 +468,7 @@ TONE: Direct, specific, coach-like. Numbers over reassurance. Start directly —
     if (sortedFood.length) {
       const groups = {}, groupOrder = [];
       sortedFood.forEach(item => {
-        const hour   = item.timestamp ? new Date(item.timestamp).getHours() : 12;
+        const hour   = item.timestamp ? ((new Date(item.timestamp).getUTCHours() - Math.round((tzOffset||0)/60) + 24) % 24) : 12;
         const period = hour<9?'Morning (before 9am)':hour<12?'Late Morning (9–12pm)':hour<14?'Midday (12–2pm)':hour<17?'Afternoon (2–5pm)':hour<20?'Evening (5–8pm)':'Night (after 8pm)';
         if (!groups[period]) { groups[period] = { items:[], firstTime: fmtISO(item.timestamp) }; groupOrder.push(period); }
         groups[period].items.push(item);
@@ -937,8 +945,15 @@ async function getDailyDay(env, path) {
   const dateStr = path.replace('/api/daily/','').split('?')[0];
   if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return reply({ error: 'Invalid date format' }, 400);
   const raw = await env.FUELSTRONG_KV.get(`day_${dateStr}`).catch(() => null);
-  if (!raw) return reply({ exists: false });
-  return reply({ ...JSON.parse(raw), exists: true });
+  if (raw) return reply({ ...JSON.parse(raw), exists: true });
+  // Fallback: check today_live for devices still on old code
+  // Don't check date — just use today_live if it has matching date field
+  const live = await env.FUELSTRONG_KV.get('today_live').catch(() => null);
+  if (live) {
+    const liveData = JSON.parse(live);
+    if (liveData.date === dateStr) return reply({ ...liveData, exists: true });
+  }
+  return reply({ exists: false });
 }
 
 // ─── Daily day PUT ────────────────────────────────────────────────────────────
