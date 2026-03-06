@@ -1459,8 +1459,7 @@ function saveDayDebounced(immediate = false) {
 }
 
 async function pushDayToKV(dateStr) {
-  console.log('[Push] pushDayToKV called — dirty:', _localDirty, 'dateStr:', dateStr);
-  if (!_localDirty) { console.log('[Push] SKIPPED — not dirty'); return; }
+  if (!_localDirty) return;
   try {
     const now = new Date().toISOString();
     await wFetch(`/api/daily/${dateStr}`, {
@@ -1469,12 +1468,7 @@ async function pushDayToKV(dateStr) {
     });
     _localDirty = false;
     if (dateStr === viewDate) dayData.savedAt = now;
-    console.log('[Push] SUCCESS — pushed', (dayData.foodLog||[]).length, 'food items');
-    toast('✓ Saved to cloud');
-  } catch (e) {
-    console.log('[Push] ERROR:', e.message);
-    toast('⚠️ Sync failed: ' + e.message, true);
-  }
+  } catch (e) { /* silent — offline or worker unreachable */ }
 }
 
 // ══════════════════════════════════════════════════
@@ -3260,35 +3254,28 @@ async function init() {
   // Also fires immediately on tab focus (phone → PC hand-off).
   async function syncFromKV() {
     if (!WORKER_URL || !isToday(viewDate)) return;
-    if (_localDirty) { console.log('[Sync] skipped — local changes pending'); return; }
+    if (_localDirty) return;
     try {
       const remote = await wFetch(`/api/daily/${viewDate}`);
-      // Check dirty AGAIN — user may have logged something while fetch was in flight
-      if (_localDirty) { console.log('[Sync] skipped after fetch — local changes appeared during fetch'); return; }
-      if (!remote.exists) { console.log('[Sync] No KV data for today yet'); return; }
+      if (_localDirty) return; // local change appeared while fetch was in flight
+      if (!remote.exists) return;
       const remoteSavedAt = new Date(remote.savedAt || 0).getTime();
       const localSavedAt  = new Date(dayData.savedAt  || 0).getTime();
       const remoteItems = (remote.foodLog||[]).length + (remote.waterLog||[]).length + (remote.workouts||[]).length;
       const localItems  = (dayData.foodLog||[]).length + (dayData.waterLog||[]).length + (dayData.workouts||[]).length;
-      const hasNewItems = remoteItems > localItems;
-      console.log('[Sync] remote:', new Date(remoteSavedAt).toLocaleTimeString(), '| local:', new Date(localSavedAt).toLocaleTimeString(), '| remoteItems:', remoteItems, '| localItems:', localItems, '| will update:', remoteSavedAt > localSavedAt || hasNewItems);
-      if (remoteSavedAt <= localSavedAt && !hasNewItems) return;
-      console.log('[Sync] Applying remote data —', (remote.foodLog||[]).length, 'food items');
+      if (remoteSavedAt <= localSavedAt && remoteItems <= localItems) return;
       dayData = remote;
       saveDayToCache(viewDate, dayData);
       renderAll();
       markCoachBadge();
-      console.log('[Sync] Updated from KV at', new Date(remoteSavedAt).toLocaleTimeString());
-    } catch (e) { console.log('[Sync] poll error:', e.message); }
+    } catch (e) { /* silent — offline */ }
   }
 
   let _syncInterval = null;
   function startSyncPoll() {
-    console.log('[Sync] startSyncPoll called — WORKER_URL:', WORKER_URL ? 'set' : 'EMPTY', '| isToday:', isToday(viewDate));
-    if (_syncInterval) { console.log('[Sync] poll already running'); return; }
-    syncFromKV(); // immediate on focus
+    if (_syncInterval) return;
+    syncFromKV();
     _syncInterval = setInterval(syncFromKV, 30000);
-    console.log('[Sync] poll started, interval id:', _syncInterval);
   }
   function stopSyncPoll() {
     clearInterval(_syncInterval);
