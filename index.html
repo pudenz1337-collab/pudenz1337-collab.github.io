@@ -3256,6 +3256,7 @@ async function init() {
   // Also fires immediately on tab focus (phone → PC hand-off).
   async function syncFromKV() {
     if (!WORKER_URL || !isToday(viewDate)) return;
+    if (_localDirty) { console.log('[Sync] skipped — local changes pending'); return; }
     try {
       const remote = await wFetch(`/api/daily/${viewDate}`);
       if (!remote.exists) { console.log('[Sync] No KV data for today yet'); return; }
