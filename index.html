@@ -1470,7 +1470,11 @@ async function pushDayToKV(dateStr) {
     _localDirty = false;
     if (dateStr === viewDate) dayData.savedAt = now;
     console.log('[Push] SUCCESS — pushed', (dayData.foodLog||[]).length, 'food items');
-  } catch (e) { console.log('[Push] ERROR:', e.message); }
+    toast('✓ Saved to cloud');
+  } catch (e) {
+    console.log('[Push] ERROR:', e.message);
+    toast('⚠️ Sync failed: ' + e.message, true);
+  }
 }
 
 // ══════════════════════════════════════════════════
