@@ -908,12 +908,26 @@ function parseEvoltText(text, filename) {
 
   if (!date) { plog(`⚠ Could not find date in ${filename}`, 'lwarn'); return null; }
 
-  const weight  = num(/(?:Total Body Weight|Weight|Body Weight)[:\s]+(\d+\.?\d*)\s*(?:lbs?|kg)/i);
-  const bfPct   = num(/Body Fat[:\s%]+(\d+\.?\d*)\s*%/i)    || num(/Fat Percentage[:\s]+(\d+\.?\d*)/i);
-  const smm     = num(/Skeletal Muscle Mass[:\s]+(\d+\.?\d*)\s*(?:lbs?|kg)/i) || num(/Muscle Mass[:\s]+(\d+\.?\d*)\s*(?:lbs?|kg)/i);
-  const lbm     = num(/Lean Body Mass[:\s]+(\d+\.?\d*)\s*(?:lbs?|kg)/i);
-  const bmr     = num(/(?:Basal Metabolic Rate|BMR)[:\s]+(\d+\.?\d*)/i);
-  const visceral = num(/Visceral Fat[:\s]+(\d+\.?\d*)/i);
+  // Weight — try with unit first, then without (some Evolt PDFs omit units)
+  const weight  = num(/(?:Total Body Weight|Body Weight|Weight)[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)/i)
+               || num(/(?:Total Body Weight|Body Weight)[:\s]+([\d]+\.?[\d]*)/i)
+               || num(/\bWeight\b[^\n]{0,20}?\b([1-3]\d{2}\.?\d*)\s*(?:lbs?|kg)?/i);
+  // Body fat — multiple label formats
+  const bfPct   = num(/Body Fat[:\s%]+([\d]+\.?[\d]*)\s*%/i)
+               || num(/Fat Percentage[:\s]+([\d]+\.?[\d]*)/i)
+               || num(/Body Fat[\s\S]{0,10}?\b(\d{1,2}\.?\d*)\s*%/i);
+  // Skeletal muscle — SMM abbreviation + common label variants
+  const smm     = num(/Skeletal Muscle Mass[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i)
+               || num(/Muscle Mass[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i)
+               || num(/\bSMM\b[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i)
+               || num(/Skeletal Muscle[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i);
+  // LBM — with or without unit
+  const lbm     = num(/Lean Body Mass[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i)
+               || num(/\bLBM\b[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i);
+  // BMR — accept large numbers (1000-2500 range typical)
+  const bmr     = num(/(?:Basal Metabolic Rate|BMR)[:\s]+([\d,]+\.?[\d]*)/i);
+  const visceral = num(/Visceral Fat[:\s]+([\d]+\.?[\d]*)/i)
+                || num(/Visceral Fat Level[:\s]+([\d]+\.?[\d]*)/i);
 
   // Segmental muscle data
   const segmental = {};
@@ -956,7 +970,14 @@ async function parseFitbodCSV(file) {
   if (!lines.length) return [];
 
   const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/["\s]/g,''));
-  const col = name => header.indexOf(name);
+  // Flexible column lookup: exact match first, then strip non-alpha for fuzzy match
+  const col = name => {
+    const exact = header.indexOf(name.replace(/["\s]/g,'').toLowerCase());
+    if (exact !== -1) return exact;
+    // Fuzzy: match if header contains all words of name
+    const words = name.toLowerCase().split(/\s+/);
+    return header.findIndex(h => words.every(w => h.includes(w)));
+  };
 
   const sessionMap = {};
   for (let i = 1; i < lines.length; i++) {
@@ -1438,8 +1459,10 @@ function renderTraining() {
   const compoundExercises = /squat|deadlift|bench|press|row|pull.?up|dip|lunge|rdl|hip.?thrust/i;
   let compoundSets = 0, totalSets = 0;
   last4w.forEach(s => (s.exercises || []).forEach(ex => {
-    totalSets += ex.sets.length;
-    if (compoundExercises.test(ex.name)) compoundSets += ex.sets.length;
+    // Use set count if available, otherwise count the exercise as 1 unit
+    const units = ex.sets && ex.sets.length > 0 ? ex.sets.length : 1;
+    totalSets += units;
+    if (compoundExercises.test(ex.name)) compoundSets += units;
   }));
   const compoundPct = totalSets ? Math.round(compoundSets / totalSets * 100) : 0;
 
@@ -1509,6 +1532,15 @@ function renderTraining() {
     </tbody>`;
 }
 
+// Compute a session's volume — falls back to summing sets if totalVolume is 0
+function getSessionVolume(s) {
+  if (s.totalVolume > 0) return s.totalVolume;
+  return (s.exercises || []).reduce((a, ex) => {
+    if (ex.totalVolume > 0) return a + ex.totalVolume;
+    return a + (ex.sets || []).reduce((b, set) => b + (set.reps || 0) * (set.weight || 0), 0);
+  }, 0);
+}
+
 function buildWeeklyVolume(sessions, numWeeks) {
   const weeks = [];
   const now   = new Date();
@@ -1517,7 +1549,7 @@ function buildWeeklyVolume(sessions, numWeeks) {
     const end   = new Date(now); end.setDate(end.getDate() - i * 7);
     const vol   = sessions
       .filter(s => { const d = new Date(s.date + 'T12:00:00'); return d >= start && d <= end; })
-      .reduce((a, s) => a + (s.totalVolume || 0), 0);
+      .reduce((a, s) => a + getSessionVolume(s), 0);
     weeks.push({ label: start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), vol });
   }
   return weeks;
@@ -1526,8 +1558,10 @@ function buildWeeklyVolume(sessions, numWeeks) {
 function buildMuscleGroupVol(sessions) {
   const vol = {};
   sessions.forEach(s => (s.exercises || []).forEach(ex => {
-    const mg = ex.muscleGroup || 'Other';
-    vol[mg] = (vol[mg] || 0) + (ex.totalVolume || 0);
+    const mg  = ex.muscleGroup || 'Other';
+    const exVol = ex.totalVolume > 0 ? ex.totalVolume
+      : (ex.sets || []).reduce((b, set) => b + (set.reps || 0) * (set.weight || 0), 0);
+    vol[mg] = (vol[mg] || 0) + exVol;
   }));
   return vol;
 }
@@ -1617,7 +1651,6 @@ function renderInsightsList(data) {
         <div class="insight-title" style="color:${style.color}">${style.icon} ${ins.observation}</div>
         ${ins.confidence ? `<div class="insight-conf ${confClass}">${ins.confidence}</div>` : ''}
       </div>
-      <div class="insight-body">${ins.observation}</div>
       ${ins.recommendation ? `<div class="insight-rec">→ ${ins.recommendation}</div>` : ''}
     </div>`;
   }).join('');
@@ -1668,8 +1701,9 @@ function buildUnifiedCoachPayload(question = null) {
   // Workout summary
   let compoundSets = 0, totalSets = 0;
   last4w.forEach(s => (s.exercises || []).forEach(ex => {
-    totalSets += ex.sets.length;
-    if (/squat|deadlift|bench|press|row|pull.?up|dip|lunge|rdl/i.test(ex.name)) compoundSets += ex.sets.length;
+    const units = ex.sets && ex.sets.length > 0 ? ex.sets.length : 1;
+    totalSets += units;
+    if (/squat|deadlift|bench|press|row|pull.?up|dip|lunge|rdl/i.test(ex.name)) compoundSets += units;
   }));
   const workoutSummary = {
     totalWorkouts:      sessions.length,
@@ -1749,7 +1783,7 @@ async function getCoaching() {
 
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error('timeout')), 15000);
+    timeoutId = setTimeout(() => reject(new Error('timeout')), 35000);
   });
 
   try {
@@ -1798,7 +1832,7 @@ async function askCoach() {
 
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error('timeout')), 15000);
+    timeoutId = setTimeout(() => reject(new Error('timeout')), 35000);
   });
 
   try {
