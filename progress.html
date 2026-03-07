@@ -99,6 +99,7 @@ body{
 
 /* ── CHARTS ── */
 .chart-wrap{position:relative;width:100%;height:200px;margin:4px 0 10px}
+.chart-nodata{position:absolute;top:0;left:0;right:0;bottom:0;display:none;align-items:center;justify-content:center;font-size:12px;color:var(--orange);text-align:center;padding:8px;background:rgba(8,11,16,.7);border-radius:4px}
 .chart-wrap-sm{height:160px}
 .chart-title{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:.4px}
 
@@ -177,10 +178,13 @@ body{
   background:var(--card2);border:1px solid var(--border);
   border-radius:var(--radius-sm);padding:10px 12px;
   font-family:'DM Mono',monospace;font-size:11px;
-  max-height:130px;overflow-y:auto;margin-top:8px;
-  display:none;
+  max-height:280px;overflow-y:auto;margin-top:8px;
+  display:none;white-space:pre-wrap;word-break:break-all;
 }
 .linfo{color:var(--accent)}.lwarn{color:var(--yellow)}.lerr{color:var(--danger)}
+.ldim{color:var(--muted)}.lraw{color:#8899bb;font-size:10px}
+.parse-log-hdr{display:flex;justify-content:space-between;align-items:center;margin-top:8px;margin-bottom:2px}
+.parse-log-hdr span{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace}
 
 /* ── WORKOUT TABLE ── */
 .wo-table{width:100%;border-collapse:collapse;font-size:12px}
@@ -352,15 +356,15 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
     <div class="card" id="body-comp-card" style="display:none">
       <div class="card-title">Body Composition Trends</div>
       <div class="chart-title">Muscle Mass (lbs)</div>
-      <div class="chart-wrap"><canvas id="chart-muscle"></canvas></div>
+      <div class="chart-wrap"><canvas id="chart-muscle"></canvas><div class="chart-nodata" id="chart-muscle-nodata"></div></div>
       <div class="chart-title">Body Fat %</div>
-      <div class="chart-wrap"><canvas id="chart-bf"></canvas></div>
+      <div class="chart-wrap"><canvas id="chart-bf"></canvas><div class="chart-nodata" id="chart-bf-nodata"></div></div>
     </div>
 
     <!-- Weight chart -->
     <div class="card" id="weight-card" style="display:none">
       <div class="card-title">Weight</div>
-      <div class="chart-wrap chart-wrap-sm"><canvas id="chart-weight"></canvas></div>
+      <div class="chart-wrap chart-wrap-sm"><canvas id="chart-weight"></canvas><div class="chart-nodata" id="chart-weight-nodata"></div></div>
     </div>
 
     <!-- Empty state -->
@@ -389,15 +393,15 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
     <div id="body-content" style="display:none">
       <div class="card">
         <div class="card-title">Skeletal Muscle Mass</div>
-        <div class="chart-wrap"><canvas id="chart-muscle-2"></canvas></div>
+        <div class="chart-wrap"><canvas id="chart-muscle-2"></canvas><div class="chart-nodata" id="chart-muscle-2-nodata"></div></div>
       </div>
       <div class="card">
         <div class="card-title">Body Fat %</div>
-        <div class="chart-wrap"><canvas id="chart-bf-2"></canvas></div>
+        <div class="chart-wrap"><canvas id="chart-bf-2"></canvas><div class="chart-nodata" id="chart-bf-2-nodata"></div></div>
       </div>
       <div class="card">
         <div class="card-title">BMR & Lean Body Mass</div>
-        <div class="chart-wrap"><canvas id="chart-bmr"></canvas></div>
+        <div class="chart-wrap"><canvas id="chart-bmr"></canvas><div class="chart-nodata" id="chart-bmr-nodata"></div></div>
       </div>
 
       <!-- Scan list -->
@@ -427,7 +431,7 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
       <!-- Volume chart -->
       <div class="card">
         <div class="card-title">Weekly Training Volume (lbs)</div>
-        <div class="chart-wrap"><canvas id="chart-volume"></canvas></div>
+        <div class="chart-wrap"><canvas id="chart-volume"></canvas><div class="chart-nodata" id="chart-volume-nodata"></div></div>
       </div>
 
       <!-- Muscle group breakdown -->
@@ -526,6 +530,12 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
           style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2"
           onchange="handleFiles(this.files,'evolt')">
       </label>
+      <div class="btn-row" style="margin-top:8px">
+        <label class="btn btn-g btn-sm" style="position:relative;overflow:hidden;cursor:pointer">
+          🔬 Test Evolt PDF
+          <input type="file" accept=".pdf" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer" onchange="testParseEvolt(this.files)">
+        </label>
+      </div>
     </div>
 
     <div class="card">
@@ -539,8 +549,18 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
           style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2"
           onchange="handleFiles(this.files,'fitbod')">
       </label>
+      <div class="btn-row" style="margin-top:8px">
+        <label class="btn btn-g btn-sm" style="position:relative;overflow:hidden;cursor:pointer">
+          🔬 Test Fitbod CSV
+          <input type="file" accept=".csv" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer" onchange="testParseFitbod(this.files)">
+        </label>
+      </div>
     </div>
 
+    <div class="parse-log-hdr">
+      <span id="parse-log-title">Parse Log</span>
+      <button class="btn btn-d btn-sm" onclick="clearParseLog()" style="font-size:10px;padding:2px 8px">Clear Log</button>
+    </div>
     <div class="parse-log" id="parse-log"></div>
 
     <div class="card" style="margin-top:10px">
@@ -799,6 +819,147 @@ function plog(msg, cls = '') {
   line.textContent = msg;
   el.appendChild(line);
   el.scrollTop = el.scrollHeight;
+}
+
+function clearParseLog() {
+  const el = document.getElementById('parse-log');
+  el.innerHTML = '';
+  el.style.display = 'none';
+}
+
+function plogRaw(msg) {
+  const el = document.getElementById('parse-log');
+  el.style.display = 'block';
+  const line = document.createElement('div');
+  line.className = 'lraw';
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function testParseEvolt(files) {
+  if (!files || !files[0]) return;
+  const file = files[0];
+  const logEl = document.getElementById('parse-log');
+  logEl.style.display = 'block';
+  logEl.innerHTML = '';
+  document.getElementById('parse-log-title').textContent = '🔬 Evolt Test — ' + file.name;
+
+  plog('── RAW PDF TEXT (first 1200 chars) ──────────────────', 'ldim');
+  const ab  = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+  let fullText = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const tc   = await page.getTextContent();
+    fullText  += tc.items.map(item => item.str).join(' ') + '
+';
+  }
+  plogRaw(fullText.slice(0, 1200));
+
+  plog('── REGEX FIELD RESULTS ──────────────────────────────', 'ldim');
+  // Run each regex independently and show match/no-match
+  const tests = [
+    ['weight (with unit)',    /(?:Total Body Weight|Body Weight|Weight)[\:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)/i],
+    ['weight (label only)',   /(?:Total Body Weight|Body Weight)[\:\s]+([\d]+\.?[\d]*)/i],
+    ['weight (range 100-399)',/Weight[^
+]{0,20}?([1-3]\d{2}\.?\d*)\s*(?:lbs?|kg)?/i],
+    ['bodyFatPct (%)',        /Body Fat[\:\s%]+([\d]+\.?[\d]*)\s*%/i],
+    ['bodyFatPct (pct label)',/Fat Percentage[\:\s]+([\d]+\.?[\d]*)/i],
+    ['bodyFatPct (nearby %)', /Body Fat[\s\S]{0,10}?(\d{1,2}\.?\d*)\s*%/i],
+    ['SMM (full label)',      /Skeletal Muscle Mass[\:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i],
+    ['SMM (muscle mass)',     /Muscle Mass[\:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i],
+    ['SMM (abbreviation)',    /SMM[\:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i],
+    ['SMM (skeletal muscle)', /Skeletal Muscle[\:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i],
+    ['leanBodyMass',          /Lean Body Mass[\:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i],
+    ['leanBodyMass (LBM)',    /LBM[\:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i],
+    ['bmr',                   /(?:Basal Metabolic Rate|BMR)[\:\s]+([\d,]+\.?[\d]*)/i],
+    ['visceral fat',          /Visceral Fat[\:\s]+([\d]+\.?[\d]*)/i],
+    ['date (MM/DD/YYYY)',     /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/],
+    ['date (YYYY-MM-DD)',     /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/],
+  ];
+  tests.forEach(([label, re]) => {
+    const m = fullText.match(re);
+    if (m) plog(`  ✓ ${label}: "${m[0]}" → value: ${m[1]}`, 'linfo');
+    else   plog(`  ✗ ${label}: no match`, 'lwarn');
+  });
+
+  plog('── FINAL PARSE RESULT ───────────────────────────────', 'ldim');
+  const result = parseEvoltText(fullText, file.name);
+  if (result) {
+    const fields = ['date','weight','bodyFatPct','skeletalMuscleMass','leanBodyMass','bmr','visceralFatMass'];
+    fields.forEach(f => {
+      const val = result[f];
+      if (val != null) plog(`  ${f}: ${val}`, 'linfo');
+      else             plog(`  ${f}: null ← MISSING`, 'lwarn');
+    });
+    const nullCount = fields.filter(f => result[f] == null).length;
+    if (nullCount > 2) {
+      plog('', '');
+      plog('⚠ Too many nulls — AI fallback would trigger on real upload', 'lwarn');
+      plog('NOTE: Test mode does not run AI fallback (no data is saved).', 'lwarn');
+      plog('Upload the file normally to trigger AI extraction.', 'ldim');
+    } else {
+      plog('✅ Regex extraction looks good — upload to save', 'linfo');
+    }
+  } else {
+    plog('⚠ parseEvoltText returned null (no date or no key values found)', 'lwarn');
+    plog('Upload the file normally to trigger AI fallback extraction.', 'ldim');
+  }
+}
+
+async function testParseFitbod(files) {
+  if (!files || !files[0]) return;
+  const file = files[0];
+  const logEl = document.getElementById('parse-log');
+  logEl.style.display = 'block';
+  logEl.innerHTML = '';
+  document.getElementById('parse-log-title').textContent = '🔬 Fitbod Test — ' + file.name;
+
+  const text  = await file.text();
+  const lines = text.split('
+').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) { plog('⚠ File is empty', 'lwarn'); return; }
+
+  plog('── CSV HEADER ROW ───────────────────────────────────', 'ldim');
+  plogRaw(lines[0]);
+
+  plog('── FIRST 3 DATA ROWS ────────────────────────────────', 'ldim');
+  lines.slice(1, 4).forEach(l => plogRaw(l));
+
+  plog('── COLUMN DETECTION ─────────────────────────────────', 'ldim');
+  const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/["\s]/g,''));
+  const colTests = ['date','exercise','exercisename','reps','weight','weight_kg','musclegroup','muscle group','isbodyweight'];
+  colTests.forEach(name => {
+    const cleanName = name.replace(/["\s]/g,'').toLowerCase();
+    const exact = header.indexOf(cleanName);
+    if (exact !== -1) { plog(`  ✓ "${name}" → col ${exact}`, 'linfo'); return; }
+    const words = name.toLowerCase().split(/\s+/);
+    const fuzzy = header.findIndex(h => words.every(w => h.includes(w)));
+    if (fuzzy !== -1) plog(`  ~ "${name}" fuzzy → col ${fuzzy} ("${header[fuzzy]}")`, 'lwarn');
+    else              plog(`  ✗ "${name}": not found in header`, 'lwarn');
+  });
+
+  plog('── PARSE SUMMARY ────────────────────────────────────', 'ldim');
+  try {
+    const sessions = await parseFitbodCSV(file);
+    if (!sessions.length) { plog('⚠ No sessions parsed', 'lwarn'); return; }
+    plog(`✅ ${sessions.length} sessions parsed`, 'linfo');
+    const withVol  = sessions.filter(s => s.totalVolume > 0).length;
+    const noVol    = sessions.length - withVol;
+    const muscleGroups = [...new Set(sessions.flatMap(s => s.muscleGroupsWorked || []))].sort();
+    plog(`  Sessions with volume data: ${withVol}/${sessions.length}`, withVol > 0 ? 'linfo' : 'lwarn');
+    if (noVol > 0) plog(`  Sessions with 0 volume: ${noVol} (bodyweight or weight not in CSV)`, 'lwarn');
+    plog(`  Muscle groups found: ${muscleGroups.join(', ') || 'none'}`, 'linfo');
+    plog('  First 3 sessions:', 'ldim');
+    sessions.slice(0,3).forEach(s => {
+      const exNames = (s.exercises||[]).slice(0,3).map(e => e.name).join(', ');
+      plog(`    ${s.date} | ${(s.muscleGroupsWorked||[]).join(',')} | ${s.totalVolume}lbs | exercises: ${exNames}`, s.totalVolume > 0 ? 'linfo' : 'lwarn');
+    });
+    plog('NOTE: Test mode does not save data.', 'ldim');
+  } catch (e) {
+    plog('⚠ Parse error: ' + e.message, 'lerr');
+  }
 }
 
 async function handleFiles(files, type) {
@@ -1405,8 +1566,25 @@ function lineDataset(data, color, fill = false) {
 function makeOrUpdate(id, config) {
   const ctx = document.getElementById(id)?.getContext('2d');
   if (!ctx) return;
+  hideChartNoData(id);
   if (charts[id]) { charts[id].destroy(); }
   charts[id] = new Chart(ctx, config);
+}
+
+function showChartNoData(id, msg) {
+  const nodata = document.getElementById(id + '-nodata');
+  if (nodata) { nodata.textContent = msg; nodata.style.display = 'flex'; }
+  // Hide but do NOT destroy the canvas
+  const canvas = document.getElementById(id);
+  if (canvas) canvas.style.visibility = 'hidden';
+  if (charts[id]) { try { charts[id].destroy(); } catch(e){} delete charts[id]; }
+}
+
+function hideChartNoData(id) {
+  const nodata = document.getElementById(id + '-nodata');
+  if (nodata) { nodata.textContent = ''; nodata.style.display = 'none'; }
+  const canvas = document.getElementById(id);
+  if (canvas) canvas.style.visibility = 'visible';
 }
 
 function destroyCharts() {
@@ -1431,17 +1609,17 @@ function renderCompCharts() {
   if (document.getElementById('chart-muscle')) {
     hasMusclePts
       ? makeOrUpdate('chart-muscle', buildChartConfig(labels, [lineDataset(muscleData, '#00e5a0', true)]))
-      : document.getElementById('chart-muscle').parentElement.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Evolt PDFs to see muscle trend</div>';
+      : showChartNoData('chart-muscle', '⚠ Re-upload Evolt PDFs to see muscle trend');
   }
   if (document.getElementById('chart-bf')) {
     hasBfPts
       ? makeOrUpdate('chart-bf', buildChartConfig(labels, [lineDataset(bfData, '#ffd460', false)]))
-      : document.getElementById('chart-bf').parentElement.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Evolt PDFs to see body fat trend</div>';
+      : showChartNoData('chart-bf', '⚠ Re-upload Evolt PDFs to see body fat trend');
   }
   if (document.getElementById('chart-weight')) {
     hasWeightPts
       ? makeOrUpdate('chart-weight', buildChartConfig(labels, [lineDataset(weightData, '#4da8ff', false)]))
-      : document.getElementById('chart-weight').parentElement.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Evolt PDFs to see weight trend</div>';
+      : showChartNoData('chart-weight', '⚠ Re-upload Evolt PDFs to see weight trend');
   }
 }
 
@@ -1466,12 +1644,12 @@ function renderBody() {
   if (muscleVals2.some(v => v != null)) {
     makeOrUpdate('chart-muscle-2', buildChartConfig(labels, [lineDataset(muscleVals2, '#00e5a0', true)]));
   } else if (document.getElementById('chart-muscle-2')) {
-    document.getElementById('chart-muscle-2').parentElement.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Evolt PDFs to see muscle trend</div>';
+    showChartNoData('chart-muscle-2', '⚠ Re-upload Evolt PDFs to see muscle trend');
   }
   if (bfVals2.some(v => v != null)) {
     makeOrUpdate('chart-bf-2', buildChartConfig(labels, [lineDataset(bfVals2, '#ffd460', false)]));
   } else if (document.getElementById('chart-bf-2')) {
-    document.getElementById('chart-bf-2').parentElement.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Evolt PDFs to see body fat trend</div>';
+    showChartNoData('chart-bf-2', '⚠ Re-upload Evolt PDFs to see body fat trend');
   }
 
   // Dual axis: BMR + LBM
@@ -1560,9 +1738,8 @@ function renderTraining() {
   // Weekly volume chart
   const weeklyVol = buildWeeklyVolume(sessions, 12);
   const hasVol    = weeklyVol.some(w => w.vol > 0);
-  if (!hasVol && document.getElementById('chart-volume')) {
-    document.getElementById('chart-volume').parentElement.innerHTML =
-      '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Fitbod CSV to see volume data</div>';
+  if (!hasVol) {
+    showChartNoData('chart-volume', '⚠ Re-upload Fitbod CSV to see volume data');
   } else
   makeOrUpdate('chart-volume', {
     type: 'bar',
