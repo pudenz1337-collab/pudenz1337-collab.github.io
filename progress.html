@@ -1076,95 +1076,75 @@ async function parseEvoltPDF(file) {
 }
 
 function parseEvoltText(text, filename) {
-  const num = pattern => { const m = text.match(pattern); return m ? parseFloat(m[1]) : null; };
-  const all = (re) => { const matches = []; let m; re = new RegExp(re.source, re.flags); while ((m = re.exec(text)) !== null) matches.push(parseFloat(m[1])); return matches; };
-
-  // Date extraction — multiple patterns
+  // ── DATE ─────────────────────────────────────────────────────────────────
+  // Evolt format: "07-29-2024 07:02" (MM-DD-YYYY)
   let date = null;
-  const datePatterns = [
-    /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/,
-    /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/,
-    /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),?\s+(\d{4})/i,
-    /(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})/i,
-  ];
-  const months = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
-  for (const pat of datePatterns) {
-    const m = text.match(pat);
-    if (m) {
-      try {
-        let y, mo, d;
-        if (pat.source.includes('Jan')) {
-          mo = months[m[1].toLowerCase().slice(0,3)] || parseInt(m[2]);
-          d  = m[2].match(/\d/) ? parseInt(m[2]) : parseInt(m[1]);
-          y  = parseInt(m[3]);
-          if (!m[2].match(/\d/)) { d = parseInt(m[1]); mo = months[m[2].toLowerCase().slice(0,3)]; }
-        } else if (pat.source.startsWith('(\\d{4})')) {
-          y = parseInt(m[1]); mo = parseInt(m[2]); d = parseInt(m[3]);
-        } else {
-          mo = parseInt(m[1]); d = parseInt(m[2]); y = parseInt(m[3]);
-        }
-        date = `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        break;
-      } catch (e) {}
-    }
+  const dm = text.match(/(\d{2})-(\d{2})-(\d{4})/);
+  if (dm) {
+    date = `${dm[3]}-${dm[1]}-${dm[2]}`;
+  } else {
+    // ISO fallback
+    const iso = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) date = iso[0];
   }
-
-  // Fallback: try filename for date
+  // Filename fallback
   if (!date) {
     const fm = filename.match(/(\d{4})[-_]?(\d{2})[-_]?(\d{2})/);
     if (fm) date = `${fm[1]}-${fm[2]}-${fm[3]}`;
   }
+  if (!date) { plog(`\u26a0 Could not find date in ${filename}`, 'lwarn'); return null; }
 
-  if (!date) { plog(`⚠ Could not find date in ${filename}`, 'lwarn'); return null; }
+  // ── WEIGHT ───────────────────────────────────────────────────────────────
+  // Appears in header as "184.5 lb" — first match of "NNN.N lb"
+  const wm = text.match(/(\d+\.?\d*)\s*lb/i);
+  const weight = wm ? parseFloat(wm[1]) : null;
 
-  // Weight — try with unit first, then without (some Evolt PDFs omit units)
-  const weight  = num(/(?:Total Body Weight|Body Weight|Weight)[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)/i)
-               || num(/(?:Total Body Weight|Body Weight)[:\s]+([\d]+\.?[\d]*)/i)
-               || num(/\bWeight\b[^\n]{0,20}?\b([1-3]\d{2}\.?\d*)\s*(?:lbs?|kg)?/i);
-  // Body fat — multiple label formats
-  const bfPct   = num(/Body Fat[:\s%]+([\d]+\.?[\d]*)\s*%/i)
-               || num(/Fat Percentage[:\s]+([\d]+\.?[\d]*)/i)
-               || num(/Body Fat[\s\S]{0,10}?\b(\d{1,2}\.?\d*)\s*%/i);
-  // Skeletal muscle — SMM abbreviation + common label variants
-  const smm     = num(/Skeletal Muscle Mass[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i)
-               || num(/Muscle Mass[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i)
-               || num(/\bSMM\b[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i)
-               || num(/Skeletal Muscle[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i);
-  // LBM — with or without unit
-  const lbm     = num(/Lean Body Mass[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i)
-               || num(/\bLBM\b[:\s]+([\d]+\.?[\d]*)\s*(?:lbs?|kg)?/i);
-  // BMR — accept large numbers (1000-2500 range typical)
-  const bmr     = num(/(?:Basal Metabolic Rate|BMR)[:\s]+([\d,]+\.?[\d]*)/i);
-  const visceral = num(/Visceral Fat[:\s]+([\d]+\.?[\d]*)/i)
-                || num(/Visceral Fat Level[:\s]+([\d]+\.?[\d]*)/i);
+  // ── BODY FAT % ───────────────────────────────────────────────────────────
+  // Appears as "38.2% / High[20 - 30]" — value has % before the slash
+  const bfm = text.match(/(\d+\.?\d*)%\s*\/\s*(?:High|Low|Optimal|Under Range|Over Range)/);
+  const bodyFatPct = bfm ? parseFloat(bfm[1]) : null;
 
-  // Segmental muscle data
-  const segmental = {};
-  const segKeys = [
-    ['rightArm',  /Right Arm[:\s]+(\d+\.?\d*)/i],
-    ['leftArm',   /Left Arm[:\s]+(\d+\.?\d*)/i],
-    ['rightLeg',  /Right Leg[:\s]+(\d+\.?\d*)/i],
-    ['leftLeg',   /Left Leg[:\s]+(\d+\.?\d*)/i],
-    ['trunk',     /Trunk[:\s]+(\d+\.?\d*)/i],
-  ];
-  for (const [key, re] of segKeys) {
-    const v = num(re);
-    if (v) segmental[key] = v;
+  // ── BMR ──────────────────────────────────────────────────────────────────
+  // First "NNNN kCal" in the text (BMR); second would be TEE
+  const bmrMatches = [...text.matchAll(/(\d{3,4})\s*kCal/gi)];
+  const bmr = bmrMatches.length ? parseInt(bmrMatches[0][1]) : null;
+
+  // ── VISCERAL FAT MASS ────────────────────────────────────────────────────
+  // Format: "9.9[ 5.4% ]" — small value followed by [pct%]
+  // Subcutaneous is large (>20), visceral is small (<20)
+  const pctBracketVals = [...text.matchAll(/(\d+\.?\d*)\s*\[\s*\d+\.?\d*%/g)]
+    .map(m => parseFloat(m[1]));
+  const visceral = pctBracketVals.find(v => v < 20) ?? null;
+
+  // ── SEQUENTIAL "VALUE / Rating [range]" EXTRACTION ───────────────────────
+  // The Evolt PDF renders labels and values in separate text layers.
+  // Values appear in a fixed positional sequence after gender in the data blob.
+  // Pattern: NUMBER / (High|Low|Optimal|...) [range-start
+  // Sequence: [0]=LBM, [1]=BodyFatMassLbs, [2]=SMM, [3]=Protein,
+  //           [4]=Mineral, [5]=VisceralFatArea, [6]=TotalBodyWater
+  //           [7+]=segmental values (arms, torso, legs)
+  const seqMatches = [...text.matchAll(/(\d+\.?\d*)\s*\/\s*(?:High|Low|Optimal|Under Range)\s*\[/g)]
+    .map(m => parseFloat(m[1]));
+
+  const lbm = seqMatches[0] ?? null;
+  const smm = seqMatches[2] ?? null;   // 3rd sequential match
+
+  // Validation: need at least date + 1 key value
+  if (!weight && !bodyFatPct && !smm) {
+    plog(`\u26a0 Key values not found in ${filename} \u2014 PDF may have unexpected layout`, 'lwarn');
+    return null;
   }
-
-  // Validation
-  if (!weight && !bfPct && !smm) { plog(`⚠ Key values not found in ${filename} — check PDF format`, 'lwarn'); return null; }
 
   return {
     id:                 `evolt_${date}_${Math.random().toString(36).slice(2,7)}`,
     date,
-    weight:             weight   || null,
-    bodyFatPct:         bfPct    || null,
-    skeletalMuscleMass: smm      || null,
-    leanBodyMass:       lbm      || null,
-    bmr:                bmr      || null,
-    visceralFatMass:    visceral || null,
-    segmental,
+    weight:             weight     ?? null,
+    bodyFatPct:         bodyFatPct ?? null,
+    skeletalMuscleMass: smm        ?? null,
+    leanBodyMass:       lbm        ?? null,
+    bmr:                bmr        ?? null,
+    visceralFatMass:    visceral   ?? null,
+    segmental:          {},
     source:             filename,
     savedAt:            new Date().toISOString(),
   };
@@ -1775,7 +1755,7 @@ function renderTraining() {
   document.getElementById('pr-list').innerHTML = prs.slice(0, 10).map(pr =>
     `<div class="pr-item">
       <div><div class="pr-name">${pr.exercise}</div><div style="font-size:10px;color:var(--muted)">${pr.date}</div></div>
-      <div class="pr-val">${pr.weight}lbs × ${pr.reps}</div>
+      <div class="pr-val">${(+pr.weight).toFixed(2)}lbs × ${pr.reps}</div>
     </div>`
   ).join('') || '<div style="text-align:center;padding:16px;color:var(--muted)">No PR data yet</div>';
 
@@ -1974,7 +1954,7 @@ function buildUnifiedCoachPayload(question = null) {
     last8weeks:         last8w.length,
     avgWorkoutsPerWeek: parseFloat((last4w.length / 4).toFixed(1)),
     compoundPct:        totalSets ? Math.round(compoundSets / totalSets * 100) : 0,
-    topPRs:             prs.slice(0, 5).map(p => `${p.exercise} ${p.weight}lbs × ${p.reps} (${p.date})`).join(', '),
+    topPRs:             prs.slice(0, 5).map(p => `${p.exercise} ${(+p.weight).toFixed(2)}lbs × ${p.reps} (${p.date})`).join(', '),
   };
 
   // Training trends — weekly volume (last 8 weeks) + muscle group distribution (last 30 days)
