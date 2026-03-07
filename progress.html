@@ -732,7 +732,12 @@ async function loadFromWorker() {
     sync.textContent = total ? `✓ ${data.evolt.length} scans · ${data.fitbod.length} workouts` : '✓ Connected';
     setTimeout(() => sync.style.display = 'none', 3000);
     setConn('ok');
+    // Render whichever tab is currently active — not just overview
+    const activePanel = document.querySelector('.panel.active');
+    const activeId    = activePanel ? activePanel.id.replace('panel-', '') : 'overview';
     renderOverview();
+    if (activeId === 'body')     renderBody();
+    if (activeId === 'training') renderTraining();
     renderDataSummary();
     checkInsightsFreshness();
     loadMomentum();
@@ -859,11 +864,58 @@ async function parseEvoltPDF(file) {
   const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
   let fullText = '';
   for (let i = 1; i <= pdf.numPages; i++) {
-    const page  = await pdf.getPage(i);
-    const tc    = await page.getTextContent();
-    fullText += tc.items.map(item => item.str).join(' ') + '\n';
+    const page = await pdf.getPage(i);
+    const tc   = await page.getTextContent();
+    fullText  += tc.items.map(item => item.str).join(' ') + '\n';
   }
-  return parseEvoltText(fullText, file.name);
+
+  // Try regex parser first
+  const regexResult = parseEvoltText(fullText, file.name);
+  const keyFields   = ['weight', 'bodyFatPct', 'skeletalMuscleMass', 'leanBodyMass', 'bmr'];
+  const foundCount  = regexResult ? keyFields.filter(f => regexResult[f] != null).length : 0;
+
+  if (foundCount >= 3) {
+    // Regex got enough — good to go
+    if (foundCount < keyFields.length) {
+      plog(`ℹ️ Regex found ${foundCount}/5 fields for ${file.name}`, 'linfo');
+    }
+    return regexResult;
+  }
+
+  // Regex insufficient — fall back to Claude vision
+  plog(`⚠ Regex only found ${foundCount}/5 fields — switching to AI parsing for ${file.name}…`, 'lwarn');
+  if (!WORKER_URL) {
+    plog(`⚠ No Worker URL set — cannot use AI fallback`, 'lwarn');
+    return regexResult;
+  }
+
+  try {
+    // Render first page to a JPEG image and send to Claude
+    const page     = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2.0 }); // higher scale = more readable
+    const canvas   = document.createElement('canvas');
+    canvas.width   = viewport.width;
+    canvas.height  = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    const imageBase64 = canvas.toDataURL('image/jpeg', 0.90).split(',')[1];
+
+    const r = await wFetch('/api/parse', {
+      method: 'POST',
+      body:   JSON.stringify({ imageBase64, mimeType: 'image/jpeg', filename: file.name, fileType: 'evolt' }),
+    });
+
+    if (r.error) throw new Error(r.error);
+    if (!r.date) throw new Error('AI returned no date — is this an Evolt report?');
+
+    // r already has id/source/savedAt from worker
+    const aiFound = keyFields.filter(f => r[f] != null).length;
+    plog(`✓ AI parsed ${file.name}: ${r.date} — ${r.weight||'—'}lbs, ${r.bodyFatPct||'—'}% BF, ${r.skeletalMuscleMass||'—'}lbs muscle (${aiFound}/5 fields)`, 'linfo');
+    return r;
+  } catch (e) {
+    plog(`⚠ AI parse failed (${e.message}). Showing raw PDF text for debugging:`, 'lwarn');
+    plog(fullText.slice(0, 600), 'lwarn');
+    return regexResult; // Return whatever regex found, even if partial
+  }
 }
 
 function parseEvoltText(text, filename) {
@@ -1256,15 +1308,22 @@ function renderScanHero() {
   const last  = scans[scans.length - 1];
   const days  = Math.round((new Date(last.date) - new Date(first.date)) / 86400000);
 
+  // Check if all key values are null (scans parsed without extracting values)
+  const heroHasData = [last.weight, last.bodyFatPct, last.skeletalMuscleMass].some(v => v != null);
+  const wDelta  = (last.weight != null && first.weight != null) ? last.weight - first.weight : null;
+  const bfDelta = (last.bodyFatPct != null && first.bodyFatPct != null) ? (last.bodyFatPct - first.bodyFatPct).toFixed(1) : null;
+  const mDelta  = (last.skeletalMuscleMass != null && first.skeletalMuscleMass != null) ? (last.skeletalMuscleMass - first.skeletalMuscleMass).toFixed(1) : null;
+  const bmrDelta = (last.bmr != null && first.bmr != null) ? Math.round(last.bmr - first.bmr) : null;
+
   el.innerHTML = `<div class="scan-hero">
     <div class="hero-label">Since First Scan · ${days} days</div>
     <div class="scan-dates">${first.date} → ${last.date}</div>
-    <div class="delta-grid">
-      ${deltaCell(last.weight,'Weight (lbs)',last.weight - first.weight, false)}
-      ${deltaCell(last.bodyFatPct,'Body Fat %',(last.bodyFatPct - first.bodyFatPct)?.toFixed(1), false)}
-      ${deltaCell(last.skeletalMuscleMass,'Muscle (lbs)',(last.skeletalMuscleMass - first.skeletalMuscleMass)?.toFixed(1), true)}
-      ${deltaCell(last.bmr,'BMR (kcal)',last.bmr && first.bmr ? Math.round(last.bmr - first.bmr) : null, true)}
-    </div>
+    ${heroHasData ? `<div class="delta-grid">
+      ${deltaCell(last.weight,'Weight (lbs)', wDelta, false)}
+      ${deltaCell(last.bodyFatPct,'Body Fat %', bfDelta, false)}
+      ${deltaCell(last.skeletalMuscleMass,'Muscle (lbs)', mDelta, true)}
+      ${deltaCell(last.bmr,'BMR (kcal)', bmrDelta, true)}
+    </div>` : `<div style="padding:12px 0;color:var(--orange);font-size:12px">⚠ Scan values missing — please clear and re-upload Evolt PDFs from the Upload tab</div>`}
   </div>`;
 }
 
@@ -1360,17 +1419,30 @@ function renderCompCharts() {
   if (!scans.length) return;
   const labels = scans.map(s => s.date.slice(5));
 
-  const muscleData = scans.map(s => s.skeletalMuscleMass || null);
-  const bfData     = scans.map(s => s.bodyFatPct         || null);
-  const weightData = scans.map(s => s.weight             || null);
+  const muscleData = scans.map(s => s.skeletalMuscleMass != null ? s.skeletalMuscleMass : null);
+  const bfData     = scans.map(s => s.bodyFatPct         != null ? s.bodyFatPct         : null);
+  const weightData = scans.map(s => s.weight             != null ? s.weight             : null);
 
-  const muscleCfg = buildChartConfig(labels, [lineDataset(muscleData, '#00e5a0', true)]);
-  const bfCfg     = buildChartConfig(labels, [lineDataset(bfData,     '#ffd460', false)]);
-  const weightCfg = buildChartConfig(labels, [lineDataset(weightData, '#4da8ff', false)]);
+  const hasMusclePts = muscleData.some(v => v != null);
+  const hasBfPts     = bfData.some(v => v != null);
+  const hasWeightPts = weightData.some(v => v != null);
 
-  if (document.getElementById('chart-muscle')) makeOrUpdate('chart-muscle', muscleCfg);
-  if (document.getElementById('chart-bf'))     makeOrUpdate('chart-bf',     bfCfg);
-  if (document.getElementById('chart-weight')) makeOrUpdate('chart-weight', weightCfg);
+  // Only build charts if there's real data to show
+  if (document.getElementById('chart-muscle')) {
+    hasMusclePts
+      ? makeOrUpdate('chart-muscle', buildChartConfig(labels, [lineDataset(muscleData, '#00e5a0', true)]))
+      : document.getElementById('chart-muscle').parentElement.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Evolt PDFs to see muscle trend</div>';
+  }
+  if (document.getElementById('chart-bf')) {
+    hasBfPts
+      ? makeOrUpdate('chart-bf', buildChartConfig(labels, [lineDataset(bfData, '#ffd460', false)]))
+      : document.getElementById('chart-bf').parentElement.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Evolt PDFs to see body fat trend</div>';
+  }
+  if (document.getElementById('chart-weight')) {
+    hasWeightPts
+      ? makeOrUpdate('chart-weight', buildChartConfig(labels, [lineDataset(weightData, '#4da8ff', false)]))
+      : document.getElementById('chart-weight').parentElement.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Evolt PDFs to see weight trend</div>';
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -1389,8 +1461,18 @@ function renderBody() {
 
   const labels = scans.map(s => s.date.slice(5));
 
-  makeOrUpdate('chart-muscle-2', buildChartConfig(labels, [lineDataset(scans.map(s => s.skeletalMuscleMass), '#00e5a0', true)]));
-  makeOrUpdate('chart-bf-2',     buildChartConfig(labels, [lineDataset(scans.map(s => s.bodyFatPct),         '#ffd460', false)]));
+  const muscleVals2 = scans.map(s => s.skeletalMuscleMass != null ? s.skeletalMuscleMass : null);
+  const bfVals2     = scans.map(s => s.bodyFatPct         != null ? s.bodyFatPct         : null);
+  if (muscleVals2.some(v => v != null)) {
+    makeOrUpdate('chart-muscle-2', buildChartConfig(labels, [lineDataset(muscleVals2, '#00e5a0', true)]));
+  } else if (document.getElementById('chart-muscle-2')) {
+    document.getElementById('chart-muscle-2').parentElement.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Evolt PDFs to see muscle trend</div>';
+  }
+  if (bfVals2.some(v => v != null)) {
+    makeOrUpdate('chart-bf-2', buildChartConfig(labels, [lineDataset(bfVals2, '#ffd460', false)]));
+  } else if (document.getElementById('chart-bf-2')) {
+    document.getElementById('chart-bf-2').parentElement.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Evolt PDFs to see body fat trend</div>';
+  }
 
   // Dual axis: BMR + LBM
   const bmrLbm = {
@@ -1477,6 +1559,11 @@ function renderTraining() {
 
   // Weekly volume chart
   const weeklyVol = buildWeeklyVolume(sessions, 12);
+  const hasVol    = weeklyVol.some(w => w.vol > 0);
+  if (!hasVol && document.getElementById('chart-volume')) {
+    document.getElementById('chart-volume').parentElement.innerHTML =
+      '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Re-upload Fitbod CSV to see volume data</div>';
+  } else
   makeOrUpdate('chart-volume', {
     type: 'bar',
     data: { labels: weeklyVol.map(w => w.label), datasets: [{
@@ -1496,16 +1583,19 @@ function renderTraining() {
   });
 
   // Muscle group bars
-  const mgVol = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 30));
-  const mgMax = Math.max(...Object.values(mgVol), 1);
-  document.getElementById('mg-bars').innerHTML = Object.entries(mgVol)
-    .sort((a, b) => b[1] - a[1])
-    .map(([mg, vol]) => `
-      <div class="mg-row">
-        <div class="mg-label">${mg}</div>
-        <div class="mg-bar-bg"><div class="mg-bar-fill" style="width:${Math.round(vol/mgMax*100)}%"></div></div>
-        <div class="mg-val">${Math.round(vol/1000)}k</div>
-      </div>`).join('');
+  const mgVol    = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 30));
+  const mgMax    = Math.max(...Object.values(mgVol), 1);
+  const hasMgVol = Object.values(mgVol).some(v => v > 0);
+  document.getElementById('mg-bars').innerHTML = hasMgVol
+    ? Object.entries(mgVol)
+        .sort((a, b) => b[1] - a[1])
+        .map(([mg, vol]) => `
+          <div class="mg-row">
+            <div class="mg-label">${mg}</div>
+            <div class="mg-bar-bg"><div class="mg-bar-fill" style="width:${Math.round(vol/mgMax*100)}%"></div></div>
+            <div class="mg-val">${Math.round(vol/1000)}k</div>
+          </div>`).join('')
+    : '<div style="padding:16px;color:var(--muted);font-size:12px;text-align:center">Re-upload Fitbod CSV to see muscle group volume</div>';
 
   // PRs
   const prs = buildPRs(sessions);

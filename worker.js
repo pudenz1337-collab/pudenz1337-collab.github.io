@@ -215,6 +215,47 @@ If this is NOT a Fitbod workout screenshot, return: { "error": "not_workout", "d
     return reply(parsed || { error: 'parse_failed', raw: text.slice(0, 500) });
   }
 
+  if (fileType === 'evolt') {
+    const prompt = `This is an Evolt InBody body composition scan report page. Extract ALL body composition numbers you can see.
+
+Return ONLY valid JSON with no other text or markdown:
+{
+  "date": "YYYY-MM-DD",
+  "weight": number_or_null,
+  "bodyFatPct": number_or_null,
+  "skeletalMuscleMass": number_or_null,
+  "leanBodyMass": number_or_null,
+  "bmr": number_or_null,
+  "visceralFatMass": number_or_null
+}
+
+Rules:
+- All weight values in lbs (convert from kg: multiply by 2.205)
+- bodyFatPct is a percentage number like 22.5 (not 0.225)
+- bmr is typically 1200-2500 kcal
+- If a value is not visible, use null — do not guess
+- Date format must be YYYY-MM-DD`;
+
+    const resp = await callClaude(env, {
+      model:      'claude-opus-4-6',
+      max_tokens: 400,
+      messages:   [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: imageBase64 } },
+        { type: 'text',  text: prompt }
+      ]}]
+    });
+
+    const text   = resp.content?.[0]?.text || '{}';
+    const match  = text.match(/\{[\s\S]*\}/);
+    const parsed = safeJson(match?.[0]);
+    if (parsed && parsed.date) {
+      parsed.id = uid('evolt');
+      parsed.source = filename;
+      parsed.savedAt = new Date().toISOString();
+    }
+    return reply(parsed || { error: 'parse_failed', raw: text.slice(0, 300) });
+  }
+
   return reply({ error: 'unknown_file_type' }, 400);
 }
 
@@ -335,22 +376,44 @@ async function getCoaching(request, env) {
   const goalsBlock   = goals && Object.keys(goals).length ? `\nLogged goals: protein ${goals.protein||150}g/day | calories ${goals.cal||1800}/day | water ${goals.water||80}oz/day` : '';
 
   // ── Evolt lines ──
-  const evoltLines = evolt.map(s =>
-    `${s.date}: Weight=${s.weight}lbs | BF%=${s.bodyFatPct}% | SkeletalMuscle=${s.skeletalMuscleMass}lbs | LBM=${s.leanBodyMass}lbs | VisceralFat=${s.visceralFatMass}lbs | BMR=${s.bmr}kcal`
-  ).join('\n');
+  // Filter to scans that have at least one real value; format nulls as "—"
+  const evoltScansWithData = evolt.filter(s => s.weight != null || s.bodyFatPct != null || s.skeletalMuscleMass != null);
+  const fmtV = v => v != null ? v : '—';
+  const evoltLines = evoltScansWithData.length
+    ? evoltScansWithData.map(s =>
+        `${s.date}: Weight=${fmtV(s.weight)}lbs | BF%=${fmtV(s.bodyFatPct)}% | SkeletalMuscle=${fmtV(s.skeletalMuscleMass)}lbs | LBM=${fmtV(s.leanBodyMass)}lbs | BMR=${fmtV(s.bmr)}kcal`
+      ).join('\n')
+    : evolt.length
+      ? `${evolt.length} scans uploaded but body composition values could not be extracted — PDFs may need to be re-uploaded.`
+      : 'No scans uploaded yet.';
 
-  const evoltDelta = evolt.length >= 2 ? (() => {
-    const f = evolt[0], l = evolt[evolt.length-1];
-    return `Change ${f.date}→${l.date}: Weight ${f.weight}→${l.weight}lbs (${(l.weight-f.weight).toFixed(1)}), BF% ${f.bodyFatPct}→${l.bodyFatPct}% (${(l.bodyFatPct-f.bodyFatPct).toFixed(1)}%), Muscle ${f.skeletalMuscleMass}→${l.skeletalMuscleMass}lbs (${(l.skeletalMuscleMass-f.skeletalMuscleMass).toFixed(1)})`;
-  })() : 'Only one scan available.';
+  const evoltDelta = evoltScansWithData.length >= 2 ? (() => {
+    const f = evoltScansWithData[0], l = evoltScansWithData[evoltScansWithData.length-1];
+    const dW  = (f.weight != null && l.weight != null) ? ` (${(l.weight - f.weight) > 0 ? '+' : ''}${(l.weight - f.weight).toFixed(1)})` : '';
+    const dBF = (f.bodyFatPct != null && l.bodyFatPct != null) ? ` (${(l.bodyFatPct - f.bodyFatPct) > 0 ? '+' : ''}${(l.bodyFatPct - f.bodyFatPct).toFixed(1)}%)` : '';
+    const dM  = (f.skeletalMuscleMass != null && l.skeletalMuscleMass != null) ? ` (${(l.skeletalMuscleMass - f.skeletalMuscleMass) > 0 ? '+' : ''}${(l.skeletalMuscleMass - f.skeletalMuscleMass).toFixed(1)})` : '';
+    return `Change ${f.date}→${l.date}: Weight ${fmtV(f.weight)}→${fmtV(l.weight)}lbs${dW}, BF% ${fmtV(f.bodyFatPct)}→${fmtV(l.bodyFatPct)}%${dBF}, Muscle ${fmtV(f.skeletalMuscleMass)}→${fmtV(l.skeletalMuscleMass)}lbs${dM}`;
+  })() : evolt.length === 1 ? 'Only one scan available.' : 'No scans with complete data yet.';
 
   const nutritionLines = fuelstrong.length
     ? fuelstrong.slice(-14).map(n => `${n.date}: Protein=${n.protein}g | Cal=${n.calories}kcal | Water=${n.water}oz${n.flags?.trainingDay?' 💪':''}${n.flags?.injectionDay?' 💉':''}`).join('\n')
     : 'No nutrition data logged yet.';
 
   const woLines = woSummary
-    ? `Total workouts: ${woSummary.totalWorkouts}\nAvg per week: ${woSummary.avgWorkoutsPerWeek}\nCompound/Isolation: ${woSummary.compoundPct}% compound\nTop PRs: ${woSummary.topPRs}`
-    : fitbod.slice(-20).map(w => `${w.date}: ${w.workoutName||'Workout'} | ${(w.muscleGroupsWorked||[]).join(', ')} | ${w.totalVolume}lbs`).join('\n') || 'No workout data.';
+    ? (() => {
+        const lines = [`Total workouts: ${woSummary.totalWorkouts}`, `Avg per week: ${woSummary.avgWorkoutsPerWeek}`, `Compound/Isolation: ${woSummary.compoundPct}% compound`];
+        if (woSummary.topPRs) lines.push(`Top PRs: ${woSummary.topPRs}`);
+        if (woSummary.totalWorkouts > 0 && woSummary.compoundPct === 0 && !woSummary.topPRs) {
+          lines.push('Note: Volume/weight data not available for these sessions (bodyweight exercises or data not captured)');
+        }
+        return lines.join('\n');
+      })()
+    : fitbod.length
+      ? fitbod.slice(-20).map(w => {
+          const vol = w.totalVolume > 0 ? `${w.totalVolume}lbs volume` : 'bodyweight/no volume data';
+          return `${w.date}: ${w.workoutName||'Workout'} | ${(w.muscleGroupsWorked||[]).join(', ')} | ${vol}`;
+        }).join('\n')
+      : 'No workout data.';
 
   // ── Scan interval summary for coaching context ──
   // These are the personal cause-effect data points that make coaching specific
@@ -423,7 +486,9 @@ One sentence: after next Evolt scan, or after X weeks.
 
 TONE: Direct, specific, coach-like. Numbers over reassurance. Start directly — no preamble.`;
 
-    userMsg = `Generate my coaching dashboard.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}${scanIntervalContext}\n\nWorkout Analytics:\n${woLines}${weeklyBreakdown}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+    const fsLoggedCount = fuelstrong.filter(d => (d.protein||0) > 0 || (d.calories||0) > 0).length;
+    const fsLabel = fsLoggedCount > 0 ? `Nutrition (${Math.min(fsLoggedCount, 14)} logged days)` : 'Nutrition';
+    userMsg = `Generate my coaching dashboard.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}${scanIntervalContext}\n\nWorkout Analytics:\n${woLines}${weeklyBreakdown}\n\n${fsLabel}:\n${nutritionLines}`;
 
   } else if (mode === 'fuelstrong_daily' || mode === 'checkin') {
     const foodLog    = body.foodLog  || [];
@@ -496,7 +561,7 @@ TONE: Direct, specific, coach-like. Numbers over reassurance. Start directly —
       ? (() => { const e=[...hemEntries].sort((a,b)=>(a.timestamp||'').localeCompare(b.timestamp||'')).pop(); return `H${e.h||'?'} E${e.e||'?'} M${e.m||'?'}${e.note?' ('+e.note+')':''}`; })()
       : 'none';
 
-    const recentDays = fuelstrong.slice(-14);
+    const recentDays = fuelstrong.slice(-14).filter(d => (d.protein||0) > 0 || (d.calories||0) > 0);
     const avgP   = recentDays.length ? Math.round(recentDays.reduce((a,d) => a+d.protein,0)/recentDays.length) : null;
     const avgCal = recentDays.length ? Math.round(recentDays.reduce((a,d) => a+(d.calories||0),0)/recentDays.length) : null;
 
@@ -528,7 +593,7 @@ ${hemTimeline}
 FLAGS: ${[body.flags?.trainingDay?'Training day ✓':null, body.flags?.recoveryDay?'Recovery day ✓':null, body.flags?.injectionDay?'Injection day ✓':null].filter(Boolean).join(', ')||'None set'}
 TIRZEPATIDE: ${tirzepatide.dose||'unknown'}mg | Days since injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
 
-14-DAY AVERAGES: Protein ${avgP||'no data'}g/day | Calories ${avgCal||'no data'}/day
+RECENT AVERAGES (${recentDays.length} logged days): Protein ${avgP||'no data'}g/day | Calories ${avgCal||'no data'}/day
 
 EVOLT TREND:
 ${evoltLines || 'No scans uploaded yet'}`;
@@ -585,11 +650,12 @@ ${woBlock2}
 Food logged:
 ${mealLines2}`;
 
-    userMsg = `${askTodayCtx}\n\nRecent nutrition (14 days):\n${nutritionLines}\n\nEvolt trend:\n${evoltLines}\n\nQuestion: ${question}`;
+    const askNutLabel = `Recent nutrition (${Math.min(fuelstrong.filter(d=>(d.protein||0)>0||(d.calories||0)>0).length, 14)} logged days)`;
+    userMsg = `${askTodayCtx}\n\n${askNutLabel}:\n${nutritionLines}\n\nEvolt trend:\n${evoltLines}\n\nQuestion: ${question}`;
 
   } else if (mode === 'body') {
     systemAddition = '\nFocus: Deep dive into body composition trends. Use scan interval analysis to explain which behaviors drove each outcome. End with: "Your Top 3 Body Composition Priorities."';
-    userMsg = `Analyze my body composition.\n\nEvolt Scans:\n${evoltLines}\nOverall delta: ${evoltDelta}${scanIntervalContext}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+    userMsg = `Analyze my body composition.\n\nEvolt Scans:\n${evoltLines}\nOverall delta: ${evoltDelta}${scanIntervalContext}\n\nNutrition (${Math.min(fuelstrong.filter(d=>(d.protein||0)>0||(d.calories||0)>0).length, 14)} logged days):\n${nutritionLines}`;
 
   } else if (mode === 'weekly') {
     const recentWeek  = fuelstrong.slice(-7);
@@ -628,7 +694,7 @@ BODY COMPOSITION:
 ${evoltLines || 'No scans'}
 Overall delta: ${evoltDelta}${scanIntervalContext}
 
-NUTRITION TREND (14 days):
+NUTRITION TREND (${fuelstrong.slice(-7).filter(d=>(d.protein||0)>0||(d.calories||0)>0).length} logged days this week):
 ${nutritionLines}
 
 Generate my weekly review.`;
@@ -639,7 +705,7 @@ Generate my weekly review.`;
 
   } else {
     systemAddition = '\nFull synthesis: Connect ALL three data sources. Use scan interval analysis. What story do the numbers tell together? Where is she winning? Most important thing to fix? End with: "Your Top 3 Priorities Right Now."';
-    userMsg = `Full coaching analysis.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}${scanIntervalContext}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (last 14 days):\n${nutritionLines}`;
+    userMsg = `Full coaching analysis.\n\nEvolt Scans:\n${evoltLines}\nOverall change: ${evoltDelta}${scanIntervalContext}\n\nWorkout Analytics:\n${woLines}\n\nNutrition (${Math.min(fuelstrong.filter(d=>(d.protein||0)>0||(d.calories||0)>0).length, 14)} logged days):\n${nutritionLines}`;
   }
 
   let messagesArr;
@@ -918,6 +984,7 @@ async function generateInsights(env) {
   const avgProtein     = last14.length ? Math.round(last14.reduce((a,d) => a+(d.protein||0),0)/last14.length) : null;
   const avgCal         = last14.length ? Math.round(last14.reduce((a,d) => a+(d.calories||0),0)/last14.length) : null;
   const nutLines       = last14.map(d => `${d.date}: ${d.protein}g protein | ${d.calories}kcal${d.flags?.trainingDay?' 💪':''}${d.flags?.injectionDay?' 💉':''}`).join('\n');
+  const loggedNutDays  = last14.filter(d => (d.protein||0) > 0 || (d.calories||0) > 0).length;
 
   const prompt = `You are analyzing fitness data for Hanna: 50-year-old woman on tirzepatide, body recomposition goal (build visible muscle + lose fat). Return ONLY valid JSON with no other text.
 
@@ -926,9 +993,9 @@ ${scanLines || 'No scans available'}
 
 TRAINING (Fitbod): ${last4w.length} workouts in last 4 weeks (${woFreq}/week avg)
 
-NUTRITION (last 14 days):
+NUTRITION (${loggedNutDays} logged days — do NOT call this a 14-day average if fewer than 14 days exist):
 ${nutLines || 'No data'}
-Average: ${avgProtein !== null ? avgProtein+'g protein' : 'unknown'}, ${avgCal !== null ? avgCal+'kcal' : 'unknown'}
+Average from ${loggedNutDays} logged days: ${avgProtein !== null ? avgProtein+'g protein' : 'unknown'}, ${avgCal !== null ? avgCal+'kcal' : 'unknown'}
 
 Return ONLY:
 {"insights":[{"type":"muscle_gain_pattern|protein_pattern|hydration_pattern|energy_pattern|fat_loss_pattern|workout_consistency|recovery_pattern|tirzepatide_pattern","confidence":"high|medium|low","observation":"one specific sentence citing actual numbers","recommendation":"one concrete action"}]}
