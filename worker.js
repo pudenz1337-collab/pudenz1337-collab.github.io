@@ -530,6 +530,13 @@ async function getCoaching(request, env) {
   const goals      = profGoalsRaw ? JSON.parse(profGoalsRaw) : (goalsRaw ? JSON.parse(goalsRaw) : (body.goals || {}));
   const mode = body.mode || 'dashboard';
 
+  // ── Extract body fields first — needed before dataset build and context ──
+  const supplements  = body.supplements  || '';
+  const tirzepatide  = body.tirzepatide  || {};
+  const measurements = body.measurements || [];
+  const sessionLogs  = body.sessionLogs  || [];
+  const woSummary    = body.workoutSummary || null;
+
   // ── Build shared coaching dataset (Improvement 1) ──
   // All analytics, date-filtered windows, and dynamic targets computed once here.
   const ds = buildCoachingDataset(evolt, fitbod, fuelstrong, goals);
@@ -543,12 +550,6 @@ async function getCoaching(request, env) {
   const permanentCtx    = enrichedObj?.context || HANNA_PERMANENT_CONTEXT;
   const savedCtx        = contextRaw ? JSON.parse(contextRaw) : {};
   const additionalNotes = savedCtx.context || body.context || '';
-
-  const supplements  = body.supplements  || '';
-  const tirzepatide  = body.tirzepatide  || {};
-  const measurements = body.measurements || [];
-  const sessionLogs  = body.sessionLogs  || [];
-  const woSummary    = body.workoutSummary || null;
 
   // ── Tirzepatide block ──
   let tirzBlock = '';
@@ -572,8 +573,9 @@ async function getCoaching(request, env) {
   // Filter to scans that have at least one real value; format nulls as "—"
   const evoltScansWithData = evolt.filter(s => s.weight != null || s.bodyFatPct != null || s.skeletalMuscleMass != null);
   const fmtV = v => v != null ? v : '—';
-  const evoltLines = evoltScansWithData.length
-    ? evoltScansWithData.map(s =>
+  const evoltForLines = evoltScansWithData.slice(-8); // cap to last 8 scans
+  const evoltLines = evoltForLines.length
+    ? evoltForLines.map(s =>
         `${s.date}: Weight=${fmtV(s.weight)}lbs | BF%=${fmtV(s.bodyFatPct)}% | SkeletalMuscle=${fmtV(s.skeletalMuscleMass)}lbs | LBM=${fmtV(s.leanBodyMass)}lbs | BMR=${fmtV(s.bmr)}kcal`
       ).join('\n')
     : evolt.length
@@ -603,7 +605,7 @@ async function getCoaching(request, env) {
         return lines.join('\n');
       })()
     : fitbod.length
-      ? fitbod.slice(-20).map(w => {
+      ? fitbod.slice(-12).map(w => {
           const vol = w.totalVolume > 0 ? `${w.totalVolume}lbs volume` : 'bodyweight/no volume data';
           return `${w.date}: ${w.workoutName||'Workout'} | ${(w.muscleGroupsWorked||[]).join(', ')} | ${vol}`;
         }).join('\n')
@@ -651,32 +653,16 @@ ${goalsBlock}${tirzBlock}${suppBlock}${measBlock}${sessionBlock}${additionalNote
       : '';
 
     systemAddition = `
-You are the Performance & Pattern Coach inside FuelStrong Progress. Your job is to connect the dots across Fitbod workouts, Evolt body composition scans, and FuelStrong nutrition data — not just summarize each in isolation. If scan interval data is present, use it to make coaching specific: what did behavior look like during each interval, and what did the scan show at the end?
+You are the Performance & Pattern Coach in FuelStrong Progress. Connect the dots across Fitbod workouts, Evolt scans, and nutrition — not isolated summaries. Use scan interval data to tie behavior to outcomes.
 
-RESPONSE STRUCTURE — use these exact emoji headers in this order:
+Use these headers:
+**🧠 Big Picture** (1–2 sentences) — honest trajectory, direct
+**📊 Pattern Findings** (4–5 bullets with real numbers) — cite scan intervals, connect cause to effect
+**💪 Workout Coaching** (3–4 actions) — muscle gaps, volume, training-day nutrition, one GLP-1 note if relevant
+**🎯 Why It Matters** (1–2 sentences) — link to next scan
+**📅 Check Back When** (1 sentence)
 
-**🧠 Big Picture** (1–2 sentences)
-Honest overall trajectory. Direct and specific.
-
-**📊 Pattern Findings** (4–6 bullets citing actual numbers)
-Tie cause to effect explicitly. Use scan interval data where available to connect behavior to outcome.
-• If intervals exist: "Between scans [date]→[date], you trained X/week and averaged Xg protein — muscle changed [result]"
-• Connect patterns: "High protein weeks + consistent training → [outcome]; low calorie periods → [other outcome]"
-
-**💪 Workout-Focused Coaching** (3–5 specific actions)
-Lead with training. Nutrition and recovery framed as support.
-• Which muscle groups need more work (cite Fitbod data)
-• Whether to push volume or maintain
-• Specific nutrition adjustment for training days
-• One GLP-1 note if relevant
-
-**🎯 Why This Matters** (1–2 sentences)
-Link these tweaks to what the next Evolt scan should show.
-
-**📅 Check Back When**
-One sentence: after next Evolt scan, or after X weeks.
-
-TONE: Direct, specific, coach-like. Numbers over reassurance. Start directly — no preamble.`;
+Direct, specific, numbers over reassurance. No preamble.`;
 
     const fsLoggedCount = fuelstrong.filter(d => (d.protein||0) > 0 || (d.calories||0) > 0).length;
     const fsLabel = fsLoggedCount > 0 ? `Nutrition (${Math.min(fsLoggedCount, 14)} logged days)` : 'Nutrition';
@@ -939,7 +925,7 @@ Generate my weekly review.`;
 
   const resp = await callClaude(env, {
     model:      'claude-sonnet-4-6',
-    max_tokens: (mode === 'dashboard' || mode === 'weekly') ? 1600 : 1200,
+    max_tokens: (mode === 'dashboard' || mode === 'weekly') ? 900 : 800,
     system:     baseSystem + systemAddition,
     messages:   messagesArr,
   });

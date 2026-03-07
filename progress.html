@@ -702,8 +702,13 @@ async function wFetch(path, opts = {}) {
     ...opts,
     headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }
   });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error || 'Worker error ' + r.status);
+  let j;
+  try {
+    j = await r.json();
+  } catch {
+    throw new Error(`Worker returned non-JSON (HTTP ${r.status}) — check Cloudflare dashboard for errors`);
+  }
+  if (!r.ok) throw new Error(j.error || `Worker error ${r.status}`);
   return j;
 }
 
@@ -2061,6 +2066,19 @@ async function getCoaching() {
   btn.disabled = true;
   if (emptyEl) emptyEl.style.display = 'none';
 
+  let payload;
+  try {
+    payload = buildUnifiedCoachPayload();
+  } catch (buildErr) {
+    coachInFlight = false;
+    spinEl.style.display = 'none';
+    btn.disabled = false;
+    const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    appendMsg('coach', `⚠️ Payload build error: ${buildErr.message}`, now);
+    console.error('[Coach/Progress] buildUnifiedCoachPayload threw:', buildErr);
+    return;
+  }
+
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => reject(new Error('timeout')), 35000);
@@ -2068,7 +2086,7 @@ async function getCoaching() {
 
   try {
     const res = await Promise.race([
-      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(buildUnifiedCoachPayload()) }),
+      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(payload) }),
       timeoutPromise
     ]);
     clearTimeout(timeoutId);
@@ -2081,8 +2099,11 @@ async function getCoaching() {
   } catch (e) {
     clearTimeout(timeoutId);
     const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    appendMsg('coach', '⚠️ Coaching temporarily unavailable. Try again in a moment.', now);
-    console.log(`[Coach/Progress] Failed — ${e.message}`);
+    const msg = e.message === 'timeout'
+      ? '⚠️ Timed out — the coach took too long. Try again.'
+      : `⚠️ Coach error: ${e.message}`;
+    appendMsg('coach', msg, now);
+    console.error('[Coach/Progress] Failed:', e);
   } finally {
     coachInFlight = false;
     spinEl.style.display = 'none';
@@ -2115,9 +2136,22 @@ async function askCoach() {
     timeoutId = setTimeout(() => reject(new Error('timeout')), 35000);
   });
 
+  let askPayload;
+  try {
+    askPayload = buildUnifiedCoachPayload(q);
+  } catch (buildErr) {
+    coachInFlight = false;
+    if (askEl)  askEl.style.display  = 'none';
+    if (sendEl) sendEl.disabled = false;
+    const nowErr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    appendMsg('coach', `⚠️ Payload build error: ${buildErr.message}`, nowErr);
+    console.error('[Coach/Progress] buildUnifiedCoachPayload threw:', buildErr);
+    return;
+  }
+
   try {
     const res = await Promise.race([
-      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(buildUnifiedCoachPayload(q)) }),
+      wFetch('/api/coach', { method: 'POST', body: JSON.stringify(askPayload) }),
       timeoutPromise
     ]);
     clearTimeout(timeoutId);
@@ -2128,8 +2162,11 @@ async function askCoach() {
   } catch (e) {
     clearTimeout(timeoutId);
     const now2 = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    appendMsg('coach', '⚠️ Coaching temporarily unavailable. Try again in a moment.', now2);
-    console.log(`[Coach/Progress] Ask failed — ${e.message}`);
+    const msg2 = e.message === 'timeout'
+      ? '⚠️ Timed out — the coach took too long. Try again.'
+      : `⚠️ Coach error: ${e.message}`;
+    appendMsg('coach', msg2, now2);
+    console.error('[Coach/Progress] Ask failed:', e);
   } finally {
     coachInFlight = false;
     if (askEl)  askEl.style.display  = 'none';
