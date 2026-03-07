@@ -1467,7 +1467,20 @@ function renderScanHero() {
       ${deltaCell(last.bodyFatPct,'Body Fat %', bfDelta, false)}
       ${deltaCell(last.skeletalMuscleMass,'Muscle (lbs)', mDelta, true)}
       ${deltaCell(last.bmr,'BMR (kcal)', bmrDelta, true)}
-    </div>` : `<div style="padding:12px 0;color:var(--orange);font-size:12px">⚠ Scan values missing — please clear and re-upload Evolt PDFs from the Upload tab</div>`}
+    </div>
+    ${last.bmr ? (() => {
+      const tee     = Math.round(last.bmr * 1.45);
+      const deficit = goals?.cal ? Math.round(tee - goals.cal) : null;
+      const defLabel = deficit !== null
+        ? (deficit > 0 ? `${deficit} kcal deficit` : `${Math.abs(deficit)} kcal surplus`)
+        : null;
+      return `<div style="margin-top:8px;padding:8px 10px;background:rgba(0,229,160,.06);border:1px solid rgba(0,229,160,.12);border-radius:8px;font-size:11px;color:var(--muted);line-height:1.8">
+        <span style="color:var(--text)">BMR</span> ${last.bmr} kcal
+        &nbsp;→&nbsp;<span style="color:var(--text)">TEE</span> ~${tee} kcal
+        ${defLabel ? `&nbsp;→&nbsp;<span style="color:var(--accent)">${defLabel}</span>` : ''}
+        <span style="color:var(--muted);font-size:10px">&nbsp; (TEE = BMR × 1.45 activity)</span>
+      </div>`;
+    })() : ''}` : `<div style="padding:12px 0;color:var(--orange);font-size:12px">⚠ Scan values missing — please clear and re-upload Evolt PDFs from the Upload tab</div>`}
   </div>`;
 }
 
@@ -1698,11 +1711,10 @@ function renderTraining() {
   const avg4w  = (last4w.length / 4).toFixed(1);
   const avg8w  = (last8w.length / 8).toFixed(1);
 
-  // Compound vs isolation
-  const compoundExercises = /squat|deadlift|bench|press|row|pull.?up|dip|lunge|rdl|hip.?thrust/i;
+  // Compound vs isolation — expanded exercise list
+  const compoundExercises = /squat|deadlift|bench|press|row|pull.?up|chin.?up|dip|lunge|rdl|hip.?thrust|clean|snatch|swing|carry|step.?up|split.?squat|bulgarian|sumo|hack.?squat|leg.?press|incline|decline|overhead|cable.?fly|chest.?fly/i;
   let compoundSets = 0, totalSets = 0;
   last4w.forEach(s => (s.exercises || []).forEach(ex => {
-    // Use set count if available, otherwise count the exercise as 1 unit
     const units = ex.sets && ex.sets.length > 0 ? ex.sets.length : 1;
     totalSets += units;
     if (compoundExercises.test(ex.name)) compoundSets += units;
@@ -1723,38 +1735,53 @@ function renderTraining() {
   const hasVol    = weeklyVol.some(w => w.vol > 0);
   if (!hasVol) {
     showChartNoData('chart-volume', '⚠ Re-upload Fitbod CSV to see volume data');
-  } else
-  makeOrUpdate('chart-volume', {
-    type: 'bar',
-    data: { labels: weeklyVol.map(w => w.label), datasets: [{
-      data:            weeklyVol.map(w => w.vol),
-      backgroundColor: 'rgba(77,168,255,.5)',
-      borderColor:     '#4da8ff',
-      borderWidth: 1,
-      borderRadius: 4,
-    }]},
-    options: {
-      ...CHART_DEFAULTS,
-      scales: {
-        x: CHART_DEFAULTS.scales.x,
-        y: { ...CHART_DEFAULTS.scales.y, beginAtZero: true }
-      }
-    }
-  });
+  } else {
+    const maxVol = Math.max(...weeklyVol.map(w => w.vol));
+    const useK   = maxVol >= 1000;
+    makeOrUpdate('chart-volume', {
+      type: 'bar',
+      data: { labels: weeklyVol.map(w => w.label), datasets: [{
+        data:            weeklyVol.map(w => useK ? +(w.vol/1000).toFixed(1) : Math.round(w.vol)),
+        backgroundColor: 'rgba(77,168,255,.5)',
+        borderColor:     '#4da8ff',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]},
+      options: {
+        ...CHART_DEFAULTS,
+        scales: {
+          x: CHART_DEFAULTS.scales.x,
+          y: {
+            ...CHART_DEFAULTS.scales.y,
+            beginAtZero: true,
+            ticks: { callback: v => useK ? v + 'k' : v + ' lbs' },
+          },
+        },
+        plugins: {
+          ...((CHART_DEFAULTS.plugins) || {}),
+          tooltip: { callbacks: { label: ctx => useK ? ctx.parsed.y + 'k lbs' : ctx.parsed.y + ' lbs' } },
+        },
+      },
+    });
+  }
 
   // Muscle group bars
-  const mgVol    = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 30));
+  const { vol: mgVol, sets: mgSets } = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 30));
   const mgMax    = Math.max(...Object.values(mgVol), 1);
   const hasMgVol = Object.values(mgVol).some(v => v > 0);
   document.getElementById('mg-bars').innerHTML = hasMgVol
     ? Object.entries(mgVol)
         .sort((a, b) => b[1] - a[1])
-        .map(([mg, vol]) => `
+        .map(([mg, vol]) => {
+          const setCount  = mgSets[mg] || 0;
+          const volLabel  = vol >= 1000 ? `${(vol/1000).toFixed(1)}k` : `${Math.round(vol)}`;
+          return `
           <div class="mg-row">
             <div class="mg-label">${mg}</div>
             <div class="mg-bar-bg"><div class="mg-bar-fill" style="width:${Math.round(vol/mgMax*100)}%"></div></div>
-            <div class="mg-val">${Math.round(vol/1000)}k</div>
-          </div>`).join('')
+            <div class="mg-val">${volLabel} lbs · ${setCount} sets</div>
+          </div>`;
+        }).join('')
     : '<div style="padding:16px;color:var(--muted);font-size:12px;text-align:center">Re-upload Fitbod CSV to see muscle group volume</div>';
 
   // PRs
@@ -1776,7 +1803,7 @@ function renderTraining() {
       <tr>
         <td style="font-family:'DM Mono',monospace;color:var(--accent);font-size:11px">${s.date}</td>
         <td style="color:var(--text)">${(s.muscleGroupsWorked||[]).slice(0,3).join(', ')}</td>
-        <td style="font-family:'DM Mono',monospace">${Math.round((s.totalVolume||0)/1000)}k lbs</td>
+        <td style="font-family:'DM Mono',monospace">${(s.totalVolume||0) >= 1000 ? (((s.totalVolume||0)/1000).toFixed(1))+'k' : Math.round(s.totalVolume||0)} lbs</td>
         <td style="color:var(--muted)">${s.rpe ? s.rpe + '/10' : '—'}</td>
       </tr>`).join('')}
     </tbody>`;
@@ -1806,14 +1833,17 @@ function buildWeeklyVolume(sessions, numWeeks) {
 }
 
 function buildMuscleGroupVol(sessions) {
-  const vol = {};
+  const vol  = {};
+  const sets = {};
   sessions.forEach(s => (s.exercises || []).forEach(ex => {
-    const mg  = ex.muscleGroup || 'Other';
+    const mg    = ex.muscleGroup || 'Other';
     const exVol = ex.totalVolume > 0 ? ex.totalVolume
       : (ex.sets || []).reduce((b, set) => b + (set.reps || 0) * (set.weight || 0), 0);
-    vol[mg] = (vol[mg] || 0) + exVol;
+    const setCount = ex.sets ? ex.sets.length : 1;
+    vol[mg]  = (vol[mg]  || 0) + exVol;
+    sets[mg] = (sets[mg] || 0) + setCount;
   }));
-  return vol;
+  return { vol, sets };
 }
 
 function buildPRs(sessions) {
@@ -1966,12 +1996,12 @@ function buildUnifiedCoachPayload(question = null) {
 
   // Training trends — weekly volume (last 8 weeks) + muscle group distribution (last 30 days)
   const weeklyVol = buildWeeklyVolume(sessions, 8)
-    .map(w => `${w.label}: ${Math.round(w.vol / 1000)}k lbs`).join(', ');
-  const mgVol = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 30));
+    .map(w => `${w.label}: ${w.vol >= 1000 ? (w.vol/1000).toFixed(1)+'k' : Math.round(w.vol)} lbs`).join(', ');
+  const { vol: mgVol, sets: mgSets } = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 30));
   const muscleGroupDist = Object.entries(mgVol)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
-    .map(([mg, vol]) => `${mg} ${Math.round(vol / 1000)}k`).join(', ');
+    .map(([mg, vol]) => `${mg} ${vol >= 1000 ? (vol/1000).toFixed(1)+'k' : Math.round(vol)} lbs (${mgSets[mg]||0} sets)`).join(', ');
   const trainingTrends = { weeklyVolume: weeklyVol, muscleGroupDist };
 
   // Latest body composition from Evolt

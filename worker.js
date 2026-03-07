@@ -1002,20 +1002,29 @@ async function getMomentum(env) {
     ? latestScan.bodyFatPct < prevScan.bodyFatPct : null;
 
   // Composite score: protein 40%, calories 35%, training 25%
-  const proteinScore = avgProtein / proteinGoal;
-  const calScore     = avgCal >= 1500 ? 1 : avgCal >= 1300 ? 0.75 : avgCal >= 1200 ? 0.5 : 0.2;
-  const trainScore   = weeklyTraining >= 3.5 ? 1 : weeklyTraining >= 2.5 ? 0.7 : weeklyTraining >= 1.5 ? 0.4 : 0.15;
-  const composite    = (proteinScore * 0.4) + (calScore * 0.35) + (trainScore * 0.25);
+  // Training score is baseline-adaptive: uses 8-week avg as personal benchmark
+  // This means someone who trains 5x/week isn't penalized the same as 2x/week
+  const trainBaseline  = ds.training.freq8w || weeklyTraining || 3;
+  const trainTarget    = Math.max(3, trainBaseline); // floor at 3/wk for health
+  const proteinScore   = proteinGoal ? Math.min(1, avgProtein / proteinGoal) : 0.5;
+  const calTarget      = ds.targets.cal;
+  const calScore       = calTarget
+    ? avgCal >= calTarget * 0.95 ? 1 : avgCal >= calTarget * 0.80 ? 0.75 : avgCal >= 1200 ? 0.5 : 0.2
+    : avgCal >= 1500 ? 1 : avgCal >= 1300 ? 0.75 : avgCal >= 1200 ? 0.5 : 0.2;
+  const trainScore     = weeklyTraining >= trainTarget ? 1
+    : weeklyTraining >= trainTarget * 0.75 ? 0.75
+    : weeklyTraining >= trainTarget * 0.5  ? 0.4 : 0.15;
+  const composite      = (proteinScore * 0.4) + (calScore * 0.35) + (trainScore * 0.25);
 
   let state, headline, priority;
 
   if (composite >= 0.78 && lowCalDays <= 2) {
     state    = 'Building';
     headline = proteinScore >= 0.9
-      ? `Protein strong at ${Math.round(avgProtein)}g avg, training consistent — muscle-building conditions are right`
+      ? `Protein strong at ${Math.round(avgProtein)}g avg, training at ${weeklyTraining}/wk — muscle-building conditions are right`
       : `Good momentum — protein at ${Math.round(avgProtein)}g avg, tighten it on training days`;
-    priority = weeklyTraining < 3.5
-      ? `Push for one more training session this week`
+    priority = weeklyTraining < trainTarget
+      ? `Push for one more training session this week (your baseline is ${trainTarget}/wk)`
       : `Hold this pattern through your next Evolt scan`;
 
   } else if (composite >= 0.52 || lowCalDays <= 3) {
@@ -1024,10 +1033,11 @@ async function getMomentum(env) {
       headline = `${lowCalDays} days under 1,200 calories in the last ${last14.length} logged days — muscle is protected but not actively building`;
       priority = `Add a protein-dense snack on your next low-appetite day — Greek yogurt, cottage cheese, or a shake`;
     } else if (proteinScore < 0.8) {
-      headline = `Calories adequate but protein averaging ${Math.round(avgProtein)}g — ${Math.round(proteinGoal - avgProtein)}g below target`;
-      priority = `Front-load protein: aim for 50g before noon on training days`;
+      const pGap = proteinGoal ? Math.round(proteinGoal - avgProtein) : null;
+      headline = `Calories adequate but protein averaging ${Math.round(avgProtein)}g${pGap ? ' — ' + pGap + 'g below target' : ''}`;
+      priority = `Front-load protein: aim for ${proteinGoal ? Math.round(proteinGoal * 0.35) : 50}g before noon on training days`;
     } else {
-      headline = `Training at ${weeklyTraining}/week — one more session would shift this from Holding to Building`;
+      headline = `Training at ${weeklyTraining}/wk — ${(trainTarget - weeklyTraining).toFixed(1)} more sessions/week would shift this to Building`;
       priority = `Schedule your next workout right now`;
     }
 
@@ -1037,10 +1047,10 @@ async function getMomentum(env) {
       headline = `${lowCalDays} of ${last14.length} logged days under 1,200 calories — this is actively working against the muscle you're building in the gym`;
       priority = `Today: add 300+ calories before your next workout, even if you're not hungry`;
     } else if (proteinScore < 0.6) {
-      headline = `Protein averaging ${Math.round(avgProtein)}g — significantly below the ${proteinGoal}g needed to protect muscle during fat loss`;
+      headline = `Protein averaging ${Math.round(avgProtein)}g — significantly below the ${proteinGoal || 'target'}g needed to protect muscle during fat loss`;
       priority = `Today: log your first protein source before 9am`;
     } else {
-      headline = `Training at ${weeklyTraining}/week over the last ${last14.length} days — consistency is the gap right now`;
+      headline = `Training at ${weeklyTraining}/wk — your established baseline is ${trainTarget}/wk, consistency is the gap`;
       priority = `Schedule your next 3 workouts in your calendar today`;
     }
   }
@@ -1052,11 +1062,16 @@ async function getMomentum(env) {
     metrics: {
       avgProtein:    Math.round(avgProtein),
       proteinGoal,
-      proteinPct:    Math.round(proteinScore * 100),
+      proteinPct:    proteinGoal ? Math.round(proteinScore * 100) : null,
       avgCal:        Math.round(avgCal),
+      calTarget:     calTarget,
+      waterTarget:   ds.targets.water,
+      tee:           ds.targets.tee,
+      bmr:           ds.targets.bmr,
       lowCalDays,
       trainingDays,
       weeklyTraining,
+      trainBaseline: parseFloat(trainBaseline.toFixed(1)),
       loggedDays:    last14.length,
     },
     scanDirection: muscleUp !== null ? { muscleUp, fatDown } : null,

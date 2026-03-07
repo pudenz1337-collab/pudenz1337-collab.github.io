@@ -874,7 +874,7 @@ body{
         <span>Scan Nutrition Label</span>
         <input type="file" accept="image/*" capture="environment" style="display:none" onchange="scanLabel(event)">
       </label>
-      <button onclick="startBarcode()" style="display:flex;align-items:center;gap:10px;padding:11px 13px;border:2px dashed var(--border2);border-radius:var(--radius-sm);cursor:pointer;transition:all .2s;color:var(--muted);font-size:13px;width:100%;background:none;text-align:left"
+      <button onclick="openQuickAdd(); setTimeout(()=>{ switchTab('scan'); startBarcode(); }, 250);" style="display:flex;align-items:center;gap:10px;padding:11px 13px;border:2px dashed var(--border2);border-radius:var(--radius-sm);cursor:pointer;transition:all .2s;color:var(--muted);font-size:13px;width:100%;background:none;text-align:left"
         onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)'">
         <span style="font-size:22px">🔲</span>
         <span>Scan Barcode</span>
@@ -1195,7 +1195,7 @@ const OFF_API    = 'https://world.openfoodfacts.org/api/v2/product/';
 // STATE
 // ══════════════════════════════════════════════════
 let WORKER_URL = localStorage.getItem(WORKER_KEY) || '';
-let goals   = JSON.parse(localStorage.getItem('fs3-goals') || '{"protein":150,"cal":1800,"water":80}');
+let goals   = JSON.parse(localStorage.getItem('fs3-goals') || '{}');
 let tirz    = JSON.parse(localStorage.getItem('fs3-tirz')  || '{}');
 let library = JSON.parse(localStorage.getItem('fs3-lib')   || '{"foods":[]}');
 
@@ -1220,6 +1220,26 @@ let _coachAbortCtrl = null;
 
 // Momentum state
 let momentumData  = null;
+
+// ── Effective targets ─────────────────────────────────────────────────────────
+// Priority: 1) user-set goals  2) computed from body data (via /api/momentum)
+// Never a hardcoded default — if neither source has data, returns null so the
+// UI can show "set goals or upload a scan" rather than a misleading number.
+function getEffectiveTargets() {
+  const m = momentumData?.metrics || {};
+  return {
+    protein:  goals.protein  || m.proteinGoal  || null,
+    cal:      goals.cal      || m.calTarget    || null,
+    water:    goals.water    || m.waterTarget  || 80,
+    tee:      m.tee          || null,
+    bmr:      m.bmr          || null,
+    deficit:  (m.calTarget && m.tee) ? Math.round(m.tee - m.calTarget) : null,
+    source: {
+      protein: goals.protein  ? 'user-set' : m.proteinGoal ? 'scan-based' : 'none',
+      cal:     goals.cal      ? 'user-set' : m.calTarget   ? 'scan-based' : 'none',
+    },
+  };
+}
 
 // Scanning / food sheet
 let barcodeScanner = null;
@@ -1557,12 +1577,21 @@ function getTotals() {
 
 function renderRings() {
   const t  = getTotals();
-  const gp = goals.protein || 150;
-  const gc = goals.cal     || 1800;
-  const gw = goals.water   || 80;
-  setRing('ring-p', t.protein  / gp, 'rv-p', 'ra-p', `${t.protein}g / ${gp}g`);
-  setRing('ring-c', t.calories / gc, 'rv-c', 'ra-c', `${t.calories} / ${gc}`);
-  setRing('ring-w', t.water    / gw, 'rv-w', 'ra-w', `${t.water} / ${gw}oz`);
+  const tg = getEffectiveTargets();
+  const gp = tg.protein;
+  const gc = tg.cal;
+  const gw = tg.water;
+
+  // If no targets available yet, show raw totals with a soft indicator
+  if (!gp && !gc) {
+    setRing('ring-p', 0, 'rv-p', 'ra-p', `${Math.round(t.protein)}g`);
+    setRing('ring-c', 0, 'rv-c', 'ra-c', `${Math.round(t.calories)} kcal`);
+    setRing('ring-w', t.water / gw, 'rv-w', 'ra-w', `${Math.round(t.water)} / ${gw}oz`);
+    return;
+  }
+  setRing('ring-p', gp ? t.protein / gp : 0, 'rv-p', 'ra-p', gp ? `${Math.round(t.protein)}g / ${gp}g` : `${Math.round(t.protein)}g`);
+  setRing('ring-c', gc ? t.calories / gc : 0, 'rv-c', 'ra-c', gc ? `${Math.round(t.calories)} / ${gc}` : `${Math.round(t.calories)} kcal`);
+  setRing('ring-w', t.water / gw, 'rv-w', 'ra-w', `${Math.round(t.water)} / ${gw}oz`);
 }
 
 function setRing(id, pct, valId, absId, absText) {
@@ -1591,10 +1620,11 @@ function addWater(oz) {
 
 function renderWater() {
   const total = dayData.waterLog.reduce((a, w) => a + (w.oz || 0), 0);
-  const goal  = goals.water || 80;
+  const goal  = getEffectiveTargets().water;
   const el    = document.getElementById('water-drops');
   el.innerHTML = '';
-  const segs = 8;
+  // Scale segments: every 8oz = 1 drop, minimum 8, maximum 12
+  const segs = Math.min(12, Math.max(8, Math.round(goal / 8)));
   const oz   = goal / segs;
   for (let i = 0; i < segs; i++) {
     const threshold = (i + 1) * oz;
@@ -1608,7 +1638,7 @@ function renderWater() {
     };
     el.appendChild(d);
   }
-  document.getElementById('water-count').textContent = `${total} / ${goal} oz`;
+  document.getElementById('water-count').textContent = `${Math.round(total)} / ${goal} oz`;
 }
 
 // ══════════════════════════════════════════════════
@@ -1943,69 +1973,138 @@ function renderInsights() {
 function buildInsights() {
   const ins  = [];
   const t    = getTotals();
-  const gp   = goals.protein || 150;
-  const gc   = goals.cal     || 1800;
-  const gw   = goals.water   || 80;
+  const tg   = getEffectiveTargets();
+  const gp   = tg.protein;
+  const gc   = tg.cal;
+  const gw   = tg.water;
   const now  = new Date();
   const hour = now.getHours();
 
-  // Tirzepatide awareness
-  const tirzDay  = tirz.day !== undefined && tirz.day !== '' ? parseInt(tirz.day) : null;
-  const daysAgo  = tirzDay !== null ? ((now.getDay() - tirzDay) + 7) % 7 : null;
-  if (daysAgo !== null && daysAgo <= 2) {
-    ins.push({
-      type: daysAgo <= 1 ? 'urgent' : 'warn', icon: '💉',
-      color: daysAgo <= 1 ? 'var(--orange)' : 'var(--yellow)',
-      title: daysAgo === 0 ? 'Injection day — appetite will drop' : `Day ${daysAgo} post-injection`,
-      body: daysAgo === 0
-        ? 'Pre-log protein now while you feel normal. GLP-1 suppression peaks in the next few hours.'
-        : 'Appetite likely suppressed. Prioritize protein even if not hungry — liquid sources easiest.',
-    });
-  }
-
-  // Protein pacing
-  const left = Math.max(0, gp - t.protein);
-  if (t.protein > 0 && left > 0) {
-    if (hour >= 15 && left > 50) {
+  // ── Tirzepatide cycle phase (full 7-day awareness) ────────────────────────
+  const tirzDay = tirz.day !== undefined && tirz.day !== '' ? parseInt(tirz.day) : null;
+  const daysAgo = tirzDay !== null ? ((now.getDay() - tirzDay) + 7) % 7 : null;
+  if (daysAgo !== null) {
+    if (daysAgo === 0) {
       ins.push({
-        type: 'urgent', icon: '⚠️', color: 'var(--orange)',
-        title: `${Math.round(left)}g protein still needed`,
-        body: `It's ${hour > 12 ? hour - 12 : hour}${hour >= 12 ? 'pm' : 'am'}. ${hour >= 18 ? 'Dinner is your last real window.' : 'Get intentional about the next 2 meals.'}`,
+        type: 'urgent', icon: '💉', color: 'var(--orange)',
+        title: 'Injection day — pre-load protein now',
+        body: 'GLP-1 suppression peaks in the next few hours. Log your highest-protein meal before the appetite drop hits. Aim for 40g+ before noon.',
       });
-    } else if (t.protein > 0) {
+    } else if (daysAgo <= 2) {
       ins.push({
-        type: '', icon: '📊', color: 'var(--blue)',
-        title: `${Math.round(t.protein)}g protein · ${Math.round(left)}g to go`,
-        body: left <= 30
-          ? 'Almost there — one protein source closes it out.'
-          : 'Spread remaining protein across the next few hours rather than cramming it all at once.',
+        type: 'warn', icon: '💉', color: 'var(--yellow)',
+        title: `Day ${daysAgo} post-injection — peak suppression`,
+        body: 'Appetite is most suppressed right now. Hunger is not a reliable signal. Eat by the clock, not by feel — prioritize liquid protein sources if solids feel hard.',
+      });
+    } else if (daysAgo <= 4) {
+      ins.push({
+        type: '', icon: '💉', color: 'var(--muted)',
+        title: `Day ${daysAgo} post-injection — moderate suppression`,
+        body: 'GLP-1 effect is still active but easing. Good window to practice eating on schedule. Aim to front-load protein before 2pm.',
+      });
+    } else {
+      ins.push({
+        type: '', icon: '💉', color: 'var(--blue)',
+        title: `Day ${daysAgo} post-injection — hunger returning`,
+        body: daysAgo >= 6
+          ? 'End of injection cycle — hunger signals are back. Use this window to hit protein and calories before next injection resets appetite.'
+          : 'Appetite suppression wearing off. Good day to rebuild nutrition consistency and make sure calories are on track.',
       });
     }
-  } else if (t.protein >= gp) {
+  }
+
+  // ── Protein: real-time gap with specific food suggestions ─────────────────
+  if (gp) {
+    const left = Math.max(0, gp - t.protein);
+    if (t.protein >= gp) {
+      ins.push({
+        type: '', icon: '🏆', color: 'var(--accent)',
+        title: 'Protein goal hit!',
+        body: `${Math.round(t.protein)}g logged${tg.source.protein === 'scan-based' ? ' (target based on your body weight)' : ''}. Keep calories in range and stay hydrated.`,
+      });
+    } else if (left > 0) {
+      let suggestions = '';
+      if (left <= 20)      suggestions = 'Greek yogurt (17g), string cheese + deli turkey (18g), or a protein shake (25g)';
+      else if (left <= 40) suggestions = 'Cottage cheese ½ cup (14g) + chicken breast 3oz (26g), or 2 scoops protein powder (50g)';
+      else if (left <= 60) suggestions = 'Chicken breast 6oz (54g), canned tuna 2 cans (50g), or ground beef 5oz (35g) + Greek yogurt (17g)';
+      else                 suggestions = 'Plan two protein-focused meals — chicken/beef/fish as the main + Greek yogurt or cottage cheese as a snack';
+
+      if (hour >= 18 && left > 30) {
+        ins.push({
+          type: 'urgent', icon: '⚠️', color: 'var(--orange)',
+          title: `${Math.round(left)}g protein needed — last window`,
+          body: `After 8pm protein absorption is less efficient. Get ${suggestions} in the next 1-2 hours.`,
+        });
+      } else if (hour >= 15 && left > 50) {
+        ins.push({
+          type: 'urgent', icon: '⚠️', color: 'var(--orange)',
+          title: `${Math.round(left)}g protein still needed`,
+          body: `It\'s ${hour > 12 ? hour - 12 : hour}${hour >= 12 ? 'pm' : 'am'}. Try: ${suggestions}.`,
+        });
+      } else if (t.protein > 0) {
+        ins.push({
+          type: '', icon: '📊', color: 'var(--blue)',
+          title: `${Math.round(t.protein)}g protein · ${Math.round(left)}g to go`,
+          body: left <= 25 ? `One source closes it: ${suggestions}.` : `Next 2 meals: ${suggestions}.`,
+        });
+      }
+    }
+  } else {
     ins.push({
-      type: '', icon: '🏆', color: 'var(--accent)',
-      title: 'Protein goal hit!',
-      body: `${Math.round(t.protein)}g logged. Keep calories in range and stay hydrated.`,
+      type: '', icon: '📋', color: 'var(--muted)',
+      title: 'No protein target set',
+      body: 'Upload an Evolt scan to get a body-weight-based target, or set a goal in Settings → Goals.',
     });
   }
 
-  // Post-workout window
+  // ── Post-workout protein window ───────────────────────────────────────────
   if (dayData.workouts.length) {
     const lastWo  = dayData.workouts[dayData.workouts.length - 1];
-    const endTime = lastWo.endTime ? new Date(lastWo.endTime) : null;
-    if (endTime) {
-      const minsAgo = Math.round((now - endTime) / 60000);
+    const woStart = lastWo.startTime ? new Date(lastWo.startTime) : null;
+    const woEnd   = lastWo.endTime   ? new Date(lastWo.endTime)   : null;
+    const refTime = woEnd || woStart;
+    if (refTime) {
+      const minsAgo = Math.round((now - refTime) / 60000);
       if (minsAgo >= 0 && minsAgo < 90) {
-        ins.push({
-          type: minsAgo < 45 ? 'urgent' : 'warn', icon: '⚡', color: 'var(--orange)',
-          title: `Post-workout window — ${90 - minsAgo} min left`,
-          body: 'Get 40g protein in now. Closes in ' + (90 - minsAgo) + ' min.',
-        });
+        const woStartMs  = woStart ? woStart.getTime() : (refTime.getTime() - (lastWo.durationMinutes || 45) * 60000);
+        const postProtein = dayData.foodLog
+          .filter(f => f.timestamp && new Date(f.timestamp).getTime() > woStartMs)
+          .reduce((a, f) => a + (f.protein || 0), 0);
+        const target = 40;
+        const gap    = Math.max(0, target - Math.round(postProtein));
+        const minLeft = 90 - minsAgo;
+        if (gap > 0) {
+          ins.push({
+            type: minsAgo < 45 ? 'urgent' : 'warn', icon: '⚡', color: 'var(--orange)',
+            title: `Post-workout: need ${gap}g protein — ${minLeft} min left`,
+            body: gap <= 20
+              ? `${Math.round(postProtein)}g logged post-workout. Greek yogurt or a shake closes it.`
+              : `${Math.round(postProtein)}g logged post-workout. Shake (25g) + Greek yogurt (17g) = done.`,
+          });
+        } else {
+          ins.push({
+            type: '', icon: '⚡', color: 'var(--accent)',
+            title: 'Post-workout window covered ✓',
+            body: `${Math.round(postProtein)}g protein logged since your workout. Muscle recovery is fueled.`,
+          });
+        }
       }
     }
   }
 
-  // Energy drop
+  // ── Calorie gap late in day ───────────────────────────────────────────────
+  if (gc && t.calories > 0) {
+    const calLeft = Math.max(0, gc - t.calories);
+    if (calLeft > 300 && hour >= 15) {
+      ins.push({
+        type: 'warn', icon: '🔥', color: 'var(--yellow)',
+        title: `${calLeft} kcal below target`,
+        body: 'Low calories while training breaks down muscle. Add: peanut butter 2 tbsp (190 kcal), avocado half (240 kcal), or almonds 1oz (170 kcal).',
+      });
+    }
+  }
+
+  // ── Energy drop ──────────────────────────────────────────────────────────
   const eEntries = dayData.hem.filter(e => e.e).slice(-3);
   if (eEntries.length >= 2) {
     const last = eEntries[eEntries.length - 1].e;
@@ -2014,28 +2113,28 @@ function buildInsights() {
       ins.push({
         type: 'warn', icon: '⚡', color: 'var(--yellow)',
         title: 'Low energy logged',
-        body: 'Energy dropped to low. On tirzepatide, low energy often means under-eating even when not hungry. Check protein timing.',
+        body: 'On tirzepatide, low energy nearly always means under-eating. Check total calories logged today — if under 1,200, eat something calorie-dense now.',
       });
     }
   }
 
-  // Water late in day
+  // ── Water ─────────────────────────────────────────────────────────────────
   if (t.water < gw * 0.5 && hour >= 15) {
     ins.push({
       type: 'blue', icon: '💧', color: 'var(--blue)',
-      title: `${t.water}oz water — ${Math.round(gw - t.water)}oz still needed`,
-      body: 'Drink a glass now and another in the next hour to stay on track.',
+      title: `${Math.round(t.water)}oz water · ${Math.round(gw - t.water)}oz still needed`,
+      body: 'Drink a full glass now and another in the next hour. Dehydration amplifies GLP-1 fatigue.',
     });
   }
 
-  // Default if nothing
+  // ── Default ───────────────────────────────────────────────────────────────
   if (!ins.length) {
     const flagSet = Object.values(dayData.flags).some(Boolean);
     ins.push({
       type: '', icon: flagSet ? '🎯' : '💡', color: 'var(--accent)',
-      title: flagSet ? 'Day is set — let\'s go' : 'Set your plan above',
+      title: flagSet ? "Day is set — let\'s go" : 'Set your plan above',
       body: flagSet
-        ? `Protein goal is ${gp}g. Log food and water to track progress throughout the day.`
+        ? `${gp ? 'Protein target: ' + gp + 'g. ' : ''}Log food and water to track progress throughout the day.`
         : 'Tap Training, Recovery, or Injection to get personalized insights for today.',
     });
   }
@@ -2538,6 +2637,9 @@ async function loadMomentum() {
     const m = await wFetch('/api/momentum');
     momentumData = m;
     renderMomentum(m);
+    // Rings, water segments, and insights all use getEffectiveTargets() which reads
+    // from momentumData — re-render them now that computed targets are available
+    renderRings(); renderWater(); renderInsights();
   } catch (e) {
     // Silently skip if worker not reachable yet
     console.log('[Momentum] Load failed:', e.message);
@@ -2844,9 +2946,10 @@ function checkWeeklyCoaching() {
 // ══════════════════════════════════════════════════
 function showCloseDayModal() {
   const t     = getTotals();
-  const gp    = goals.protein || 150;
-  const gc    = goals.cal     || 1800;
-  const gw    = goals.water   || 80;
+  const tg    = getEffectiveTargets();
+  const gp    = tg.protein;
+  const gc    = tg.cal;
+  const gw    = tg.water;
   const now   = new Date();
   const dateInput = document.getElementById('close-day-date');
   // Grace period: before 2am defaults to yesterday
@@ -2856,11 +2959,16 @@ function showCloseDayModal() {
   dateInput.value = defaultDate;
   dateInput.max   = todayISO();
 
+  // Stat cards — show % of target only when target is known
+  const proteinPct  = gp ? Math.round(t.protein  / gp * 100) + '%' : 'no target';
+  const calPct      = gc ? Math.round(t.calories  / gc * 100) + '%' : 'no target';
+  const waterPct    = gw ? Math.round(t.water     / gw * 100) + '%' : '--';
+  const targetLabel = tg.source.protein === 'scan-based' ? '(body-weight based)' : tg.source.protein === 'user-set' ? '(your goal)' : '';
   document.getElementById('close-day-stats').innerHTML = [
-    { label: 'Protein',  val: t.protein + 'g',   sub: Math.round(t.protein / gp * 100) + '%', color: 'var(--blue)' },
-    { label: 'Calories', val: t.calories,          sub: Math.round(t.calories / gc * 100) + '%', color: 'var(--yellow)' },
-    { label: 'Water',    val: t.water + 'oz',      sub: Math.round(t.water / gw * 100) + '%',    color: 'var(--accent)' },
-    { label: 'Foods',    val: dayData.foodLog.length, sub: 'entries',                             color: 'var(--muted)' },
+    { label: 'Protein',  val: Math.round(t.protein) + 'g',    sub: gp ? `${proteinPct} of ${gp}g ${targetLabel}` : proteinPct,  color: 'var(--blue)' },
+    { label: 'Calories', val: Math.round(t.calories),           sub: gc ? `${calPct} of ${gc} kcal` : calPct,                   color: 'var(--yellow)' },
+    { label: 'Water',    val: Math.round(t.water) + 'oz',      sub: `${waterPct} of ${gw}oz`,                                   color: 'var(--accent)' },
+    { label: 'Foods',    val: dayData.foodLog.length,           sub: 'entries',                                                  color: 'var(--muted)' },
   ].map(s => `<div class="modal-stat">
     <div class="modal-stat-val" style="color:${s.color}">${s.val}</div>
     <div class="modal-stat-label">${s.label}</div>
@@ -2868,11 +2976,14 @@ function showCloseDayModal() {
   </div>`).join('');
 
   const highlights = [];
-  if (t.protein >= gp) highlights.push('🏆 Protein goal hit!');
-  else highlights.push(`⚠️ ${gp - Math.round(t.protein)}g protein short of goal`);
-  if (t.water >= gw) highlights.push('💧 Hydration goal met!');
-  if (dayData.workouts.length) highlights.push(`💪 ${dayData.workouts.length} workout(s) logged`);
-  if (dayData.flags.injectionDay) highlights.push('💉 Injection day');
+  if (gp && t.protein >= gp)       highlights.push('🏆 Protein goal hit!');
+  else if (gp)                       highlights.push(`⚠️ ${gp - Math.round(t.protein)}g protein short of ${gp}g target`);
+  if (gc && t.calories < 1200)      highlights.push('⚠️ Under 1,200 kcal — muscle protection at risk');
+  else if (gc && t.calories >= gc)   highlights.push('✅ Calorie target reached');
+  if (t.water >= gw)                 highlights.push('💧 Hydration goal met!');
+  if (dayData.workouts.length)       highlights.push(`💪 ${dayData.workouts.length} workout(s) logged`);
+  if (dayData.flags.injectionDay)    highlights.push('💉 Injection day');
+  if (tg.deficit && gc)              highlights.push(`📊 Deficit today: ~${Math.max(0, gc - Math.round(t.calories))} kcal below target`);
 
   document.getElementById('close-day-highlights').innerHTML = highlights.map(h => `<div>${h}</div>`).join('');
   document.getElementById('close-day-modal').classList.add('open');
