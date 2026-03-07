@@ -658,6 +658,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 // ══════════════════════════════════════════════
 const WORKER_KEY = 'fs3-worker'; // Same key as Tracker
 let WORKER_URL = localStorage.getItem(WORKER_KEY) || '';
+let goals       = JSON.parse(localStorage.getItem('fsp-goals') || '{}');  // loaded from /api/profile
 
 let data = { evolt: [], fitbod: [], fuelstrong: [] };
 let coachThread   = JSON.parse(localStorage.getItem('fsp-coach') || '[]');
@@ -737,9 +738,10 @@ async function loadFromWorker() {
   sync.style.display = 'block';
   sync.textContent   = 'Syncing…';
   try {
-    const [d, ctx] = await Promise.all([
+    const [d, ctx, profile] = await Promise.all([
       wFetch('/api/data'),
       wFetch('/api/context').catch(() => ({})),
+      wFetch('/api/profile').catch(() => ({})),
     ]);
     data.evolt      = d.evolt      || [];
     data.fitbod     = d.fitbod     || [];
@@ -747,6 +749,11 @@ async function loadFromWorker() {
     if (ctx.context) {
       coachContext = ctx.context;
       document.getElementById('coach-context').value = coachContext;
+    }
+    // Store profile goals so coaching payload carries the real targets
+    if (profile.goals && Object.keys(profile.goals).length) {
+      goals = profile.goals;
+      localStorage.setItem('fsp-goals', JSON.stringify(goals));
     }
     const total = data.evolt.length + data.fitbod.length;
     sync.textContent = total ? `✓ ${data.evolt.length} scans · ${data.fitbod.length} workouts` : '✓ Connected';
@@ -1996,7 +2003,7 @@ function buildUnifiedCoachPayload(question = null) {
   return {
     mode:            'dashboard',
     context:         coachContext,
-    goals:           {},
+    goals,                          // actual profile goals (loaded from /api/profile on sync)
     question:        question || null,
     history,
     workoutSummary,

@@ -30,11 +30,11 @@ COACHING FOUNDATION — HANNA (read before every response)
 WHO YOU ARE COACHING:
 Hanna is a 50-year-old woman in active physical transformation. She has two nearly-grown kids and is approaching an empty-nester phase. She is investing in herself in a way she hasn't before — not for anyone else. She discovered she loves strength training and wants to see what her body is actually capable of.
 
-She is not a beginner. She has 18 months of gym attendance behind her and has trained with real intention since November 2024. She uses Fitbod (Get Stronger / Hypertrophy setting), trains 3-4 days per week at Anytime Fitness, sessions are 40-45 minutes with free weights, cables, and machines. She knows how to work out. Do not explain basics.
+She is not a beginner. She has trained consistently since November 2024. Her current training frequency, tenure, and body composition numbers are in the LIVE DATA block at the top — use those exact figures, never estimate or invent them. She uses Fitbod (Get Stronger / Hypertrophy setting) at Anytime Fitness, sessions are 40-45 minutes with free weights, cables, and machines. She knows how to work out. Do not explain basics.
 
 WHERE SHE IS IN HER JOURNEY:
-- Started tirzepatide in July 2025. Down 34 lbs. Would like to lose approximately 25 more.
-- Goal shifted in November 2025 from weight loss to body recomposition: build visible muscle while losing fat.
+- Started tirzepatide in July 2025. Goal shifted in November 2025 from weight loss to body recomposition: build visible muscle while losing fat.
+- Her current weight, total weight lost, and body composition progress are in the LIVE DATA block — always cite those numbers specifically.
 - Real success = seeing her muscles in the mirror. Not a scale number. Arms, shoulders, definition.
 - She has never been a bad eater — just a busy person who loses track of meals.
 
@@ -55,10 +55,10 @@ SUCCESS DEFINITION:
 Visible muscle. Not a weight target. Not a body fat percentage. The feeling of looking in the mirror and seeing what she's built. Arms. Shoulders. Definition. Evolt scans are the report card — specifically skeletal muscle mass trending up and body fat percentage trending down. The scale is almost meaningless for her actual goals and should be actively reframed when it comes up.
 
 WHAT A GOOD WEEK LOOKS LIKE:
-4 training sessions. Protein goal hit 5+ of 7 days. No more than 1 day under 1200 calories. Energy and mood stable or improving. These are the conditions that build toward visible muscle.
+Her target training frequency (see LIVE DATA block). Protein goal hit 5+ of 7 days. No more than 1 day under 1200 calories. Energy and mood stable or improving. These are the conditions that build toward visible muscle.
 
 WHAT A CONCERNING WEEK LOOKS LIKE:
-Multiple days under 1200 calories. Protein missing on training days. Training below 3 sessions for 2+ consecutive weeks. These patterns will show up in the next Evolt scan as muscle loss.
+Multiple days under 1200 calories. Protein missing on training days. Training below her established frequency for 2+ consecutive weeks. These patterns will show up in the next Evolt scan as muscle loss.
 
 HOW TO COACH HER:
 - Be direct. She is smart and busy. One clear priority beats five balanced suggestions.
@@ -68,6 +68,188 @@ HOW TO COACH HER:
 - Do not give generic fitness advice. She comes here for analysis of her specific data and situation.
 - Respect that she is doing something hard and doing it consistently. Acknowledge that without being patronizing.
 `;
+
+// ─── Coaching Dataset Builder (Improvement 1) ────────────────────────────────
+// Single shared function called by every coaching mode.
+// Eliminates duplicated analytics, ensures consistent date-range filtering,
+// and computes dynamic personal targets from actual body data.
+function buildCoachingDataset(evolt, fitbod, fuelstrong, goals) {
+  const now = new Date();
+  const cutoff = days => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - days);
+    return d.toISOString().slice(0, 10);
+  };
+
+  // ── Personal targets — derived from actual data, never hardcoded defaults ──
+  const latestWithWeight = [...evolt].reverse().find(s => s.weight != null);
+  const latestWithBMR    = [...evolt].reverse().find(s => s.bmr    != null);
+  const bodyWeight = latestWithWeight?.weight;
+  const bmr        = latestWithBMR?.bmr;
+  const tee        = bmr ? Math.round(bmr * 1.45) : null;
+
+  // Protein: user-set → weight-based (0.85g/lb, conservative for GLP-1 + deficit) → null
+  const proteinTarget = goals.protein || (bodyWeight ? Math.round(bodyWeight * 0.85) : null);
+  // Calories: user-set → TEE − 400 deficit (optimal midpoint for recomp) → null
+  const calTarget     = goals.cal || (tee ? Math.round(tee - 400) : null);
+  const waterTarget   = goals.water || 80;
+
+  const targetSource = {
+    proteinBasis: goals.protein
+      ? 'user-set goal'
+      : bodyWeight ? `${bodyWeight}lbs × 0.85g/lb (GLP-1 recomp)` : 'no Evolt data yet',
+    calBasis: goals.cal
+      ? 'user-set goal'
+      : tee ? `BMR ${bmr} kcal × 1.45 TEE − 400 deficit` : 'no Evolt BMR yet',
+    derived: !goals.protein || !goals.cal,
+  };
+
+  // ── Date-range filtered windows (Improvement 2) ──
+  // YYYY-MM-DD ISO strings sort correctly with >= comparison
+  const c7  = cutoff(7);
+  const c14 = cutoff(14);
+  const c28 = cutoff(28);
+  const c56 = cutoff(56);
+
+  const nutAll = fuelstrong.filter(d => (d.protein||0) > 0 || (d.calories||0) > 0);
+  const nut7d  = nutAll.filter(d => d.date >= c7);
+  const nut14d = nutAll.filter(d => d.date >= c14);
+  const nut28d = nutAll.filter(d => d.date >= c28);
+
+  const wo7d  = fitbod.filter(w => w.date >= c7);
+  const wo28d = fitbod.filter(w => w.date >= c28);
+  const wo56d = fitbod.filter(w => w.date >= c56);
+
+  // ── Averages over actual calendar windows ──
+  const avg = (arr, key) => arr.length
+    ? Math.round(arr.reduce((s, d) => s + (d[key]||0), 0) / arr.length)
+    : null;
+
+  const stats7d  = { protein: avg(nut7d,  'protein'), cal: avg(nut7d,  'calories'), days: nut7d.length };
+  const stats14d = { protein: avg(nut14d, 'protein'), cal: avg(nut14d, 'calories'), days: nut14d.length };
+  const stats28d = { protein: avg(nut28d, 'protein'), cal: avg(nut28d, 'calories'), days: nut28d.length };
+
+  const lowCal7d  = nut7d.filter(d  => (d.calories||0) > 0 && (d.calories||0) < 1200).length;
+  const lowCal14d = nut14d.filter(d => (d.calories||0) > 0 && (d.calories||0) < 1200).length;
+
+  const freq4w = wo28d.length > 0 ? parseFloat((wo28d.length / 4).toFixed(1)) : null;
+  const freq8w = wo56d.length > 0 ? parseFloat((wo56d.length / 8).toFixed(1)) : null;
+
+  // ── Evolt scan summary ──
+  const scansWithData = evolt.filter(s =>
+    s.weight != null || s.bodyFatPct != null || s.skeletalMuscleMass != null);
+  const latestScan = scansWithData.length ? scansWithData[scansWithData.length - 1] : null;
+  const prevScan   = scansWithData.length > 1 ? scansWithData[scansWithData.length - 2] : null;
+  const firstScan  = scansWithData.length ? scansWithData[0] : null;
+
+  // Total journey change first → latest
+  const toFixed1 = (a, b) => a != null && b != null ? parseFloat((b - a).toFixed(1)) : null;
+  const journeyWeight = toFixed1(firstScan?.weight, latestScan?.weight);
+  const journeyMuscle = toFixed1(firstScan?.skeletalMuscleMass, latestScan?.skeletalMuscleMass);
+  const journeyFat    = toFixed1(firstScan?.bodyFatPct, latestScan?.bodyFatPct);
+
+  // Training tenure from first Fitbod session
+  const firstWo        = fitbod.length ? fitbod[0] : null;
+  const trainingMonths = firstWo
+    ? Math.round((now - new Date(firstWo.date)) / (30 * 86400000))
+    : null;
+
+  return {
+    targets:  { protein: proteinTarget, cal: calTarget, water: waterTarget, source: targetSource, tee, bodyWeight, bmr },
+    windows:  { c7, c14, c28, nut7d, nut14d, nut28d, wo7d, wo28d, wo56d },
+    stats:    { d7: stats7d, d14: stats14d, d28: stats28d, lowCal7d, lowCal14d },
+    training: { freq4w, freq8w, months: trainingMonths },
+    scans:    { withData: scansWithData, latest: latestScan, prev: prevScan, first: firstScan },
+    journey:  { weight: journeyWeight, muscle: journeyMuscle, fat: journeyFat },
+  };
+}
+
+// ─── Live data context block ──────────────────────────────────────────────────
+// Prepended to every system prompt so the coach always has current numbers.
+// Overrides any static facts that may be outdated in the permanent document.
+function buildDynamicContext(ds, tirz) {
+  const { targets, scans, journey, training, stats } = ds;
+  const lines = ['═══ LIVE DATA — cite these exact numbers in every response ═══'];
+
+  if (scans.latest) {
+    const s = scans.latest;
+    lines.push(
+      `Current body (${s.date}): ` +
+      `weight=${s.weight  != null ? s.weight  + 'lbs' : 'N/A'} | ` +
+      `fat=${s.bodyFatPct != null ? s.bodyFatPct + '%' : 'N/A'} | ` +
+      `muscle=${s.skeletalMuscleMass != null ? s.skeletalMuscleMass + 'lbs' : 'N/A'} | ` +
+      `BMR=${s.bmr != null ? s.bmr + ' kcal' : 'N/A'}`
+    );
+  }
+
+  const jParts = [];
+  if (journey.weight !== null) jParts.push(`weight ${journey.weight <= 0 ? journey.weight : '+'+journey.weight}lbs`);
+  if (journey.muscle !== null) jParts.push(`muscle ${journey.muscle >= 0 ? '+' : ''}${journey.muscle}lbs`);
+  if (journey.fat    !== null) jParts.push(`body fat ${journey.fat >= 0 ? '+' : ''}${journey.fat}%`);
+  if (jParts.length && scans.first && scans.latest) {
+    lines.push(`Journey totals (${scans.first.date} → ${scans.latest.date}): ${jParts.join(' | ')}`);
+  }
+
+  if (targets.protein) lines.push(`Protein target: ${targets.protein}g/day [${targets.source.proteinBasis}]`);
+  if (targets.cal)     lines.push(`Calorie target: ${targets.cal} kcal/day [${targets.source.calBasis}]${targets.tee ? ' | TEE est. ' + targets.tee + ' kcal' : ''}`);
+  lines.push(`Water target: ${targets.water}oz/day`);
+
+  if (training.freq4w  !== null) lines.push(`Actual training frequency: ${training.freq4w} sessions/week (last 4 weeks)`);
+  if (training.freq8w  !== null) lines.push(`8-week training avg: ${training.freq8w} sessions/week`);
+  if (training.months  !== null) lines.push(`Training tenure: ${training.months} months (Fitbod data)`);
+
+  if (stats.d7.days  > 0) lines.push(`Last 7 real days (${stats.d7.days} logged): avg protein ${stats.d7.protein}g | avg calories ${stats.d7.cal} kcal`);
+  if (stats.d14.days > 0) lines.push(`Last 14 real days (${stats.d14.days} logged): avg protein ${stats.d14.protein}g | avg calories ${stats.d14.cal} kcal`);
+  if (stats.lowCal7d  > 0) lines.push(`⚠ Days under 1,200 kcal in last 7 days: ${stats.lowCal7d}`);
+  if (stats.lowCal14d > 0) lines.push(`⚠ Days under 1,200 kcal in last 14 days: ${stats.lowCal14d}`);
+
+  if (tirz?.dose) {
+    lines.push(`Tirzepatide: ${tirz.dose}mg${tirz.weeks ? ' — ' + tirz.weeks + ' weeks on this dose' : ''}`);
+  }
+
+  lines.push(
+    '═══ COACHING LANGUAGE REQUIREMENTS ═══',
+    `• State exact gram gaps: "You need ${targets.protein ? 'X' : '?'}g more protein" not "you're at X% of goal"`,
+    '• Recommend specific foods with protein values: "Greek yogurt (20g P), cottage cheese (25g P), protein shake (25g P)"',
+    '• Use time windows when workouts are present: "Get 30g+ protein within 90 min of your workout"',
+    '• When calories are low, name calorie-dense foods that also hit protein: "2 tbsp peanut butter (180 kcal, 7g P)" or "1/4 cup almonds (170 kcal, 6g P)"',
+    '• Reference scan interval data by date when explaining cause and effect',
+    '═══════════════════════════════════════'
+  );
+  return lines.join('\n');
+}
+
+// ─── Pre/post workout nutrition analysis (Improvement 4) ─────────────────────
+// Analyzes what was eaten in 2-hour windows before and after each workout.
+// Only available in checkin/ask modes where full timestamped food logs are sent.
+function analyzeWorkoutNutrition(foodLog, workouts, tzOffset) {
+  if (!workouts.length || !foodLog.length) return null;
+  const results = [];
+  for (const wo of workouts) {
+    if (!wo.startTime) continue;
+    const woMs       = new Date(wo.startTime).getTime() - (tzOffset * 60000);
+    const PRE        = 2 * 3600000;
+    const POST       = 2 * 3600000;
+    const inWindow   = (ts, start, end) => {
+      if (!ts) return false;
+      const t = new Date(ts).getTime() - (tzOffset * 60000);
+      return t >= start && t <= end;
+    };
+    const pre  = foodLog.filter(f => inWindow(f.timestamp, woMs - PRE, woMs));
+    const post = foodLog.filter(f => inWindow(f.timestamp, woMs,        woMs + POST));
+    const sum  = (arr, key) => Math.round(arr.reduce((s, i) => s + (i[key]||0), 0));
+    results.push({
+      preProtein:  sum(pre,  'protein'),
+      preCal:      sum(pre,  'calories'),
+      preItems:    pre.map(i  => `${i.displayName||i.name}(${i.protein||0}g P)`),
+      postProtein: sum(post, 'protein'),
+      postCal:     sum(post, 'calories'),
+      postItems:   post.map(i => `${i.displayName||i.name}(${i.protein||0}g P)`),
+      fasted:      pre.length === 0,
+    });
+  }
+  return results.length ? results : null;
+}
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 export default {
@@ -346,12 +528,20 @@ async function getCoaching(request, env) {
   const fitbod     = JSON.parse(fitbodRaw     || '[]');
   const fuelstrong = JSON.parse(fuelstrongRaw || '[]');
   const goals      = profGoalsRaw ? JSON.parse(profGoalsRaw) : (goalsRaw ? JSON.parse(goalsRaw) : (body.goals || {}));
-  const mode       = body.mode || 'dashboard';
+  const mode = body.mode || 'dashboard';
+
+  // ── Build shared coaching dataset (Improvement 1) ──
+  // All analytics, date-filtered windows, and dynamic targets computed once here.
+  const ds = buildCoachingDataset(evolt, fitbod, fuelstrong, goals);
+  const { targets, windows, stats } = ds;
+
+  // ── Dynamic context: live data block prepended to every system prompt ──
+  const dynamicCtx = buildDynamicContext(ds, tirzepatide);
 
   // Permanent context: KV-stored enriched version, falling back to baked-in constant
-  const enrichedObj    = enrichedRaw ? JSON.parse(enrichedRaw) : null;
-  const permanentCtx   = enrichedObj?.context || HANNA_PERMANENT_CONTEXT;
-  const savedCtx       = contextRaw ? JSON.parse(contextRaw) : {};
+  const enrichedObj     = enrichedRaw ? JSON.parse(enrichedRaw) : null;
+  const permanentCtx    = enrichedObj?.context || HANNA_PERMANENT_CONTEXT;
+  const savedCtx        = contextRaw ? JSON.parse(contextRaw) : {};
   const additionalNotes = savedCtx.context || body.context || '';
 
   const supplements  = body.supplements  || '';
@@ -373,7 +563,10 @@ async function getCoaching(request, env) {
   const suppBlock    = supplements ? `\nSupplement stack: ${supplements}` : '';
   const measBlock    = measurements.length ? `\nMeasurements: ${measurements.map(m => `${m.date}: waist=${m.waist}"${m.hips?' hips='+m.hips+'"':''}${m.arm?' arm='+m.arm+'"':''}`).join(' | ')}` : '';
   const sessionBlock = sessionLogs.length  ? `\nSession logs: ${sessionLogs.map(s => `${s.date}: feel=${s.feel||'?'}/5, RPE=${s.rpe||'?'}/10${s.note?' ('+s.note+')':''}`).join(' | ')}` : '';
-  const goalsBlock   = goals && Object.keys(goals).length ? `\nLogged goals: protein ${goals.protein||150}g/day | calories ${goals.cal||1800}/day | water ${goals.water||80}oz/day` : '';
+  // Goals block now uses computed targets from actual body data (see buildCoachingDataset)
+  const goalsBlock = targets.protein || targets.cal
+    ? `\nPersonal targets: protein ${targets.protein || '?'}g/day [${targets.source.proteinBasis}] | calories ${targets.cal || '?'} kcal/day [${targets.source.calBasis}] | water ${targets.water}oz/day`
+    : '\nNo nutrition goals set and no Evolt data to compute from yet — encourage uploading a scan.';
 
   // ── Evolt lines ──
   // Filter to scans that have at least one real value; format nulls as "—"
@@ -395,9 +588,10 @@ async function getCoaching(request, env) {
     return `Change ${f.date}→${l.date}: Weight ${fmtV(f.weight)}→${fmtV(l.weight)}lbs${dW}, BF% ${fmtV(f.bodyFatPct)}→${fmtV(l.bodyFatPct)}%${dBF}, Muscle ${fmtV(f.skeletalMuscleMass)}→${fmtV(l.skeletalMuscleMass)}lbs${dM}`;
   })() : evolt.length === 1 ? 'Only one scan available.' : 'No scans with complete data yet.';
 
-  const nutritionLines = fuelstrong.length
-    ? fuelstrong.slice(-14).map(n => `${n.date}: Protein=${n.protein}g | Cal=${n.calories}kcal | Water=${n.water}oz${n.flags?.trainingDay?' 💪':''}${n.flags?.injectionDay?' 💉':''}`).join('\n')
-    : 'No nutrition data logged yet.';
+  // nutritionLines: last 14 calendar days (not last 14 entries — Improvement 2)
+  const nutritionLines = windows.nut14d.length
+    ? windows.nut14d.map(n => `${n.date}: Protein=${n.protein}g | Cal=${n.calories}kcal | Water=${n.water}oz${n.flags?.trainingDay?' 💪':''}${n.flags?.injectionDay?' 💉':''}`).join('\n')
+    : 'No nutrition data logged in the last 14 days.';
 
   const woLines = woSummary
     ? (() => {
@@ -435,10 +629,8 @@ async function getCoaching(request, env) {
     scanIntervalContext = `\n\nSCAN INTERVAL ANALYSIS — your personal cause-effect record:\n${lines.join('\n')}`;
   }
 
-  // ── Base system prompt: permanent context document is the foundation ──
-  const baseSystem = `${permanentCtx}
-
-EVIDENCE-BASED COACHING RULES:
+  // ── Base system prompt: live data block first, then narrative context, then evidence rules ──
+  const baseSystem = `${dynamicCtx}\n\n${permanentCtx}\n\nEVIDENCE-BASED COACHING RULES:
 1. PROTEIN: 0.7-1.0g per lb of bodyweight supports muscle retention during a deficit. Higher end (~1g/lb) when in caloric deficit and training hard.
 2. MUSCLE BUILDING AT 50: Women over 50 build muscle more slowly — 0.25-0.5 lbs of actual muscle per month is realistic and excellent. Do not set unrealistic expectations.
 3. SCALE WEIGHT is NOT a good metric for body recomposition. Reframe toward skeletal muscle mass and fat mass from Evolt scans.
@@ -502,9 +694,37 @@ TONE: Direct, specific, coach-like. Numbers over reassurance. Start directly —
     const todayProtein = Math.round(foodLog.reduce((a,i) => a+(i.protein||0), 0));
     const todayCal     = Math.round(foodLog.reduce((a,i) => a+(i.calories||0), 0));
     const todayWater   = Math.round(waterLog.reduce((a,w) => a+(w.oz||0), 0));
-    const proteinGoal  = goals.protein || 150;
-    const calGoal      = goals.cal     || 1800;
-    const waterGoal    = goals.water   || 80;
+    // Use dataset computed targets — not hardcoded fallbacks
+    const proteinGoal  = targets.protein;
+    const calGoal      = targets.cal;
+    const waterGoal    = targets.water;
+
+    // ── Pre/post workout nutrition (Improvement 4) ──
+    const woNutrition = workouts.length
+      ? analyzeWorkoutNutrition(foodLog, workouts, tzOffset)
+      : null;
+    let woNutritionBlock = '';
+    if (woNutrition) {
+      woNutritionBlock = woNutrition.map((w, i) => {
+        const pre  = w.preItems.length  ? w.preItems.join(', ')  : 'nothing logged';
+        const post = w.postItems.length ? w.postItems.join(', ') : 'nothing logged yet';
+        const postGap = proteinGoal ? Math.max(0, 30 - w.postProtein) : null;
+        return [
+          `Workout ${woNutrition.length > 1 ? i+1 : ''} nutrition windows:`,
+          `  Pre-workout (2h before): ${w.preProtein}g P, ${w.preCal} kcal — ${pre}${w.fasted ? ' ⚠ FASTED' : ''}`,
+          `  Post-workout (2h after): ${w.postProtein}g P, ${w.postCal} kcal — ${post}`,
+          postGap !== null && postGap > 0 ? `  ⚡ Post-workout protein gap: still need ${postGap}g within window` : '',
+        ].filter(Boolean).join('\n');
+      }).join('\n');
+    }
+
+    // ── Exact gap computation (Improvement 8) ──
+    const proteinGap = proteinGoal ? Math.max(0, proteinGoal - todayProtein) : null;
+    const calGap     = calGoal     ? Math.max(0, calGoal - todayCal)         : null;
+    const gapBlock   = [
+      proteinGap !== null ? `Protein gap: ${proteinGap}g remaining to hit ${proteinGoal}g target` : null,
+      calGap     !== null ? `Calorie gap: ${calGap} kcal remaining to hit ${calGoal} kcal target`  : null,
+    ].filter(Boolean).join('\n');
 
     const fmtISO = iso => {
       if (!iso) return '';
@@ -561,9 +781,10 @@ TONE: Direct, specific, coach-like. Numbers over reassurance. Start directly —
       ? (() => { const e=[...hemEntries].sort((a,b)=>(a.timestamp||'').localeCompare(b.timestamp||'')).pop(); return `H${e.h||'?'} E${e.e||'?'} M${e.m||'?'}${e.note?' ('+e.note+')':''}`; })()
       : 'none';
 
-    const recentDays = fuelstrong.slice(-14).filter(d => (d.protein||0) > 0 || (d.calories||0) > 0);
-    const avgP   = recentDays.length ? Math.round(recentDays.reduce((a,d) => a+d.protein,0)/recentDays.length) : null;
-    const avgCal = recentDays.length ? Math.round(recentDays.reduce((a,d) => a+(d.calories||0),0)/recentDays.length) : null;
+    // Use date-filtered 14-day window from shared dataset (Improvement 2)
+    const recentDays = windows.nut14d;
+    const avgP   = stats.d14.protein;
+    const avgCal = stats.d14.cal;
 
     systemAddition = `
 You are coaching Hanna in real-time throughout the day. Keep it conversational — like a coach texting her.
@@ -579,11 +800,11 @@ SHORT and direct. Coach texting style.`;
 
     const systemData = `
 TODAY'S DATA (${currentTime}):
-Protein: ${todayProtein}g / ${proteinGoal}g goal
-Calories: ${todayCal} / ${calGoal} kcal goal
+Protein: ${todayProtein}g / ${proteinGoal ? proteinGoal+'g' : '?g'} goal${proteinGap !== null && proteinGap > 0 ? ` — NEED ${proteinGap}g more` : proteinGoal && todayProtein >= proteinGoal ? ' ✓ HIT' : ''}
+Calories: ${todayCal} / ${calGoal ? calGoal+' kcal' : '?'} goal${calGap !== null && calGap > 0 ? ` — NEED ${calGap} kcal more` : calGoal && todayCal >= calGoal ? ' ✓ HIT' : ''}
 Water: ${todayWater}oz / ${waterGoal}oz goal
 ${woBlock}
-
+${woNutritionBlock ? '\nWORKOUT NUTRITION WINDOWS:\n' + woNutritionBlock : ''}
 MEALS LOGGED:
 ${mealLines.length ? mealLines.join('\n') : 'No food logged yet'}
 
@@ -593,7 +814,7 @@ ${hemTimeline}
 FLAGS: ${[body.flags?.trainingDay?'Training day ✓':null, body.flags?.recoveryDay?'Recovery day ✓':null, body.flags?.injectionDay?'Injection day ✓':null].filter(Boolean).join(', ')||'None set'}
 TIRZEPATIDE: ${tirzepatide.dose||'unknown'}mg | Days since injection: ${tirzepatide.daysPostInjection !== null ? tirzepatide.daysPostInjection : 'unknown'}
 
-RECENT AVERAGES (${recentDays.length} logged days): Protein ${avgP||'no data'}g/day | Calories ${avgCal||'no data'}/day
+RECENT AVERAGES (last 14 calendar days, ${recentDays.length} logged): Protein ${avgP||'no data'}g/day | Calories ${avgCal||'no data'}/day
 
 EVOLT TREND:
 ${evoltLines || 'No scans uploaded yet'}`;
@@ -644,13 +865,13 @@ ${body.question || 'Update my coaching based on current data.'}`;
     ].filter(Boolean).join(', ') || 'No flags set';
 
     const askTodayCtx = `TODAY (${currentTime}):
-Protein: ${todayProtein}g / ${goals.protein||150}g | Calories: ${todayCal} / ${goals.cal||1800} | Water: ${todayWater}oz
+Protein: ${todayProtein}g / ${targets.protein ? targets.protein+'g' : '?g'} target | Calories: ${todayCal} / ${targets.cal || '?'} | Water: ${todayWater}oz
 Flags: ${flagBlock}
 ${woBlock2}
 Food logged:
 ${mealLines2}`;
 
-    const askNutLabel = `Recent nutrition (${Math.min(fuelstrong.filter(d=>(d.protein||0)>0||(d.calories||0)>0).length, 14)} logged days)`;
+    const askNutLabel = `Recent nutrition (last 14 calendar days, ${windows.nut14d.length} logged)`;
     userMsg = `${askTodayCtx}\n\n${askNutLabel}:\n${nutritionLines}\n\nEvolt trend:\n${evoltLines}\n\nQuestion: ${question}`;
 
   } else if (mode === 'body') {
@@ -658,13 +879,14 @@ ${mealLines2}`;
     userMsg = `Analyze my body composition.\n\nEvolt Scans:\n${evoltLines}\nOverall delta: ${evoltDelta}${scanIntervalContext}\n\nNutrition (${Math.min(fuelstrong.filter(d=>(d.protein||0)>0||(d.calories||0)>0).length, 14)} logged days):\n${nutritionLines}`;
 
   } else if (mode === 'weekly') {
-    const recentWeek  = fuelstrong.slice(-7);
+    // Use actual 7-calendar-day window (Improvement 2) — not last 7 entries
+    const recentWeek  = windows.nut7d;
     const weekProtein = recentWeek.length
       ? recentWeek.map(d => `${d.date}: ${d.protein}g protein, ${d.calories||'?'}kcal${d.flags?.trainingDay?' 💪':''}${d.flags?.injectionDay?' 💉':''}`).join('\n')
-      : 'No logged days this week';
-    const avgWeekP   = recentWeek.length ? Math.round(recentWeek.reduce((a,d) => a+d.protein,0)/recentWeek.length) : null;
-    const avgWeekCal = recentWeek.length ? Math.round(recentWeek.reduce((a,d) => a+(d.calories||0),0)/recentWeek.length) : null;
-    const workoutDays = recentWeek.filter(d => d.flags?.trainingDay).length;
+      : 'No nutrition logged in the last 7 days';
+    const avgWeekP   = stats.d7.protein;
+    const avgWeekCal = stats.d7.cal;
+    const workoutDays = windows.wo7d.length;
 
     systemAddition = `
 You are giving Hanna her weekly performance review. Concise, direct, data-driven. No fluff.
@@ -694,7 +916,7 @@ BODY COMPOSITION:
 ${evoltLines || 'No scans'}
 Overall delta: ${evoltDelta}${scanIntervalContext}
 
-NUTRITION TREND (${fuelstrong.slice(-7).filter(d=>(d.protein||0)>0||(d.calories||0)>0).length} logged days this week):
+NUTRITION TREND (${recentWeek.length} logged days in last 7):
 ${nutritionLines}
 
 Generate my weekly review.`;
@@ -745,10 +967,13 @@ async function getMomentum(env) {
   const fuelstrong  = JSON.parse(fsRaw    || '[]');
   const evolt       = JSON.parse(evoltRaw || '[]');
   const goals       = profGoalsRaw ? JSON.parse(profGoalsRaw) : (goalsRaw ? JSON.parse(goalsRaw) : {});
-  const proteinGoal = goals.protein || 150;
 
-  // Only use days with actual logged data
-  const last14 = fuelstrong.slice(-14).filter(d => (d.calories||0) > 0 || (d.protein||0) > 0);
+  // Use buildCoachingDataset for consistent date-filtering and target computation
+  const ds = buildCoachingDataset(evolt, [], fuelstrong, goals);
+  const proteinGoal = ds.targets.protein;
+
+  // Last 14 actual calendar days with data logged
+  const last14 = ds.windows.nut14d;
 
   if (last14.length < 3) {
     return reply({
@@ -760,15 +985,17 @@ async function getMomentum(env) {
     });
   }
 
-  const avgProtein     = last14.reduce((a,d) => a+(d.protein||0), 0) / last14.length;
-  const avgCal         = last14.reduce((a,d) => a+(d.calories||0), 0) / last14.length;
+  const avgProtein     = last14.length ? last14.reduce((a,d) => a+(d.protein||0), 0) / last14.length : 0;
+  const avgCal         = last14.length ? last14.reduce((a,d) => a+(d.calories||0), 0) / last14.length : 0;
   const lowCalDays     = last14.filter(d => (d.calories||0) > 0 && (d.calories||0) < 1200).length;
-  const trainingDays   = last14.filter(d => d.flags?.trainingDay || (d.workouts||0) > 0).length;
-  const weeklyTraining = parseFloat((trainingDays / (last14.length / 7)).toFixed(1));
+  // Use 4-week actual training frequency from dataset (more accurate than flag-counting 14 days)
+  const weeklyTraining = ds.training.freq4w !== null ? ds.training.freq4w
+    : parseFloat((last14.filter(d => d.flags?.trainingDay || (d.workouts||0) > 0).length / Math.max(last14.length / 7, 1)).toFixed(1));
+  const trainingDays   = ds.windows.wo28d.length;
 
   // Last scan direction
-  const latestScan = evolt.length ? evolt[evolt.length-1] : null;
-  const prevScan   = evolt.length > 1 ? evolt[evolt.length-2] : null;
+  const latestScan = ds.scans.latest;
+  const prevScan   = ds.scans.prev;
   const muscleUp   = (latestScan && prevScan && latestScan.skeletalMuscleMass != null && prevScan.skeletalMuscleMass != null)
     ? latestScan.skeletalMuscleMass > prevScan.skeletalMuscleMass : null;
   const fatDown    = (latestScan && prevScan && latestScan.bodyFatPct != null && prevScan.bodyFatPct != null)
@@ -977,14 +1204,15 @@ async function generateInsights(env) {
   const hasData = evolt.length > 0 || fitbod.length > 0 || fuelstrong.length > 0;
   if (!hasData) return reply({ insights: [], generatedAt: new Date().toISOString(), insufficient_data: true, dataPoints: { evolt: 0, workouts: 0, nutrition: 0 } });
 
-  const scanLines      = evolt.slice(-5).map(s => `${s.date}: weight=${s.weight}lbs bodyFat=${s.bodyFatPct}% muscle=${s.skeletalMuscleMass}lbs BMR=${s.bmr}kcal`).join('\n');
-  const last4w         = fitbod.filter(s => (Date.now()-new Date(s.date+'T12:00:00'))/86400000 <= 28);
-  const woFreq         = (last4w.length / 4).toFixed(1);
-  const last14         = fuelstrong.slice(-14);
-  const avgProtein     = last14.length ? Math.round(last14.reduce((a,d) => a+(d.protein||0),0)/last14.length) : null;
-  const avgCal         = last14.length ? Math.round(last14.reduce((a,d) => a+(d.calories||0),0)/last14.length) : null;
-  const nutLines       = last14.map(d => `${d.date}: ${d.protein}g protein | ${d.calories}kcal${d.flags?.trainingDay?' 💪':''}${d.flags?.injectionDay?' 💉':''}`).join('\n');
-  const loggedNutDays  = last14.filter(d => (d.protein||0) > 0 || (d.calories||0) > 0).length;
+  const ds         = buildCoachingDataset(evolt, fitbod, fuelstrong, {});
+  const scanLines  = ds.scans.withData.slice(-5).map(s => `${s.date}: weight=${s.weight}lbs bodyFat=${s.bodyFatPct}% muscle=${s.skeletalMuscleMass}lbs BMR=${s.bmr}kcal`).join('\n');
+  const last4w     = ds.windows.wo28d;
+  const woFreq     = ds.training.freq4w?.toFixed(1) || (last4w.length / 4).toFixed(1);
+  const last14     = ds.windows.nut14d;
+  const avgProtein = ds.stats.d14.protein;
+  const avgCal     = ds.stats.d14.cal;
+  const nutLines   = last14.map(d => `${d.date}: ${d.protein}g protein | ${d.calories}kcal${d.flags?.trainingDay?' 💪':''}${d.flags?.injectionDay?' 💉':''}`).join('\n');
+  const loggedNutDays = last14.length;
 
   const prompt = `You are analyzing fitness data for Hanna: 50-year-old woman on tirzepatide, body recomposition goal (build visible muscle + lose fat). Return ONLY valid JSON with no other text.
 
@@ -1030,18 +1258,21 @@ async function getIntelligence(env) {
   const fuelstrong   = JSON.parse(fsRaw    || '[]');
   const evolt        = JSON.parse(evoltRaw || '[]');
   const goals        = profGoalsRaw ? JSON.parse(profGoalsRaw) : (goalsRaw ? JSON.parse(goalsRaw) : {});
-  const proteinGoal  = goals.protein || 150;
-  const last14       = fuelstrong.slice(-14);
-  const proteinAdherence = last14.length ? Math.round(last14.filter(d => (d.protein||0) >= proteinGoal).length / last14.length * 100) : null;
-  const last28       = fuelstrong.filter(d => (Date.now() - new Date(d.date+'T12:00:00')) / 86400000 <= 28);
-  const trainingDays = last28.filter(d => d.flags?.trainingDay || (d.workouts||0) > 0).length;
-  const trainingFrequency = last28.length >= 7 ? parseFloat((trainingDays / (last28.length/7)).toFixed(1)) : null;
-  const latestScan   = evolt.length ? evolt[evolt.length-1] : null;
-  const prevScan     = evolt.length > 1 ? evolt[evolt.length-2] : null;
+
+  // Use buildCoachingDataset for consistent date-range filtering and computed targets
+  const ds = buildCoachingDataset(evolt, [], fuelstrong, goals);
+  const proteinGoal  = ds.targets.protein;
+  const last14       = ds.windows.nut14d;
+  const proteinAdherence = last14.length && proteinGoal
+    ? Math.round(last14.filter(d => (d.protein||0) >= proteinGoal).length / last14.length * 100)
+    : null;
+  const trainingFrequency = ds.training.freq4w;
+  const latestScan   = ds.scans.latest;
+  const prevScan     = ds.scans.prev;
   const muscleTrend  = (latestScan?.skeletalMuscleMass != null && prevScan?.skeletalMuscleMass != null) ? parseFloat((latestScan.skeletalMuscleMass - prevScan.skeletalMuscleMass).toFixed(2)) : null;
   const fatTrend     = (latestScan?.bodyFatPct != null && prevScan?.bodyFatPct != null)                 ? parseFloat((latestScan.bodyFatPct - prevScan.bodyFatPct).toFixed(2))                 : null;
 
-  return reply({ proteinAdherence, trainingFrequency, muscleTrend, fatTrend, basedOn: { nutritionDays: last14.length, evoltScans: evolt.length, latestScan: latestScan?.date || null, prevScan: prevScan?.date || null } });
+  return reply({ proteinAdherence, trainingFrequency, muscleTrend, fatTrend, proteinTarget: proteinGoal, targetSource: ds.targets.source.proteinBasis, basedOn: { nutritionDays: last14.length, evoltScans: evolt.length, latestScan: latestScan?.date || null, prevScan: prevScan?.date || null } });
 }
 
 // ─── Daily day GET ────────────────────────────────────────────────────────────
