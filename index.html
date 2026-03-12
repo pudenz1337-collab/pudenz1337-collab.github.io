@@ -931,20 +931,25 @@ body{
 
     <div class="card">
       <div class="card-title">🎯 Daily Goals</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Leave blank to use Evolt scan–derived targets automatically.</div>
       <div class="setting-row">
         <div class="setting-label">Protein (g)</div>
-        <input class="setting-input" id="s-protein" type="number" placeholder="150">
+        <input class="setting-input" id="s-protein" type="number" placeholder="auto (Evolt)">
       </div>
       <div class="setting-row">
         <div class="setting-label">Calories</div>
-        <input class="setting-input" id="s-calories" type="number" placeholder="1800">
+        <input class="setting-input" id="s-calories" type="number" placeholder="auto (Evolt)">
       </div>
       <div class="setting-row">
         <div class="setting-label">Water (oz)</div>
         <input class="setting-input" id="s-water" type="number" placeholder="80">
       </div>
-      <button class="btn btn-p btn-sm" onclick="saveGoals()">Save Goals</button>
-      <span id="goals-saved" style="font-size:12px;color:var(--accent);display:none;margin-left:8px">✓ Saved</span>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px">
+        <button class="btn btn-p btn-sm" onclick="saveGoals()">Save Goals</button>
+        <button class="btn btn-sm" style="background:transparent;border:1px solid var(--border);color:var(--muted);font-size:12px" onclick="clearGoals()">Use Evolt Auto</button>
+        <span id="goals-saved" style="font-size:12px;color:var(--accent);display:none">✓ Saved</span>
+        <span id="goals-cleared" style="font-size:12px;color:var(--muted);display:none">↩ Cleared — using scan data</span>
+      </div>
     </div>
 
     <div class="card">
@@ -3150,23 +3155,39 @@ function undoClose() {
 // SETTINGS
 // ══════════════════════════════════════════════════
 function setGoalInputs() {
-  document.getElementById('s-protein').value  = goals.protein || 150;
-  document.getElementById('s-calories').value = goals.cal     || 1800;
-  document.getElementById('s-water').value    = goals.water   || 80;
+  document.getElementById('s-protein').value  = goals.protein || '';
+  document.getElementById('s-calories').value = goals.cal     || '';
+  document.getElementById('s-water').value    = goals.water   || '';
 }
 
 function saveGoals() {
-  goals = {
-    protein: parseFloat(document.getElementById('s-protein').value)  || 150,
-    cal:     parseFloat(document.getElementById('s-calories').value) || 1800,
-    water:   parseFloat(document.getElementById('s-water').value)    || 80,
-  };
+  const p = parseFloat(document.getElementById('s-protein').value);
+  const c = parseFloat(document.getElementById('s-calories').value);
+  const w = parseFloat(document.getElementById('s-water').value);
+  goals = {};
+  if (p > 0) goals.protein = p;
+  if (c > 0) goals.cal     = c;
+  if (w > 0) goals.water   = w;
   localStorage.setItem('fs3-goals', JSON.stringify(goals));
-  document.getElementById('goals-saved').style.display = 'inline';
-  setTimeout(() => document.getElementById('goals-saved').style.display = 'none', 2000);
+  const el = document.getElementById('goals-saved');
+  el.style.display = 'inline';
+  setTimeout(() => el.style.display = 'none', 2000);
   renderRings(); renderWater(); renderInsights();
   pushProfile();
   toast('✓ Goals saved');
+}
+
+function clearGoals() {
+  goals = {};
+  localStorage.setItem('fs3-goals', JSON.stringify(goals));
+  document.getElementById('s-protein').value  = '';
+  document.getElementById('s-calories').value = '';
+  document.getElementById('s-water').value    = '';
+  const el = document.getElementById('goals-cleared');
+  el.style.display = 'inline';
+  setTimeout(() => el.style.display = 'none', 3000);
+  renderRings(); renderWater(); renderInsights();
+  pushProfile();
 }
 
 function setTirzInputs() {
