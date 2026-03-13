@@ -853,14 +853,21 @@ async function saveToWorker(type, newEntries) {
   if (!WORKER_URL || !FS_API_KEY) return;
   try {
     if (type === 'evolt') {
-      // newEntries is array of parsed scan objects (from regex or AI fallback)
+      let saved = 0, dupes = 0;
       for (const entry of newEntries) {
-        await wFetch('/api/scan/import', {
-          method: 'POST',
-          body:   JSON.stringify(entry),   // send v1 field names directly
-        });
+        try {
+          await wFetch('/api/scan/import', {
+            method: 'POST',
+            body:   JSON.stringify(entry),
+          });
+          saved++;
+        } catch (e) {
+          // 409 = already in D1 — skip silently
+          if (e.message && e.message.includes('409')) { dupes++; }
+          else throw e;
+        }
       }
-      return { saved: newEntries.length };
+      return { saved, dupes };
     }
     if (type === 'fitbod') {
       // Bulk import — newEntries is array of sessions from parseFitbodCSV
@@ -1087,9 +1094,13 @@ async function handleFiles(files, type) {
       plog(`📋 Parsing ${file.name}…`, 'linfo');
       const result = await parseEvoltPDF(file);
       if (result) {
-        await saveToWorker('evolt', [result]);
-        data.evolt.push(result);
-        plog(`✓ ${result.date} — ${result.weight}lbs, ${result.bodyFatPct}% BF`, 'linfo');
+        const saved = await saveToWorker('evolt', [result]);
+        if (saved && saved.dupes) {
+          plog(`⏭ ${result.date} already in D1 — skipped (${file.name})`, 'lwarn');
+        } else {
+          data.evolt.push(result);
+          plog(`✓ ${result.date} — ${result.weight}lbs, ${result.bodyFatPct}% BF`, 'linfo');
+        }
       } else {
         plog(`⚠ Could not parse ${file.name}`, 'lwarn');
       }
