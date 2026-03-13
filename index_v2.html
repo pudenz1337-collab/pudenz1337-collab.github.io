@@ -2826,29 +2826,37 @@ function renderLibrary() {
 }
 
 function togglePin(foodId) {
-  const food = library.foods.find(f => f.id === foodId);
+  const food = getAllFoods().find(f => f.id === foodId);
   if (!food) return;
-  const pinCount = library.foods.filter(f => f.pinned).length;
+  const pinCount = getAllFoods().filter(f => f.pinned).length;
   if (!food.pinned && pinCount >= MAX_PINNED) { toast(`Max ${MAX_PINNED} pinned`); return; }
   food.pinned = !food.pinned;
-  localStorage.setItem('fs3-lib-v2', JSON.stringify(library));
-  pushProfile();
+  // Update in v2SmartFoods cache
+  for (const bucket of [v2SmartFoods.pinned, v2SmartFoods.today, v2SmartFoods.recent]) {
+    const f = bucket.find(f => f.id === foodId);
+    if (f) f.pinned = food.pinned;
+  }
+  wFetch('/api/foods/pin', { method: 'POST', body: JSON.stringify({ name: foodId, pinned: food.pinned }) })
+    .catch(e => toast('Pin sync failed: ' + e.message, true));
   renderLibrary();
   toast(food.pinned ? '📌 Pinned' : 'Unpinned');
 }
 
 function deleteFood(id) {
   if (!confirm('Delete this food?')) return;
-  library.foods = library.foods.filter(f => f.id !== id);
-  localStorage.setItem('fs3-lib-v2', JSON.stringify(library));
-  pushProfile();
+  // Remove from v2SmartFoods cache
+  v2SmartFoods.pinned = v2SmartFoods.pinned.filter(f => f.id !== id);
+  v2SmartFoods.today  = v2SmartFoods.today.filter(f => f.id !== id);
+  v2SmartFoods.recent = v2SmartFoods.recent.filter(f => f.id !== id);
+  wFetch('/api/foods', { method: 'DELETE', body: JSON.stringify({ name: id }) })
+    .catch(e => toast('Delete sync failed: ' + e.message, true));
   renderLibrary();
   toast('Deleted');
 }
 
 function openEditFood(id) {
-  const food = library.foods.find(f => f.id === id);
-  if (!food) return;
+  const food = getAllFoods().find(f => f.id === id);
+  if (!food) { console.warn('[openEditFood] not found:', id); return; }
   _editFoodId = id;
   document.getElementById('ef-name').value    = food.name    || '';
   document.getElementById('ef-cal').value     = food.calories || 0;
@@ -2867,19 +2875,24 @@ function closeEditFood() {
 
 function saveEditFood() {
   if (!_editFoodId) return;
-  const food = library.foods.find(f => f.id === _editFoodId);
-  if (!food) return;
-  food.name     = document.getElementById('ef-name').value.trim()   || food.name;
-  food.calories = parseFloat(document.getElementById('ef-cal').value)   || 0;
-  food.protein  = parseFloat(document.getElementById('ef-prot').value)  || 0;
-  food.carbs    = parseFloat(document.getElementById('ef-carb').value)  || 0;
-  food.fat      = parseFloat(document.getElementById('ef-fat').value)   || 0;
-  food.fiber    = parseFloat(document.getElementById('ef-fiber').value) || 0;
-  food.serving  = document.getElementById('ef-serving').value || '';
-  localStorage.setItem('fs3-lib-v2', JSON.stringify(library));
+  const updates = {
+    name:     _editFoodId,   // name is the key — cannot be changed
+    calories: parseFloat(document.getElementById('ef-cal').value)   || 0,
+    protein:  parseFloat(document.getElementById('ef-prot').value)  || 0,
+    carbs:    parseFloat(document.getElementById('ef-carb').value)  || 0,
+    fat:      parseFloat(document.getElementById('ef-fat').value)   || 0,
+    fiber:    parseFloat(document.getElementById('ef-fiber').value) || 0,
+    serving:  document.getElementById('ef-serving').value.trim() || '',
+  };
+  // Update v2SmartFoods cache in all buckets
+  for (const bucket of [v2SmartFoods.pinned, v2SmartFoods.today, v2SmartFoods.recent]) {
+    const f = bucket.find(f => f.id === _editFoodId);
+    if (f) Object.assign(f, updates);
+  }
+  wFetch('/api/foods', { method: 'PUT', body: JSON.stringify(updates) })
+    .catch(e => toast('Sync failed: ' + e.message, true));
   closeEditFood();
   renderLibrary();
-  pushProfile();
   toast('✅ Updated!');
 }
 
