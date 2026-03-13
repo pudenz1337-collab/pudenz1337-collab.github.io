@@ -936,20 +936,24 @@ body{
 
     <div class="card">
       <div class="card-title">🎯 Daily Goals</div>
+      <div id="evolt-goals-banner" style="display:none;font-size:11px;color:var(--muted);margin-bottom:10px;font-style:italic"></div>
       <div class="setting-row">
         <div class="setting-label">Protein (g)</div>
-        <input class="setting-input" id="s-protein" type="number" placeholder="150">
+        <input class="setting-input" id="s-protein" type="number" placeholder="auto (Evolt)">
       </div>
       <div class="setting-row">
         <div class="setting-label">Calories</div>
-        <input class="setting-input" id="s-calories" type="number" placeholder="1800">
+        <input class="setting-input" id="s-calories" type="number" placeholder="auto (Evolt)">
       </div>
       <div class="setting-row">
         <div class="setting-label">Water (oz)</div>
         <input class="setting-input" id="s-water" type="number" placeholder="80">
       </div>
-      <button class="btn btn-p btn-sm" onclick="saveGoals()">Save Goals</button>
-      <span id="goals-saved" style="font-size:12px;color:var(--accent);display:none;margin-left:8px">✓ Saved</span>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px">
+        <button class="btn btn-p btn-sm" onclick="saveGoals()">Save Goals</button>
+        <button class="btn btn-g btn-sm" id="evolt-auto-btn" style="display:none" onclick="useEvoltAutoGoals()">Use Evolt Auto</button>
+        <span id="goals-saved" style="font-size:12px;color:var(--accent);display:none;margin-left:4px">✓ Saved</span>
+      </div>
     </div>
 
     <div class="card">
@@ -1207,7 +1211,8 @@ let goals   = JSON.parse(localStorage.getItem('fs3-goals-v2') || '{}');
 let tirz    = JSON.parse(localStorage.getItem('fs3-tirz-v2')  || '{}');
 let library = JSON.parse(localStorage.getItem('fs3-lib-v2')   || '{"foods":[]}');
 // Smart foods from v2 server (pinned / today / recent)
-let v2SmartFoods = { pinned: [], today: [], recent: [] };
+let v2SmartFoods   = { pinned: [], today: [], recent: [] };
+let evoltScanGoals = null;   // scan-derived targets from latest Evolt
 
 // Current viewing date (ISO string)
 let viewDate = todayISO();
@@ -1589,8 +1594,28 @@ async function loadRemoteProfile() {
   try {
     const p = await wFetch('/api/profile');
     // v2 profile: { tirzepatide:[], goals, latestScan, recentScans }
+
+    // Check for scan-derived targets from latest Evolt
+    const scan = p.latestScan;
+    if (scan && scan.rec_protein_high_g && scan.rec_cal_high) {
+      evoltScanGoals = {
+        protein: scan.rec_protein_high_g,
+        cal:     scan.rec_cal_high,
+        calLow:  scan.rec_cal_low,
+        water:   80,
+        scanDate: scan.scan_date,
+      };
+      // Show banner and button
+      const banner = document.getElementById('evolt-goals-banner');
+      const btn    = document.getElementById('evolt-auto-btn');
+      if (banner) {
+        banner.style.display = 'block';
+        banner.textContent   = `Evolt scan (${scan.scan_date}) recommends ${scan.rec_protein_high_g}g protein · ${scan.rec_cal_low}–${scan.rec_cal_high} kcal`;
+      }
+      if (btn) btn.style.display = 'inline-block';
+    }
+
     if (p.goals) {
-      // Map v2 goals field names to local format
       goals = {
         protein:  p.goals.protein_g     || goals.protein  || 150,
         cal:      p.goals.calories_high || goals.cal      || 1800,
@@ -1611,6 +1636,17 @@ async function loadRemoteProfile() {
       setTirzInputs();
     }
   } catch (e) { /* offline */ }
+}
+
+function useEvoltAutoGoals() {
+  if (!evoltScanGoals) return;
+  goals = { ...evoltScanGoals };
+  localStorage.setItem('fs3-goals-v2', JSON.stringify(goals));
+  setGoalInputs();
+  pushProfile();
+  toast(`✓ Goals set from Evolt scan (${evoltScanGoals.scanDate})`);
+  document.getElementById('goals-saved').style.display = 'inline';
+  setTimeout(() => document.getElementById('goals-saved').style.display = 'none', 2500);
 }
 
 function pushProfile() {
