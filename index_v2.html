@@ -2808,18 +2808,33 @@ function renderLibrary() {
     return;
   }
 
+  // Wire up delegated click handler once
+  if (!el._libDelegated) {
+    el._libDelegated = true;
+    el.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const id = decodeURIComponent(btn.dataset.id);
+      const action = btn.dataset.action;
+      if (action === 'edit')   openEditFood(id);
+      if (action === 'delete') deleteFood(id);
+      if (action === 'pin')    togglePin(id);
+    });
+  }
+
   el.innerHTML = all.map(f => {
     const srcLabel = f.source === 'barcode' ? 'barcode' : f.source === 'openfoodfacts' ? 'OFF' : f.source || 'manual';
+    const eid = encodeURIComponent(f.id);
     return `<div class="lib-item">
-      <span class="lib-pin" onclick="togglePin('${f.id}')" title="${f.pinned ? 'Unpin' : 'Pin'}">${f.pinned ? '📌' : '🔲'}</span>
+      <span class="lib-pin" data-action="pin" data-id="${eid}" title="${f.pinned ? 'Unpin' : 'Pin'}">${f.pinned ? '📌' : '🔲'}</span>
       <div class="lib-info">
         <div class="lib-name">${f.name}<span class="src-badge">${srcLabel}</span></div>
         <div class="lib-meta">${f.calories} kcal · ${f.protein}g P · ${f.carbs || 0}g C · ${f.fat || 0}g F${f.fiber ? ' · ' + f.fiber + 'g F' : ''}</div>
         <div class="lib-use">${f.useCount ? 'Used ' + f.useCount + '×' + (f.lastUsed ? ' · last ' + fmtTime(f.lastUsed) : '') : 'Never used'}</div>
       </div>
       <div class="lib-actions">
-        <button class="lib-btn" onclick="openEditFood('${f.id}')" title="Edit">✏️</button>
-        <button class="lib-btn" onclick="deleteFood('${f.id}')" title="Delete">🗑</button>
+        <button class="lib-btn" data-action="edit" data-id="${eid}" title="Edit">✏️</button>
+        <button class="lib-btn" data-action="delete" data-id="${eid}" title="Delete">🗑</button>
       </div>
     </div>`;
   }).join('');
