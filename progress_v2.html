@@ -855,17 +855,12 @@ async function saveToWorker(type, newEntries) {
     if (type === 'evolt') {
       let saved = 0, dupes = 0;
       for (const entry of newEntries) {
-        try {
-          await wFetch('/api/scan/import', {
-            method: 'POST',
-            body:   JSON.stringify(entry),
-          });
-          saved++;
-        } catch (e) {
-          // 409 = already in D1 — skip silently
-          if (e.message && e.message.includes('409')) { dupes++; }
-          else throw e;
-        }
+        const res = await wFetch('/api/scan/import', {
+          method: 'POST',
+          body:   JSON.stringify(entry),
+        });
+        if (res.duplicate) dupes++;
+        else saved++;
       }
       return { saved, dupes };
     }
