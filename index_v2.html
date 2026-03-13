@@ -2411,6 +2411,18 @@ function getAllFoods() {
   });
 }
 
+// Delegated click handler for all Quick Add food items — set up once
+(function initQADelegate() {
+  const overlay = document.getElementById('qa-overlay');
+  if (!overlay) return;
+  overlay.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action="add"]');
+    if (!btn) return;
+    const foodId = decodeURIComponent(btn.dataset.id);
+    quickAdd(foodId);
+  });
+})();
+
 function renderPinnedTab() {
   const pinned = v2SmartFoods.pinned;
   const el = document.getElementById('qa-pinned');
@@ -2446,24 +2458,27 @@ function foodItemHTML(food, showCount = false) {
   const badges = [];
   if (food.pinned)   badges.push('<span class="qa-badge pinned">Pinned</span>');
   if (showCount && food.useCount > 1) badges.push(`<span class="qa-badge frequent">${food.useCount}×</span>`);
+  const eid = encodeURIComponent(food.id);
 
-  return `<div class="qa-item">
+  return `<div class="qa-item" data-food-id="${eid}">
     <div class="qa-item-info">
       <div class="qa-item-name">${food.name}${food.brand ? ' <span style="color:var(--muted);font-weight:400;font-size:11px">· ' + food.brand + '</span>' : ''}</div>
       <div class="qa-item-meta">${food.calories} kcal · ${food.protein}g P${food.serving ? ' · ' + food.serving : ''}</div>
       ${badges.length ? '<div class="qa-item-badges">' + badges.join('') + '</div>' : ''}
     </div>
     <div class="qty-row">
-      <input class="qty-input" id="qty-${food.id}" type="number" value="1" min="0.5" step="0.5">
-      <button class="qa-add-btn" onclick="quickAdd('${food.id}')">Add</button>
+      <input class="qty-input" data-qty-for="${eid}" type="number" value="1" min="0.5" step="0.5">
+      <button class="qa-add-btn" data-action="add" data-id="${eid}">Add</button>
     </div>
   </div>`;
 }
 
 function quickAdd(foodId) {
   const food = getAllFoods().find(f => f.id === foodId);
-  if (!food) return;
-  const qty = parseFloat(document.getElementById('qty-' + foodId)?.value) || 1;
+  if (!food) { console.warn('[quickAdd] food not found:', foodId); return; }
+  const eid = encodeURIComponent(foodId);
+  const qtyEl = document.querySelector(`[data-qty-for="${eid}"]`);
+  const qty = parseFloat(qtyEl?.value) || 1;
   addFoodToLog(food, qty);
 }
 
