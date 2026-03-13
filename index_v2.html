@@ -1597,20 +1597,27 @@ async function loadRemoteProfile() {
 
     // Check for scan-derived targets from latest Evolt
     const scan = p.latestScan;
-    if (scan && scan.rec_protein_high_g && scan.rec_cal_high) {
-      evoltScanGoals = {
-        protein: scan.rec_protein_high_g,
-        cal:     scan.rec_cal_high,
-        calLow:  scan.rec_cal_low,
-        water:   80,
-        scanDate: scan.scan_date,
-      };
-      // Show banner and button
+    if (scan && scan.weight_lbs) {
+      // Prefer scan rec_ fields; fall back to body-weight + TEE estimates
+      const protein = scan.rec_protein_high_g
+        ? scan.rec_protein_high_g
+        : Math.round(scan.weight_lbs * 0.85);          // ~0.85g/lb for recomp
+      const calHigh = scan.rec_cal_high
+        ? scan.rec_cal_high
+        : (scan.tee ? Math.round(scan.tee - 200) : null);
+      const calLow  = scan.rec_cal_low
+        ? scan.rec_cal_low
+        : (scan.tee ? Math.round(scan.tee - 400) : null);
+
+      evoltScanGoals = { protein, cal: calHigh, calLow, water: 80, scanDate: scan.scan_date };
+
       const banner = document.getElementById('evolt-goals-banner');
       const btn    = document.getElementById('evolt-auto-btn');
       if (banner) {
+        const src = scan.rec_protein_high_g ? 'Evolt recommendation' : 'estimated from scan';
+        const calStr = calHigh ? ` · ${calLow}–${calHigh} kcal` : '';
         banner.style.display = 'block';
-        banner.textContent   = `Evolt scan (${scan.scan_date}) recommends ${scan.rec_protein_high_g}g protein · ${scan.rec_cal_low}–${scan.rec_cal_high} kcal`;
+        banner.textContent   = `Latest scan (${scan.scan_date}): ${src} — ${protein}g protein${calStr}`;
       }
       if (btn) btn.style.display = 'inline-block';
     }
@@ -1642,8 +1649,12 @@ function useEvoltAutoGoals() {
   if (!evoltScanGoals) return;
   goals = { ...evoltScanGoals };
   localStorage.setItem('fs3-goals-v2', JSON.stringify(goals));
-  setGoalInputs();
+  // Clear inputs so the values render as placeholder text showing scan-derived targets
+  document.getElementById('s-protein').value  = '';
+  document.getElementById('s-calories').value = '';
+  document.getElementById('s-water').value    = 80;
   pushProfile();
+  renderRings(); renderWater(); renderInsights();
   toast(`✓ Goals set from Evolt scan (${evoltScanGoals.scanDate})`);
   document.getElementById('goals-saved').style.display = 'inline';
   setTimeout(() => document.getElementById('goals-saved').style.display = 'none', 2500);
@@ -3387,16 +3398,22 @@ function undoClose() {
 // SETTINGS
 // ══════════════════════════════════════════════════
 function setGoalInputs() {
-  document.getElementById('s-protein').value  = goals.protein || 150;
-  document.getElementById('s-calories').value = goals.cal     || 1800;
+  // Only populate fields if a value is explicitly set; blank = "using Evolt auto"
+  document.getElementById('s-protein').value  = goals.protein || '';
+  document.getElementById('s-calories').value = goals.cal     || '';
   document.getElementById('s-water').value    = goals.water   || 80;
 }
 
 function saveGoals() {
+  // Parse each field — if blank, use evolt-derived value or null (not hardcoded defaults)
+  const rawP = document.getElementById('s-protein').value.trim();
+  const rawC = document.getElementById('s-calories').value.trim();
+  const rawW = document.getElementById('s-water').value.trim();
   goals = {
-    protein: parseFloat(document.getElementById('s-protein').value)  || 150,
-    cal:     parseFloat(document.getElementById('s-calories').value) || 1800,
-    water:   parseFloat(document.getElementById('s-water').value)    || 80,
+    protein: rawP ? parseFloat(rawP) : (evoltScanGoals?.protein || 150),
+    cal:     rawC ? parseFloat(rawC) : (evoltScanGoals?.cal     || null),
+    calLow:  evoltScanGoals?.calLow  || null,
+    water:   rawW ? parseFloat(rawW) : 80,
   };
   localStorage.setItem('fs3-goals-v2', JSON.stringify(goals));
   document.getElementById('goals-saved').style.display = 'inline';
