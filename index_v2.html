@@ -2557,9 +2557,6 @@ function addOFFFood(food, qtyId) {
   // Ask if they want to save to library
   const save = confirm(`Save "${food.name}" to your Food Library?\n\nOK = Save & Add\nCancel = Just add once`);
   if (save) {
-    const libFood = { ...food, id: 'c_' + Date.now(), addedAt: new Date().toISOString(), useCount: 0 };
-    library.foods.push(libFood);
-    localStorage.setItem('fs3-lib-v2', JSON.stringify(library));
     if (WORKER_URL && FS_API_KEY) {
       wFetch('/api/foods', { method: 'POST', body: JSON.stringify({
         name:     food.name,
@@ -2569,9 +2566,10 @@ function addOFFFood(food, qtyId) {
         fat:      food.fat    || 0,
         fiber:    food.fiber  || 0,
         serving:  food.serving || null,
-      })}).catch(() => {});
+      })}).then(() => loadSmartFoods()).catch(() => {});
     }
-    addFoodToLog(libFood, qty);
+    addFoodToLog(food, qty);
+    toast(`✓ "${food.name}" saved to library`);
   } else {
     addFoodToLog(food, qty);
   }
@@ -2699,10 +2697,18 @@ function addScanned() {
 
 function saveScannedToLib() {
   if (!_scannedFood) return;
-  const food = { ..._scannedFood, id: 'c_' + Date.now(), pinned: false, useCount: 0, addedAt: new Date().toISOString() };
-  library.foods.push(food);
-  localStorage.setItem('fs3-lib-v2', JSON.stringify(library));
-  pushProfile();
+  const food = _scannedFood;
+  if (WORKER_URL && FS_API_KEY) {
+    wFetch('/api/foods', { method: 'POST', body: JSON.stringify({
+      name:     food.name,
+      calories: food.calories,
+      protein:  food.protein  || 0,
+      carbs:    food.carbs    || 0,
+      fat:      food.fat      || 0,
+      fiber:    food.fiber    || 0,
+      serving:  food.serving  || null,
+    })}).then(() => loadSmartFoods()).catch(() => {});
+  }
   addScanned();
   toast('📚 Saved to library!');
 }
@@ -2803,14 +2809,22 @@ function saveCustomFood() {
     useCount: 0,
     addedAt:  new Date().toISOString(),
   };
-  library.foods.push(food);
-  localStorage.setItem('fs3-lib-v2', JSON.stringify(library));
+  if (WORKER_URL && FS_API_KEY) {
+    wFetch('/api/foods', { method: 'POST', body: JSON.stringify({
+      name:    food.name,
+      calories: food.calories,
+      protein:  food.protein,
+      carbs:    food.carbs,
+      fat:      food.fat,
+      fiber:    food.fiber,
+      serving:  food.serving,
+      source:   'manual',
+    })}).then(() => loadSmartFoods()).catch(() => {});
+  }
   ['lib-name','lib-cal','lib-prot','lib-carb','lib-fat','lib-fiber','lib-serving']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   clearEstimate();
-  renderLibrary();
   toast(`✓ ${food.name} added to library!`);
-  pushProfile();
 }
 
 function renderLibrary() {
@@ -3307,7 +3321,7 @@ async function confirmCloseDay() {
     date:     displayDate,
     isoDate:  selectedDate,
     protein:  Math.round(t.protein),
-    cal:      t.calories,
+    cal:      Math.round(t.calories),
     water:    t.water,
     fiber:    t.fiber,
     flags:    dayData.flags,
@@ -3366,7 +3380,7 @@ function autoFinalizeDay(dateStr, data) {
   if (!alreadyIn) {
     const t = {
       protein:  Math.round((data.foodLog||[]).reduce((a,f) => a+(f.protein||0), 0)),
-      calories: Math.round((data.foodLog||[]).reduce((a,f) => a+(f.calories||0), 0)),
+      cal:      Math.round((data.foodLog||[]).reduce((a,f) => a+(f.calories||0), 0)),
       water:    Math.round((data.waterLog||[]).reduce((a,w) => a+(w.oz||0), 0)),
       fiber:    Math.round((data.foodLog||[]).reduce((a,f) => a+(f.fiber||0), 0)),
     };
@@ -3413,7 +3427,7 @@ function renderHistory() {
       </div>
       <div class="hist-row">
         <div class="hist-stat">P: <strong>${e.protein}g</strong></div>
-        <div class="hist-stat">Cal: <strong>${e.cal}</strong></div>
+        <div class="hist-stat">Cal: <strong>${e.cal ?? e.calories ?? '—'}</strong></div>
         <div class="hist-stat">Water: <strong>${e.water}oz</strong></div>
         ${e.fiber ? `<div class="hist-stat">Fiber: <strong>${e.fiber}g</strong></div>` : ''}
         ${e.flags?.trainingDay ? '<div class="hist-stat">💪</div>' : ''}
