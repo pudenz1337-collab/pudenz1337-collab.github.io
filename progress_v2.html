@@ -758,8 +758,8 @@ async function loadFromWorker() {
   sync.textContent   = 'Syncing…';
   try {
     const [scansRes, workoutsRes, profile] = await Promise.all([
-      wFetch('/api/scans'),
-      wFetch('/api/workouts/full'),
+      wFetch('/api/scans').catch(() => ({ scans: [] })),
+      wFetch('/api/workouts/full').catch(() => ({ sessions: [] })),
       wFetch('/api/profile').catch(() => ({})),
     ]);
 
@@ -853,11 +853,11 @@ async function saveToWorker(type, newEntries) {
   if (!WORKER_URL || !FS_API_KEY) return;
   try {
     if (type === 'evolt') {
-      // newEntries is always array of 1 for individual PDF uploads
+      // newEntries is array of parsed scan objects (from regex or AI fallback)
       for (const entry of newEntries) {
-        await wFetch('/api/scan', {
+        await wFetch('/api/scan/import', {
           method: 'POST',
-          body:   JSON.stringify(mapEvoltToD1Scan(entry)),
+          body:   JSON.stringify(entry),   // send v1 field names directly
         });
       }
       return { saved: newEntries.length };
