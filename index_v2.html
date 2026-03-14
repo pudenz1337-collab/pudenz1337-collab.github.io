@@ -1618,6 +1618,8 @@ async function loadRemoteProfile() {
         : (scan.tee ? Math.round(scan.tee - 400) : null);
 
       evoltScanGoals = { protein, cal: calHigh, calLow, water: 80, scanDate: scan.scan_date };
+      // Re-render rings immediately — calLow is now known
+      renderRings(); renderWater(); renderInsights();
 
       const banner = document.getElementById('evolt-goals-banner');
       const btn    = document.getElementById('evolt-auto-btn');
@@ -3510,6 +3512,8 @@ function setGoalInputs() {
   document.getElementById('s-protein').value  = goals.protein || '';
   document.getElementById('s-calories').value = goals.cal     || '';
   document.getElementById('s-water').value    = goals.water   || 80;
+  // Re-render rings and insights now that targets may have changed
+  renderRings(); renderWater(); renderInsights();
 }
 
 function saveGoals() {
