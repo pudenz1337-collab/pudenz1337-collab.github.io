@@ -1034,44 +1034,44 @@ body{
       <button class="sheet-close" onclick="closeQuickAdd()">✕</button>
     </div>
     <div class="sheet-tabs">
-      <button class="sheet-tab active" id="tab-pinned" onclick="switchTab('pinned')">📌 Pinned</button>
-      <button class="sheet-tab" id="tab-frequent" onclick="switchTab('frequent')">⚡ Frequent</button>
-      <button class="sheet-tab" id="tab-search" onclick="switchTab('search')">🔍 Search</button>
+      <button class="sheet-tab active" id="tab-smart" onclick="switchTab('smart')">⚡ My Foods</button>
       <button class="sheet-tab" id="tab-scan" onclick="switchTab('scan')">📷 Scan</button>
     </div>
     <div class="sheet-body">
       <!-- Time row always visible -->
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
         <span style="font-size:11px;color:var(--muted);flex-shrink:0">Time:</span>
         <input type="time" id="qa-time" class="field-input" style="flex:1">
       </div>
 
-      <!-- Pinned tab -->
-      <div id="tab-content-pinned">
-        <div class="food-grid" id="qa-pinned"></div>
-        <div style="margin-top:10px;text-align:center">
-          <button class="btn btn-g btn-sm" onclick="switchTab('search')" style="width:100%">Browse all foods →</button>
-        </div>
-      </div>
-
-      <!-- Frequent tab -->
-      <div id="tab-content-frequent" style="display:none">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Your most-used foods</div>
-        <div class="food-grid" id="qa-frequent"></div>
-      </div>
-
-      <!-- Search tab -->
-      <div id="tab-content-search" style="display:none">
+      <!-- Smart list tab: search + unified pinned/today/frequent -->
+      <div id="tab-content-smart">
         <div class="search-wrap" style="margin-bottom:10px">
           <span class="search-icon">🔍</span>
           <input class="search-input" id="qa-search"
-            placeholder="Search library or Open Food Facts…"
+            placeholder="Search foods or Open Food Facts…"
             oninput="onSearchInput()">
           <button class="search-clear" id="qa-clear" onclick="clearSearch()">✕</button>
         </div>
         <div id="qa-search-status" style="font-size:11px;color:var(--muted);margin-bottom:7px;display:none"></div>
-        <div class="food-grid" id="qa-results"></div>
-        <div id="qa-all-foods" class="food-grid"></div>
+        <div class="food-grid" id="qa-results" style="display:none"></div>
+        <div class="food-grid" id="qa-smart-list"></div>
+
+        <!-- Inline custom food form — always visible at bottom -->
+        <div id="qa-custom-form" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">+ Add Custom Food</div>
+          <input class="field-input" id="qa-fname" placeholder="Food name" style="width:100%;margin-bottom:8px" oninput="qaEstimateDebounced()">
+          <div id="qa-estimate-bar" style="display:none;font-size:11px;padding:6px 8px;background:var(--card2);border-radius:6px;margin-bottom:8px"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Calories</div><input class="field-input" id="qa-fcal" type="number" placeholder="0"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Protein (g)</div><input class="field-input" id="qa-fprot" type="number" placeholder="0"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:3px">Fiber (g)</div><input class="field-input" id="qa-ffiber" type="number" placeholder="0"></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-p" style="flex:1" onclick="qaAddCustomFood(true)">Save & Add</button>
+            <button class="btn btn-g btn-sm" onclick="qaAddCustomFood(false)">Just Add</button>
+          </div>
+        </div>
       </div>
 
       <!-- Scan tab -->
@@ -1269,7 +1269,7 @@ let barcodeScanner = null;
 let scanStream     = null;
 let _editFoodId    = null;
 let _scannedFood   = null;
-let activeTab      = 'pinned';
+let activeTab      = 'smart';
 
 // Debounce timers
 let _saveDayTimer, _searchTimer;
@@ -1528,10 +1528,8 @@ async function loadSmartFoods() {
     };
     // Refresh Quick Add tabs if open
     const overlay = document.getElementById('qa-overlay');
-    if (overlay?.classList.contains('open')) {
-      if (activeTab === 'pinned')   renderPinnedTab();
-      if (activeTab === 'frequent') renderFrequentTab();
-      if (activeTab === 'search')   renderAllFoodsTab();
+    if (overlay?.classList.contains('open') && activeTab === 'smart') {
+      renderSmartList();
     }
   } catch (e) { /* offline */ }
 }
@@ -2432,7 +2430,8 @@ function buildInsights() {
 function openQuickAdd() {
   document.getElementById('qa-overlay').classList.add('open');
   document.getElementById('qa-time').value = nowTimeStr();
-  switchTab(activeTab);
+  activeTab = 'smart';
+  switchTab('smart');
 }
 
 function closeQuickAdd() {
@@ -2442,14 +2441,12 @@ function closeQuickAdd() {
 
 function switchTab(tab) {
   activeTab = tab;
-  ['pinned','frequent','search','scan'].forEach(t => {
+  ['smart','scan'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('active', t === tab);
     document.getElementById('tab-content-' + t).style.display = t === tab ? 'block' : 'none';
   });
-  if (tab === 'pinned')   renderPinnedTab();
-  if (tab === 'frequent') renderFrequentTab();
-  if (tab === 'search')   renderAllFoodsTab();
-  if (tab === 'scan')     { stopBarcode(); }
+  if (tab === 'smart') renderSmartList();
+  if (tab === 'scan')  stopBarcode();
 }
 
 function getAllFoods() {
@@ -2476,36 +2473,66 @@ function getAllFoods() {
   });
 })();
 
-function renderPinnedTab() {
-  const pinned = v2SmartFoods.pinned;
-  const el = document.getElementById('qa-pinned');
-  el.innerHTML = pinned.length
-    ? pinned.map(f => foodItemHTML(f)).join('')
-    : '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">No pinned foods yet.<br>Pin foods in your Food Library.</div>';
-}
+function renderSmartList(filter = '') {
+  const el = document.getElementById('qa-smart-list');
+  const q  = filter.toLowerCase();
 
-function renderFrequentTab() {
-  // v2: today's foods + recent, sorted by use count from server
-  const combined = [...v2SmartFoods.today, ...v2SmartFoods.recent];
+  // Build ordered list: pinned first, then today's foods, then rest by use count
+  // Dedup by name throughout
   const seen = new Set();
-  const unique = combined.filter(f => {
+  const sections = [];
+
+  // Section 1: pinned
+  const pinned = v2SmartFoods.pinned.filter(f => {
     if (seen.has(f.name)) return false;
     seen.add(f.name);
-    return true;
-  }).sort((a, b) => (b.useCount || 0) - (a.useCount || 0)).slice(0, 15);
-  const el = document.getElementById('qa-frequent');
-  el.innerHTML = unique.length
-    ? unique.map(f => foodItemHTML(f, true)).join('')
-    : '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Log some foods to see your most-used here.</div>';
+    return !q || f.name.toLowerCase().includes(q);
+  });
+
+  // Section 2: logged today (not already pinned)
+  const todayLogged = dayData.foodLog
+    .map(e => getAllFoods().find(f => f.name === e.name) || { name: e.name, calories: e.calories, protein: e.protein, id: e.name, useCount: 0 })
+    .filter(f => {
+      if (seen.has(f.name)) return false;
+      seen.add(f.name);
+      return !q || f.name.toLowerCase().includes(q);
+    });
+
+  // Section 3: remaining by use count
+  const rest = [...v2SmartFoods.today, ...v2SmartFoods.recent].filter(f => {
+    if (seen.has(f.name)) return false;
+    seen.add(f.name);
+    return !q || f.name.toLowerCase().includes(q);
+  }).sort((a, b) => (b.useCount || 0) - (a.useCount || 0)).slice(0, 20);
+
+  if (!pinned.length && !todayLogged.length && !rest.length) {
+    el.innerHTML = q
+      ? `<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">No foods match "${filter}"</div>`
+      : '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">No foods yet.<br>Add foods in the Foods tab.</div>';
+    return;
+  }
+
+  let html = '';
+  if (pinned.length) {
+    html += pinned.map(f => foodItemHTML(f)).join('');
+  }
+  if (todayLogged.length) {
+    html += `<div style="font-size:10px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;padding:8px 2px 4px">Logged today</div>`;
+    html += todayLogged.map(f => foodItemHTML(f, true)).join('');
+  }
+  if (rest.length) {
+    if (pinned.length || todayLogged.length) {
+      html += `<div style="font-size:10px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;padding:8px 2px 4px">Most used</div>`;
+    }
+    html += rest.map(f => foodItemHTML(f, true)).join('');
+  }
+  el.innerHTML = html;
 }
 
-function renderAllFoodsTab() {
-  const el = document.getElementById('qa-all-foods');
-  const all = getAllFoods();
-  el.innerHTML = all.length
-    ? all.map(f => foodItemHTML(f)).join('')
-    : '<div style="text-align:center;padding:20px;color:var(--muted)">Your library is empty.<br>Add foods in the Foods tab.</div>';
-}
+// Keep these as thin wrappers so any existing calls don't break
+function renderPinnedTab()    { renderSmartList(); }
+function renderFrequentTab()  { renderSmartList(); }
+function renderAllFoodsTab()  { renderSmartList(); }
 
 function foodItemHTML(food, showCount = false) {
   const badges = [];
@@ -2541,25 +2568,30 @@ let _searchAbort = null;
 function onSearchInput() {
   const q = document.getElementById('qa-search').value.trim();
   document.getElementById('qa-clear').classList.toggle('show', q.length > 0);
-
   clearTimeout(_searchTimer);
 
+  const resultsEl   = document.getElementById('qa-results');
+  const statusEl    = document.getElementById('qa-search-status');
+  const smartListEl = document.getElementById('qa-smart-list');
+
   if (!q) {
-    document.getElementById('qa-results').innerHTML = '';
-    document.getElementById('qa-search-status').style.display = 'none';
-    renderAllFoodsTab();
-    document.getElementById('qa-all-foods').style.display = 'block';
+    resultsEl.style.display = 'none';
+    resultsEl.innerHTML = '';
+    statusEl.style.display = 'none';
+    smartListEl.style.display = 'block';
+    renderSmartList();
     return;
   }
 
-  document.getElementById('qa-all-foods').style.display = 'none';
-
-  // Instant local filter
+  // Filter smart list instantly as you type
+  smartListEl.style.display = 'none';
+  resultsEl.style.display = 'block';
+  renderSmartList(q);  // renders into qa-smart-list filtered — show results instead
   const local = getAllFoods().filter(f =>
     f.name.toLowerCase().includes(q.toLowerCase()) ||
     (f.brand || '').toLowerCase().includes(q.toLowerCase())
   );
-  document.getElementById('qa-results').innerHTML = local.map(f => foodItemHTML(f)).join('');
+  resultsEl.innerHTML = local.map(f => foodItemHTML(f)).join('');
 
   // Debounced OFF search
   _searchTimer = setTimeout(() => searchOFF(q), 700);
@@ -2631,10 +2663,84 @@ function addOFFFood(food, qtyId) {
 function clearSearch() {
   document.getElementById('qa-search').value = '';
   document.getElementById('qa-clear').classList.remove('show');
+  document.getElementById('qa-results').style.display = 'none';
   document.getElementById('qa-results').innerHTML = '';
   document.getElementById('qa-search-status').style.display = 'none';
-  document.getElementById('qa-all-foods').style.display = 'block';
-  renderAllFoodsTab();
+  document.getElementById('qa-smart-list').style.display = 'block';
+  renderSmartList();
+}
+
+// ── Inline quick-add custom food ──────────────────────────────────────────────
+let _qaEstTimer = null;
+
+function qaEstimateDebounced() {
+  clearTimeout(_qaEstTimer);
+  _qaEstTimer = setTimeout(qaRunEstimate, 800);
+}
+
+async function qaRunEstimate() {
+  const name = document.getElementById('qa-fname').value.trim();
+  if (!name || name.length < 3 || !WORKER_URL || !FS_API_KEY) return;
+  const bar = document.getElementById('qa-estimate-bar');
+  bar.style.display = 'block';
+  bar.textContent = '✨ Estimating…';
+  try {
+    const r = await wFetch('/api/estimate', { method: 'POST', body: JSON.stringify({ name }) });
+    if (r.error) throw new Error(r.error);
+    const est = r.estimate;
+    // Fill blanks only — don't overwrite user-entered values
+    if (!document.getElementById('qa-fcal').value   && est.cal)     document.getElementById('qa-fcal').value   = est.cal;
+    if (!document.getElementById('qa-fprot').value  && est.protein) document.getElementById('qa-fprot').value  = est.protein;
+    if (!document.getElementById('qa-ffiber').value && est.fiber)   document.getElementById('qa-ffiber').value = est.fiber;
+    const c = est.confidence === 'high' ? 'var(--accent)' : est.confidence === 'medium' ? 'var(--yellow)' : 'var(--orange)';
+    bar.innerHTML = `<span style="color:${c}">✨ ${est.serving || '1 serving'} · ${est.confidence} confidence</span> — edit if needed`;
+  } catch (e) {
+    bar.style.display = 'none';
+  }
+}
+
+function qaAddCustomFood(saveToLibrary) {
+  const name = document.getElementById('qa-fname').value.trim();
+  if (!name) { toast('Enter a food name', true); return; }
+
+  const food = {
+    id:       name,   // name-based id consistent with v2SmartFoods
+    name,
+    calories: parseFloat(document.getElementById('qa-fcal').value)   || 0,
+    protein:  parseFloat(document.getElementById('qa-fprot').value)  || 0,
+    carbs:    0,
+    fat:      0,
+    fiber:    parseFloat(document.getElementById('qa-ffiber').value) || 0,
+    serving:  '1 serving',
+    useCount: 0,
+    pinned:   false,
+  };
+
+  // Log to today immediately
+  addFoodToLog(food, 1);
+
+  if (saveToLibrary && WORKER_URL && FS_API_KEY) {
+    wFetch('/api/foods', { method: 'POST', body: JSON.stringify({
+      name:     food.name,
+      calories: food.calories,
+      protein:  food.protein,
+      carbs:    food.carbs,
+      fat:      food.fat,
+      fiber:    food.fiber,
+      serving:  food.serving,
+      source:   'manual',
+    })}).then(() => loadSmartFoods()).catch(() => {});
+    toast(`✓ "${food.name}" saved to library & logged`);
+  } else {
+    toast(`✓ "${food.name}" logged`);
+  }
+
+  // Clear fields for next entry
+  ['qa-fname','qa-fcal','qa-fprot','qa-ffiber'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('qa-estimate-bar').style.display = 'none';
 }
 
 // ══════════════════════════════════════════════════
