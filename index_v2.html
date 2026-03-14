@@ -1241,18 +1241,26 @@ let momentumData  = null;
 // Never a hardcoded default — if neither source has data, returns null so the
 // UI can show "set goals or upload a scan" rather than a misleading number.
 function getEffectiveTargets() {
-  const m = momentumData?.metrics || {};
+  const m   = momentumData?.metrics || {};
+  const evs = evoltScanGoals || {};
+
+  // Priority: user-set goals → evolt scan derived → momentum signal → null (never hardcoded)
+  const protein = goals.protein  || evs.protein   || m.proteinGoal || null;
+  const calHigh = goals.cal      || evs.cal        || m.calTarget   || null;
+  const calLow  = goals.calLow   || evs.calLow     || (calHigh ? Math.round(calHigh * 0.88) : null);
+  const water   = goals.water    || evs.water       || m.waterTarget || 80;
+
+  const proteinSrc = goals.protein  ? 'user-set' : evs.protein  ? 'scan-based' : m.proteinGoal ? 'momentum' : 'none';
+  const calSrc     = goals.cal      ? 'user-set' : evs.cal      ? 'scan-based' : m.calTarget   ? 'momentum' : 'none';
+
   return {
-    protein:  goals.protein  || m.proteinGoal  || null,
-    cal:      goals.cal      || m.calTarget    || null,
-    water:    goals.water    || m.waterTarget  || 80,
-    tee:      m.tee          || null,
-    bmr:      m.bmr          || null,
-    deficit:  (m.calTarget && m.tee) ? Math.round(m.tee - m.calTarget) : null,
-    source: {
-      protein: goals.protein  ? 'user-set' : m.proteinGoal ? 'scan-based' : 'none',
-      cal:     goals.cal      ? 'user-set' : m.calTarget   ? 'scan-based' : 'none',
-    },
+    protein, calHigh, calLow,
+    cal:     calHigh,   // keep .cal alias so existing code doesn't break
+    water,
+    tee:     m.tee  || null,
+    bmr:     m.bmr  || null,
+    deficit: (calHigh && m.tee) ? Math.round(m.tee - calHigh) : null,
+    source:  { protein: proteinSrc, cal: calSrc },
   };
 }
 
@@ -1759,26 +1767,59 @@ function renderRings() {
   const t  = getTotals();
   const tg = getEffectiveTargets();
   const gp = tg.protein;
-  const gc = tg.cal;
+  const gc = tg.calHigh;
+  const gl = tg.calLow;
   const gw = tg.water;
 
-  // If no targets available yet, show raw totals with a soft indicator
-  if (!gp && !gc) {
-    setRing('ring-p', 0, 'rv-p', 'ra-p', `${Math.round(t.protein)}g`);
-    setRing('ring-c', 0, 'rv-c', 'ra-c', `${Math.round(t.calories)} kcal`);
-    setRing('ring-w', t.water / gw, 'rv-w', 'ra-w', `${Math.round(t.water)} / ${gw}oz`);
-    return;
+  // Protein ring (blue)
+  if (gp) {
+    const pct = t.protein / gp;
+    const color = pct >= 1 ? 'var(--accent)' : 'var(--blue)';
+    setRing('ring-p', pct, 'rv-p', 'ra-p', `${Math.round(t.protein)}g / ${gp}g`, color);
+  } else {
+    setRing('ring-p', 0, 'rv-p', 'ra-p', `${Math.round(t.protein)}g`, 'var(--blue)');
   }
-  setRing('ring-p', gp ? t.protein / gp : 0, 'rv-p', 'ra-p', gp ? `${Math.round(t.protein)}g / ${gp}g` : `${Math.round(t.protein)}g`);
-  setRing('ring-c', gc ? t.calories / gc : 0, 'rv-c', 'ra-c', gc ? `${Math.round(t.calories)} / ${gc}` : `${Math.round(t.calories)} kcal`);
-  setRing('ring-w', t.water / gw, 'rv-w', 'ra-w', `${Math.round(t.water)} / ${gw}oz`);
+
+  // Calorie ring — range-aware color
+  // Below calLow = yellow (undereating), in range = green, above calHigh = orange
+  if (gc) {
+    const cal  = t.calories;
+    const pct  = cal / gc;
+    let color, label;
+    if (cal === 0) {
+      color = 'var(--yellow)'; label = `0 / ${gl || ''}–${gc}`;
+    } else if (gl && cal < gl) {
+      color = 'var(--yellow)';  // under floor
+      label = `${Math.round(cal)} / ${gl}–${gc}`;
+    } else if (cal <= gc) {
+      color = 'var(--accent)';  // in the zone
+      label = `${Math.round(cal)} / ${gl ? gl + '–' : ''}${gc}`;
+    } else {
+      color = 'var(--orange)';  // over ceiling
+      label = `${Math.round(cal)} / ${gc} ↑`;
+    }
+    setRing('ring-c', pct, 'rv-c', 'ra-c', label, color);
+  } else {
+    setRing('ring-c', 0, 'rv-c', 'ra-c', `${Math.round(t.calories)} kcal`, 'var(--yellow)');
+  }
+
+  // Water ring (accent green)
+  const wPct = gw ? t.water / gw : 0;
+  const wColor = wPct >= 1 ? 'var(--accent)' : 'var(--blue)';
+  setRing('ring-w', wPct, 'rv-w', 'ra-w', `${Math.round(t.water)} / ${gw}oz`, wColor);
 }
 
-function setRing(id, pct, valId, absId, absText) {
+function setRing(id, pct, valId, absId, absText, color) {
   const r = 36, circ = 2 * Math.PI * r;
-  const fill = Math.min(pct, 1) * circ;
-  document.getElementById(id).setAttribute('stroke-dasharray', `${fill} ${circ}`);
-  document.getElementById(valId).textContent = Math.min(100, Math.round(pct * 100)) + '%';
+  const fill = Math.min(Math.max(pct, 0), 1) * circ;
+  const el   = document.getElementById(id);
+  const pctEl = document.getElementById(valId);
+  el.setAttribute('stroke-dasharray', `${fill} ${circ}`);
+  if (color) {
+    el.setAttribute('stroke', color);
+    pctEl.style.color = color;
+  }
+  pctEl.textContent = Math.min(100, Math.round(pct * 100)) + '%';
   document.getElementById(absId).textContent = absText;
 }
 
@@ -2206,7 +2247,8 @@ function buildInsights() {
   const t    = getTotals();
   const tg   = getEffectiveTargets();
   const gp   = tg.protein;
-  const gc   = tg.cal;
+  const gc   = tg.calHigh;
+  const gl   = tg.calLow;
   const gw   = tg.water;
   const now  = new Date();
   const hour = now.getHours();
@@ -2325,12 +2367,21 @@ function buildInsights() {
 
   // ── Calorie gap late in day ───────────────────────────────────────────────
   if (gc && t.calories > 0) {
-    const calLeft = Math.max(0, gc - t.calories);
-    if (calLeft > 300 && hour >= 15) {
+    const cal = t.calories;
+    const calLeft = Math.max(0, gc - cal);
+    // Flag if below floor (calLow) not just ceiling
+    const floorGap = gl ? Math.max(0, gl - cal) : 0;
+    if (floorGap > 100 && hour >= 15) {
       ins.push({
         type: 'warn', icon: '🔥', color: 'var(--yellow)',
-        title: `${calLeft} kcal below target`,
-        body: 'Low calories while training breaks down muscle. Add: peanut butter 2 tbsp (190 kcal), avocado half (240 kcal), or almonds 1oz (170 kcal).',
+        title: `${Math.round(floorGap)} kcal below minimum — muscle at risk`,
+        body: `You're at ${Math.round(cal)} kcal, below your ${gl} kcal floor. Add: peanut butter 2 tbsp (190 kcal), avocado half (240 kcal), or almonds 1oz (170 kcal).`,
+      });
+    } else if (calLeft > 300 && hour >= 15) {
+      ins.push({
+        type: 'warn', icon: '🔥', color: 'var(--yellow)',
+        title: `${Math.round(calLeft)} kcal below target`,
+        body: `You're at ${Math.round(cal)} kcal. Add: peanut butter 2 tbsp (190 kcal), avocado half (240 kcal), or almonds 1oz (170 kcal).`,
       });
     }
   }
@@ -2344,7 +2395,7 @@ function buildInsights() {
       ins.push({
         type: 'warn', icon: '⚡', color: 'var(--yellow)',
         title: 'Low energy logged',
-        body: 'On tirzepatide, low energy nearly always means under-eating. Check total calories logged today — if under 1,200, eat something calorie-dense now.',
+        body: `On tirzepatide, low energy nearly always means under-eating. Check total calories logged today — if under ${tg.calLow || 1400}, eat something calorie-dense now.`,
       });
     }
   }
