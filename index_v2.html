@@ -210,6 +210,18 @@ body{
 
 /* ── INSIGHTS ── */
 .insight-row{display:flex;flex-direction:column;gap:7px;margin-bottom:10px}
+.notes-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px}
+.notes-header{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
+.notes-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.notes-preview{font-size:12px;color:var(--text);opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+.notes-thread{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.note-entry{font-size:12px;color:var(--text);line-height:1.4}
+.note-time{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;margin-right:6px}
+.note-day-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border)}
+.notes-input-row{display:flex;gap:8px;margin-top:10px}
+.notes-input{flex:1;background:var(--card2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--text);outline:none}
+.notes-input:focus{border-color:var(--accent)}
+.notes-send{background:var(--accent);border:none;border-radius:8px;padding:8px 14px;color:#000;font-weight:600;font-size:13px;cursor:pointer;flex-shrink:0}
 .insight{
   border-radius:var(--radius-sm);padding:11px 13px;
   border-left:3px solid var(--accent);
@@ -736,6 +748,27 @@ body{
       </div>
     </div>
 
+    <!-- Notes for Coach -->
+    <div class="notes-card" id="notes-card">
+      <div class="notes-header" onclick="toggleNotes()">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:14px">💬</span>
+          <span class="notes-title">Notes for Coach</span>
+          <span class="notes-preview" id="notes-preview">Tap to add context…</span>
+        </div>
+        <span id="notes-chevron" style="font-size:12px;color:var(--muted);transition:transform .2s">▼</span>
+      </div>
+      <div id="notes-expanded" style="display:none">
+        <div class="notes-thread" id="notes-thread"></div>
+        <div class="notes-input-row">
+          <input class="notes-input" id="notes-input"
+            placeholder="e.g. skipped gym, did yard work instead…"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitCoachNote()}">
+          <button class="notes-send" onclick="submitCoachNote()">→</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Insights -->
     <div class="insight-row" id="insights-row"></div>
 
@@ -1231,6 +1264,7 @@ let dayData = {
 // Coach state
 let coachThread   = [];   // [{role, content, time, date}]
 let coachInFlight = false;
+let coachNotes    = [];   // [{ts, text}] — today's notes, resets at midnight
 let _coachAbortCtrl = null;
 
 // Momentum state
@@ -1363,6 +1397,7 @@ async function loadDate(dateStr) {
 }
 
 function updateDateUI() {
+  loadCoachNotes();
   const display = document.getElementById('date-display');
   display.textContent = fmtDateDisplay(viewDate);
   display.className = 'date-display' + (isToday(viewDate) ? '' : ' past');
@@ -1412,6 +1447,7 @@ async function saveWorkerUrl() {
   localStorage.setItem(FS_KEY_STOR, FS_API_KEY);
   toast('✓ Worker settings saved');
   if (WORKER_URL && FS_API_KEY) { await testWorkerSilent(); loadRemoteProfile(); loadSmartFoods(); }
+  loadCoachNotes();
 }
 
 async function testWorker() {
@@ -3155,6 +3191,7 @@ function buildCoachPayload(question = null, mode = 'checkin') {
     waterLog:    dayData.waterLog,
     hem:         dayData.hem,
     workouts:    dayData.workouts,
+    coachNotes,  // today's notes — highest priority context
     currentTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
     timezoneOffset: new Date().getTimezoneOffset(),
     tirzepatide: { ...tirz, daysPostInjection: daysPostInj },
@@ -3804,6 +3841,92 @@ function toast(msg, isErr = false) {
 // ══════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// NOTES FOR COACH
+// ══════════════════════════════════════════════════
+let _notesExpanded = false;
+
+function toggleNotes() {
+  _notesExpanded = !_notesExpanded;
+  document.getElementById('notes-expanded').style.display = _notesExpanded ? 'block' : 'none';
+  document.getElementById('notes-chevron').style.transform = _notesExpanded ? 'rotate(180deg)' : '';
+  if (_notesExpanded) {
+    setTimeout(() => document.getElementById('notes-input')?.focus(), 150);
+  }
+}
+
+function loadCoachNotes() {
+  const stored = localStorage.getItem('fs3-notes-' + viewDate);
+  coachNotes = stored ? JSON.parse(stored) : [];
+  renderCoachNotes();
+}
+
+function renderCoachNotes() {
+  const thread  = document.getElementById('notes-thread');
+  const preview = document.getElementById('notes-preview');
+  if (!thread) return;
+
+  if (!coachNotes.length) {
+    thread.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0">No notes yet today.</div>';
+    preview.textContent = 'Tap to add context…';
+    return;
+  }
+
+  const last = coachNotes[coachNotes.length - 1];
+  preview.textContent = coachNotes.length === 1
+    ? last.text.slice(0, 40) + (last.text.length > 40 ? '…' : '')
+    : coachNotes.length + ' notes today';
+
+  // Today's thread
+  let html = coachNotes.map(n => {
+    const t = n.ts ? new Date(n.ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+    return '<div class="note-entry"><span class="note-time">' + t + '</span>' + escHtml(n.text) + '</div>';
+  }).join('');
+
+  // Yesterday + 2 days ago as reference
+  [1, 2].forEach(offset => {
+    const d = daysAgoDate(offset);
+    const stored = localStorage.getItem('fs3-notes-' + d);
+    if (!stored) return;
+    const notes = JSON.parse(stored);
+    if (!notes.length) return;
+    const label = offset === 1 ? 'Yesterday' : '2 days ago';
+    html += '<div class="note-day-label">' + label + '</div>';
+    html += notes.map(n => {
+      const t = n.ts ? new Date(n.ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+      return '<div class="note-entry" style="opacity:.6"><span class="note-time">' + t + '</span>' + escHtml(n.text) + '</div>';
+    }).join('');
+  });
+
+  thread.innerHTML = html;
+}
+
+function daysAgoDate(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+async function submitCoachNote() {
+  const input = document.getElementById('notes-input');
+  const text  = input?.value.trim();
+  if (!text) return;
+
+  const note = { ts: new Date().toISOString(), text };
+  coachNotes.push(note);
+  localStorage.setItem('fs3-notes-' + viewDate, JSON.stringify(coachNotes));
+  input.value = '';
+  renderCoachNotes();
+  markCoachBadge();
+
+  if (WORKER_URL && FS_API_KEY) {
+    wFetch('/api/notes?date=' + viewDate, {
+      method: 'POST',
+      body: JSON.stringify({ text: note.text, timestamp: note.ts }),
+    }).catch(() => {});
+  }
+}
+
 async function init() {
   checkAutoComplete();
   setGoalInputs();
