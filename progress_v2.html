@@ -411,6 +411,49 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
       <!-- Scan Interval Analysis -->
       <div class="section-label" id="intervals-section-label" style="display:none">Interval Analysis — What Each Period Produced</div>
       <div id="scan-intervals-wrap"></div>
+
+      <!-- Measurements -->
+      <div class="section-label" style="margin-top:18px">📏 Tape Measurements</div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">Log Measurements</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Date</div>
+            <input class="setting-input" id="m-date" type="date">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Waist (in)</div>
+            <input class="setting-input" id="m-waist" type="number" step="0.25" placeholder="—">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Hips (in)</div>
+            <input class="setting-input" id="m-hips" type="number" step="0.25" placeholder="—">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Left Arm (in)</div>
+            <input class="setting-input" id="m-larm" type="number" step="0.25" placeholder="—">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Right Arm (in)</div>
+            <input class="setting-input" id="m-rarm" type="number" step="0.25" placeholder="—">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Left Thigh (in)</div>
+            <input class="setting-input" id="m-lthigh" type="number" step="0.25" placeholder="—">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Right Thigh (in)</div>
+            <input class="setting-input" id="m-rthigh" type="number" step="0.25" placeholder="—">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Notes (optional)</div>
+            <input class="setting-input" id="m-notes" placeholder="e.g. morning, post-workout">
+          </div>
+        </div>
+        <button class="btn btn-p btn-sm" onclick="saveMeasurement()">Save Measurement</button>
+        <span id="m-saved" style="font-size:12px;color:var(--accent);display:none;margin-left:8px">✓ Saved</span>
+      </div>
+      <div id="measurements-list"></div>
     </div>
   </div>
 
@@ -668,7 +711,7 @@ let WORKER_URL = localStorage.getItem(WORKER_KEY)  || 'https://fuelstrong-v2.pud
 let FS_API_KEY = localStorage.getItem(FS_KEY_STOR) || '';
 let goals       = JSON.parse(localStorage.getItem('fsp-goals-v2') || '{}');
 
-let data = { evolt: [], fitbod: [], fuelstrong: [] };
+let data = { evolt: [], fitbod: [], fuelstrong: [], measurements: [] };
 let coachThread   = JSON.parse(localStorage.getItem('fsp-coach') || '[]');
 let coachContext  = '';
 let coachInFlight = false;
@@ -684,7 +727,7 @@ function showPanel(id, btn) {
   btn.classList.add('active');
 
   if (id === 'overview')  { renderOverview(); loadMomentum(); }
-  if (id === 'body')      { renderBody(); loadScanIntervals(); }
+  if (id === 'body')      { renderBody(); loadScanIntervals(); renderMeasurements(); }
   if (id === 'training')  renderTraining();
   if (id === 'insights') {
     document.getElementById('ins-badge').classList.remove('show');
@@ -757,10 +800,11 @@ async function loadFromWorker() {
   sync.style.display = 'block';
   sync.textContent   = 'Syncing…';
   try {
-    const [scansRes, workoutsRes, profile] = await Promise.all([
+    const [scansRes, workoutsRes, profile, measureRes] = await Promise.all([
       wFetch('/api/scans').catch(() => ({ scans: [] })),
       wFetch('/api/workouts/full').catch(() => ({ sessions: [] })),
       wFetch('/api/profile').catch(() => ({})),
+      wFetch('/api/measurements').catch(() => ({ measurements: [] })),
     ]);
 
     // Map v2 D1 scan shape → v1 evolt shape used by all rendering functions
@@ -769,7 +813,8 @@ async function loadFromWorker() {
     // Map v2 D1 workout shape → v1 fitbod shape
     data.fitbod = (workoutsRes.sessions || []).map(mapD1WorkoutToFitbod);
 
-    data.fuelstrong = [];
+    data.fuelstrong    = [];
+    data.measurements  = (measureRes.measurements || []);
 
     // Map profile goals
     if (profile.goals && Object.keys(profile.goals).length) {
@@ -792,7 +837,7 @@ async function loadFromWorker() {
     const activePanel = document.querySelector('.panel.active');
     const activeId    = activePanel ? activePanel.id.replace('panel-', '') : 'overview';
     renderOverview();
-    if (activeId === 'body')     renderBody();
+    if (activeId === 'body')     { renderBody(); renderMeasurements(); }
     if (activeId === 'training') renderTraining();
     renderDataSummary();
     checkInsightsFreshness();
@@ -2346,6 +2391,103 @@ function restoreCoachThread() {
 // ══════════════════════════════════════════════
 // SETTINGS
 // ══════════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// MEASUREMENTS
+// ══════════════════════════════════════════════════
+function initMeasurementDate() {
+  const el = document.getElementById('m-date');
+  if (el && !el.value) {
+    const d = new Date();
+    el.value = d.toISOString().slice(0, 10);
+  }
+}
+
+async function saveMeasurement() {
+  const date = document.getElementById('m-date').value;
+  if (!date) { toast('Select a date', true); return; }
+
+  const payload = {
+    date,
+    waist:     parseFloat(document.getElementById('m-waist').value)  || null,
+    hips:      parseFloat(document.getElementById('m-hips').value)   || null,
+    leftArm:   parseFloat(document.getElementById('m-larm').value)   || null,
+    rightArm:  parseFloat(document.getElementById('m-rarm').value)   || null,
+    leftThigh: parseFloat(document.getElementById('m-lthigh').value) || null,
+    rightThigh:parseFloat(document.getElementById('m-rthigh').value) || null,
+    notes:     document.getElementById('m-notes').value.trim() || null,
+  };
+
+  const hasData = Object.entries(payload)
+    .filter(([k]) => k !== 'date' && k !== 'notes')
+    .some(([, v]) => v !== null);
+  if (!hasData) { toast('Enter at least one measurement', true); return; }
+
+  try {
+    await wFetch('/api/measurements', { method: 'POST', body: JSON.stringify(payload) });
+    data.measurements.unshift(payload);
+    renderMeasurements();
+    const saved = document.getElementById('m-saved');
+    saved.style.display = 'inline';
+    setTimeout(() => saved.style.display = 'none', 2500);
+    toast('✓ Measurement saved');
+    // Clear number fields, keep date
+    ['m-waist','m-hips','m-larm','m-rarm','m-lthigh','m-rthigh','m-notes']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  } catch (e) {
+    toast('Save failed: ' + e.message, true);
+  }
+}
+
+function renderMeasurements() {
+  initMeasurementDate();
+  const el = document.getElementById('measurements-list');
+  if (!el) return;
+  const list = data.measurements || [];
+  if (!list.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 2px">No measurements logged yet.</div>';
+    return;
+  }
+
+  // Show delta vs previous entry
+  el.innerHTML = list.map((m, i) => {
+    const prev = list[i + 1];
+    const delta = (field, label) => {
+      const cur = m[field];
+      const prv = prev?.[field];
+      if (cur == null) return null;
+      if (prv == null) return `<span style="color:var(--text)">${cur}"</span>`;
+      const d = +(cur - prv).toFixed(2);
+      const color = d < 0 ? 'var(--accent)' : d > 0 ? 'var(--danger)' : 'var(--muted)';
+      const sign  = d > 0 ? '+' : '';
+      return `<span style="color:var(--text)">${cur}"</span> <span style="font-size:10px;color:${color}">${sign}${d}"</span>`;
+    };
+
+    const fields = [
+      ['waist',      'Waist'],
+      ['hips',       'Hips'],
+      ['leftArm',    'L Arm'],
+      ['rightArm',   'R Arm'],
+      ['leftThigh',  'L Thigh'],
+      ['rightThigh', 'R Thigh'],
+    ];
+
+    const cells = fields
+      .map(([k, label]) => delta(k, label) ? `<div style="font-size:12px"><span style="color:var(--muted);font-size:10px">${label} </span>${delta(k, label)}</div>` : '')
+      .filter(Boolean)
+      .join('');
+
+    return `<div class="card" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-weight:600;font-size:13px">${m.date}</div>
+        ${m.notes ? `<div style="font-size:11px;color:var(--muted)">${m.notes}</div>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+        ${cells || '<div style="color:var(--muted);font-size:12px">No measurements recorded</div>'}
+      </div>
+    </div>`;
+  }).join('');
+}
+
 async function saveContext() {
   coachContext = document.getElementById('coach-context').value;
   // v2: context is local only — coaching payload carries it on every request

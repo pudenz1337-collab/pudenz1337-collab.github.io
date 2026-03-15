@@ -1178,7 +1178,7 @@ body{
   <div class="modal">
     <div class="modal-title">Edit Food</div>
     <div style="margin-bottom:8px">
-      <div class="field-label">Name</div>
+      <div class="field-label">Name <span style="font-size:10px;color:var(--muted)">(editable — won't affect logged history)</span></div>
       <input class="field-input" id="ef-name" style="width:100%;margin-bottom:8px">
     </div>
     <div class="field-grid" style="margin-bottom:12px">
@@ -1538,7 +1538,7 @@ function mapV2ToDayData(v2, dateStr) {
 // Map a v2 food_library row to the local food object shape
 function mapV2FoodToLocal(f) {
   return {
-    id:          f.name,   // stable key — name is unique in food_library
+    id:          f.id || f.name,   // integer id from food_library (fallback to name for OFF results)
     name:        f.name,
     displayName: f.display_name || f.name,
     calories:    f.calories  || 0,
@@ -1549,6 +1549,7 @@ function mapV2FoodToLocal(f) {
     serving:     f.serving   || null,
     pinned:      !!f.is_pinned,
     useCount:    f.use_count || 0,
+    foodLibraryId: f.id || null,   // explicit integer for D1 operations
   };
 }
 
@@ -2008,6 +2009,7 @@ function addFoodToLog(food, qty = 1) {
     dayData.foodLog.push({
       id:          uid(),
       foodId:      food.id,
+      foodLibraryId: food.foodLibraryId || null,
       name:        food.name,
       displayName: qty !== 1 ? `${food.name} ×${qty}` : food.name,
       timestamp:   ts,
@@ -2033,16 +2035,17 @@ function addFoodToLog(food, qty = 1) {
     wFetch('/api/food', {
       method: 'POST',
       body: JSON.stringify({
-        date:        viewDate,
-        timestamp:   localEntry.timestamp,
-        name:        food.name,
-        displayName: localEntry.displayName || food.name,
-        calories:    localEntry.calories,
-        protein:     localEntry.protein,
-        carbs:       localEntry.carbs  || 0,
-        fat:         localEntry.fat    || 0,
-        fiber:       localEntry.fiber  || 0,
-        serving:     food.serving || null,
+        date:           viewDate,
+        timestamp:      localEntry.timestamp,
+        name:           food.name,
+        displayName:    localEntry.displayName || food.name,
+        calories:       localEntry.calories,
+        protein:        localEntry.protein,
+        carbs:          localEntry.carbs  || 0,
+        fat:            localEntry.fat    || 0,
+        fiber:          localEntry.fiber  || 0,
+        serving:        food.serving || null,
+        foodLibraryId:  food.foodLibraryId || null,
       }),
     }).then(res => {
       if (res.id) localEntry.id = String(res.id);
@@ -3079,7 +3082,10 @@ function togglePin(foodId) {
     const f = bucket.find(f => f.id === foodId);
     if (f) f.pinned = food.pinned;
   }
-  wFetch('/api/foods/pin', { method: 'POST', body: JSON.stringify({ name: foodId, pinned: food.pinned }) })
+  const pinPayload = Number.isInteger(food.foodLibraryId)
+    ? { id: food.foodLibraryId, pinned: food.pinned }
+    : { name: foodId, pinned: food.pinned };
+  wFetch('/api/foods/pin', { method: 'POST', body: JSON.stringify(pinPayload) })
     .catch(e => toast('Pin sync failed: ' + e.message, true));
   renderLibrary();
   toast(food.pinned ? '📌 Pinned' : 'Unpinned');
@@ -3091,7 +3097,11 @@ function deleteFood(id) {
   v2SmartFoods.pinned = v2SmartFoods.pinned.filter(f => f.id !== id);
   v2SmartFoods.today  = v2SmartFoods.today.filter(f => f.id !== id);
   v2SmartFoods.recent = v2SmartFoods.recent.filter(f => f.id !== id);
-  wFetch('/api/foods', { method: 'DELETE', body: JSON.stringify({ name: id }) })
+  const food = getAllFoods().find(f => f.id == id);
+  const delPayload = food?.foodLibraryId
+    ? { id: food.foodLibraryId }
+    : { name: id };
+  wFetch('/api/foods', { method: 'DELETE', body: JSON.stringify(delPayload) })
     .catch(e => toast('Delete sync failed: ' + e.message, true));
   renderLibrary();
   toast('Deleted');
@@ -3118,8 +3128,12 @@ function closeEditFood() {
 
 function saveEditFood() {
   if (!_editFoodId) return;
+  const food    = getAllFoods().find(f => f.id == _editFoodId);
+  const newName = document.getElementById('ef-name').value.trim();
   const updates = {
-    name:     _editFoodId,   // name is the key — cannot be changed
+    id:       food?.foodLibraryId || null,
+    name:     food?.name          || _editFoodId,
+    newName:  (newName && newName !== food?.name) ? newName : undefined,
     calories: parseFloat(document.getElementById('ef-cal').value)   || 0,
     protein:  parseFloat(document.getElementById('ef-prot').value)  || 0,
     carbs:    parseFloat(document.getElementById('ef-carb').value)  || 0,
@@ -3129,10 +3143,15 @@ function saveEditFood() {
   };
   // Update v2SmartFoods cache in all buckets
   for (const bucket of [v2SmartFoods.pinned, v2SmartFoods.today, v2SmartFoods.recent]) {
-    const f = bucket.find(f => f.id === _editFoodId);
-    if (f) Object.assign(f, updates);
+    const f = bucket.find(f => f.id == _editFoodId);
+    if (f) {
+      Object.assign(f, { calories: updates.calories, protein: updates.protein,
+        carbs: updates.carbs, fat: updates.fat, fiber: updates.fiber, serving: updates.serving });
+      if (updates.newName) f.name = updates.newName;
+    }
   }
   wFetch('/api/foods', { method: 'PUT', body: JSON.stringify(updates) })
+    .then(() => { loadSmartFoods(); })
     .catch(e => toast('Sync failed: ' + e.message, true));
   closeEditFood();
   renderLibrary();
