@@ -3908,7 +3908,8 @@ function renderCoachNotes() {
 function daysAgoDate(n) {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  // Use local date parts (same as todayISO) to avoid UTC offset issues at night
+  return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
 }
 
 async function submitCoachNote() {
