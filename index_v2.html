@@ -1670,7 +1670,7 @@ async function loadRemoteProfile() {
       goals = {
         protein:  p.goals.protein_g     || goals.protein  || 150,
         cal:      p.goals.calories_high || goals.cal      || 1800,
-        calLow:   p.goals.calories_low  || goals.calLow,
+        calLow:   p.goals.calories_low  || (goals.calLow !== goals.cal ? goals.calLow : null),
         water:    p.goals.water_oz      || goals.water    || 80,
       };
       localStorage.setItem('fs3-goals-v2', JSON.stringify(goals));
@@ -1691,7 +1691,11 @@ async function loadRemoteProfile() {
 
 function useEvoltAutoGoals() {
   if (!evoltScanGoals) return;
-  goals = { ...evoltScanGoals };
+  goals = {
+    ...evoltScanGoals,
+    // Ensure calLow is always set — derive from calHigh if scan didn't provide it
+    calLow: evoltScanGoals.calLow || (evoltScanGoals.cal ? Math.round(evoltScanGoals.cal * 0.88) : null),
+  };
   localStorage.setItem('fs3-goals-v2', JSON.stringify(goals));
   // Clear inputs so the values render as placeholder text showing scan-derived targets
   document.getElementById('s-protein').value  = '';
