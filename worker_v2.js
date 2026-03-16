@@ -754,6 +754,7 @@ COACHING RULES:
 - Never explain basic fitness concepts she already knows
 - Keep response under 250 words for check-ins, 150 for quick asks
 - Only flag injection day impact if daysSinceInjection is 0 or 1
+- Reason in WEEKLY terms, not just daily: if weekly avg protein and calories are on target, a single low day is not a crisis — acknowledge it but don't catastrophize. Only escalate if the weekly average itself is below target.
 - NOTES FOR COACH are the highest priority context. If a note explains or contradicts the structured data, treat the note as authoritative. Always acknowledge notes directly — if Hanna took the time to write it, it matters and should shape your response.
 - Use HEM (hunger/energy/mood) patterns to explain nutrition behavior — low energy + low calories + injection day = predictable suppression pattern, not a willpower issue
 - Think forward 24-48 hours: if injection day is tomorrow, advise pre-loading today${allNotesBlock ? `
@@ -781,11 +782,18 @@ ${logDays.slice(0,14).map(d => {
 }).join('\n')}
 
 PATTERNS:
-Avg protein (7d): ${avgProt7 || '?'}g | (14d): ${avgProt14 || '?'}g
-Avg calories (7d): ${avgCal7 || '?'} kcal | Low-cal days (30d): ${lowCalDays}
+${weeklyAvgDays >= 3 ? `CLIENT 7-DAY ROLLING AVG (${weeklyAvgDays} logged days): ${weeklyAvgProtein}g protein | ${weeklyAvgCalories} kcal` : ''}
+D1 Avg protein (7d): ${avgProt7 || '?'}g | (14d): ${avgProt14 || '?'}g
+D1 Avg calories (7d): ${avgCal7 || '?'} kcal | Low-cal days (30d): ${lowCalDays}
 Training: ${trainDays7}/wk (last 7d) | ${(trainDays28/4).toFixed(1)}/wk avg (last 28d)
 ${hemSummary ? '\nHEM LOG (hunger/energy/mood — last 7 days):\n' + hemSummary : ''}
 ${injCycleBlock ? '\nINJECTION CYCLE NUTRITION PATTERN:\n' + injCycleBlock : ''}`;
+
+  // Weekly averages from client (pre-computed from /api/log)
+  const clientWeeklyAvg = body.weeklyAvg || {};
+  const weeklyAvgProtein  = clientWeeklyAvg.protein  || null;
+  const weeklyAvgCalories = clientWeeklyAvg.calories || null;
+  const weeklyAvgDays     = clientWeeklyAvg.days     || 0;
 
   // Build user context — accept both v1 field names (foods/water/workout) and v2 (foodLog/waterLog/workouts)
   const todayFoods   = body.foods   || body.foodLog  || [];

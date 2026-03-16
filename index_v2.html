@@ -716,6 +716,7 @@ body{
             </div>
           </div>
           <div class="ring-abs" id="ra-p">0 / 150g</div>
+          <div id="avg-p" style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px"></div>
         </div>
         <div>
           <div class="ring-wrap">
@@ -730,6 +731,7 @@ body{
             </div>
           </div>
           <div class="ring-abs" id="ra-c">0 / 1800</div>
+          <div id="avg-c" style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px"></div>
         </div>
         <div>
           <div class="ring-wrap">
@@ -1246,6 +1248,7 @@ let library = JSON.parse(localStorage.getItem('fs3-lib-v2')   || '{"foods":[]}')
 // Smart foods from v2 server (pinned / today / recent)
 let v2SmartFoods   = { pinned: [], today: [], recent: [] };
 let v2LibraryFoods = [];  // full food_library for the Foods tab
+let weeklyAvg      = { protein: null, calories: null, days: 0 };  // 7-day rolling average
 let evoltScanGoals = null;   // scan-derived targets from latest Evolt
 
 // Current viewing date (ISO string)
@@ -1399,6 +1402,7 @@ async function loadDate(dateStr) {
 
 function updateDateUI() {
   loadCoachNotes();
+  loadWeeklyAvg();
   const display = document.getElementById('date-display');
   display.textContent = fmtDateDisplay(viewDate);
   display.className = 'date-display' + (isToday(viewDate) ? '' : ' past');
@@ -1553,6 +1557,45 @@ function mapV2FoodToLocal(f) {
     useCount:    f.use_count || 0,
     foodLibraryId: libId,  // integer for D1 API calls
   };
+}
+
+// Fetch 7-day rolling averages from D1
+async function loadWeeklyAvg() {
+  if (!WORKER_URL || !FS_API_KEY) return;
+  try {
+    const res = await wFetch(`/api/log?since=${daysAgoStr(7)}&until=${viewDate}&limit=7`);
+    const logs = (res.logs || []).filter(d => (d.calories || 0) > 0 || (d.protein_g || 0) > 0);
+    if (!logs.length) return;
+    const days    = logs.length;
+    const protein  = Math.round(logs.reduce((a, d) => a + (d.protein_g  || 0), 0) / days);
+    const calories = Math.round(logs.reduce((a, d) => a + (d.calories   || 0), 0) / days);
+    weeklyAvg = { protein, calories, days };
+    renderWeeklyAvg();
+  } catch (e) { /* offline */ }
+}
+
+function renderWeeklyAvg() {
+  const tg = getEffectiveTargets();
+  const pEl = document.getElementById('avg-p');
+  const cEl = document.getElementById('avg-c');
+  if (!weeklyAvg.days) { if (pEl) pEl.textContent = ''; if (cEl) cEl.textContent = ''; return; }
+
+  if (pEl) {
+    const pOk = tg.protein && weeklyAvg.protein >= tg.protein * 0.9;
+    pEl.textContent = `7d avg: ${weeklyAvg.protein}g`;
+    pEl.style.color = tg.protein
+      ? (pOk ? 'var(--accent)' : 'var(--yellow)')
+      : 'var(--muted)';
+  }
+  if (cEl) {
+    const inRange = tg.calLow && tg.calHigh
+      ? weeklyAvg.calories >= tg.calLow && weeklyAvg.calories <= tg.calHigh
+      : true;
+    cEl.textContent = `7d avg: ${weeklyAvg.calories}`;
+    cEl.style.color = (tg.calHigh && weeklyAvg.calories > tg.calHigh * 1.05)
+      ? 'var(--orange)'
+      : inRange ? 'var(--accent)' : 'var(--yellow)';
+  }
 }
 
 // Fetch full food library for the Foods tab
@@ -1875,6 +1918,7 @@ function renderRings() {
   const wPct = gw ? t.water / gw : 0;
   const wColor = wPct >= 1 ? 'var(--accent)' : 'var(--blue)';
   setRing('ring-w', wPct, 'rv-w', 'ra-w', `${Math.round(t.water)} / ${gw}oz`, wColor);
+  renderWeeklyAvg();
 }
 
 function setRing(id, pct, valId, absId, absText, color) {
@@ -3257,6 +3301,7 @@ function buildCoachPayload(question = null, mode = 'checkin') {
     hem:         dayData.hem,
     workouts:    dayData.workouts,
     coachNotes,  // today's notes — highest priority context
+    weeklyAvg,   // 7-day rolling averages for trend-aware coaching
     currentTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
     timezoneOffset: new Date().getTimezoneOffset(),
     tirzepatide: { ...tirz, daysPostInjection: daysPostInj },
@@ -3966,6 +4011,12 @@ function renderCoachNotes() {
   thread.innerHTML = html;
 }
 
+function daysAgoStr(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
+}
+
 function daysAgoDate(n) {
   const d = new Date();
   d.setDate(d.getDate() - n);
@@ -4014,6 +4065,7 @@ async function init() {
         loadRemoteProfile();
         loadMomentum();
         loadSmartFoods();
+        loadWeeklyAvg();
       }
     });
   }
