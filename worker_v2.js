@@ -55,6 +55,7 @@ export default {
       if (path === '/api/foods/search' && method === 'GET')  return await searchFoods(request, env, url);
       if (path === '/api/foods'        && method === 'POST') return await addFoodToLibrary(request, env);
       if (path === '/api/foods/pin'    && method === 'POST') return await pinFood(request, env);
+      if (path === '/api/foods/all'    && method === 'GET')  return await getAllFoodsLibrary(env, url);
       if (path === '/api/foods'        && method === 'PUT')  return await updateFoodInLibrary(request, env);
       if (path === '/api/foods'        && method === 'DELETE') return await deleteFoodFromLibrary(request, env);
 
@@ -384,10 +385,20 @@ async function getSmartFoods(request, env, url) {
   const usedIds = new Set([...pinnedIds, ...todayList.map(f => f.id)]);
   const recentList = (recentFoods.results || []).filter(f => !usedIds.has(f.id));
 
+  // 4. Recently added to library but never logged — so new foods always appear
+  const allUsedIds = new Set([...usedIds, ...recentList.map(f => f.id)]);
+  const newFoods = await db.prepare(`
+    SELECT * FROM food_library
+    WHERE use_count = 0 AND is_pinned = 0
+    ORDER BY id DESC
+    LIMIT 20
+  `).all();
+  const newList = (newFoods.results || []).filter(f => !allUsedIds.has(f.id));
+
   return reply({
     pinned:  pinned.results || [],
     today:   todayList,
-    recent:  recentList,
+    recent:  [...recentList, ...newList],
   });
 }
 
@@ -401,6 +412,17 @@ async function searchFoods(request, env, url) {
 
   // Rename to 'products' for OFF-compatible shape expected by client
   return reply({ results: results.results || [], products: results.results || [] });
+}
+
+async function getAllFoodsLibrary(env, url) {
+  const q = url.searchParams.get('q') || '';
+  const query = q
+    ? 'SELECT * FROM food_library WHERE name LIKE ? ORDER BY use_count DESC, name ASC LIMIT 100'
+    : 'SELECT * FROM food_library ORDER BY use_count DESC, name ASC LIMIT 200';
+  const results = q
+    ? await env.FUELSTRONG_DB.prepare(query).bind(`%${q}%`).all()
+    : await env.FUELSTRONG_DB.prepare(query).all();
+  return reply({ foods: results.results || [] });
 }
 
 async function addFoodToLibrary(request, env) {

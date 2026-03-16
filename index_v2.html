@@ -940,7 +940,7 @@ body{
       <div class="card-title">📋 All Foods</div>
       <div class="search-wrap" style="margin-bottom:10px">
         <span class="search-icon">🔍</span>
-        <input class="search-input" id="lib-search" placeholder="Search library…" oninput="renderLibrary()">
+        <input class="search-input" id="lib-search" placeholder="Search library…" oninput="onLibrarySearch()">
       </div>
       <div id="library-list"></div>
     </div>
@@ -1245,6 +1245,7 @@ let tirz    = JSON.parse(localStorage.getItem('fs3-tirz-v2')  || '{}');
 let library = JSON.parse(localStorage.getItem('fs3-lib-v2')   || '{"foods":[]}');
 // Smart foods from v2 server (pinned / today / recent)
 let v2SmartFoods   = { pinned: [], today: [], recent: [] };
+let v2LibraryFoods = [];  // full food_library for the Foods tab
 let evoltScanGoals = null;   // scan-derived targets from latest Evolt
 
 // Current viewing date (ISO string)
@@ -1357,7 +1358,7 @@ function showPanel(id, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-' + id).classList.add('active');
   btn.classList.add('active');
-  if (id === 'foods')   { renderLibrary(); }
+  if (id === 'foods')   { loadLibraryFoods(); }
   if (id === 'history') { renderHistory(); }
   if (id === 'coach')   {
     document.getElementById('coach-badge').classList.remove('show');
@@ -1552,6 +1553,31 @@ function mapV2FoodToLocal(f) {
     useCount:    f.use_count || 0,
     foodLibraryId: libId,  // integer for D1 API calls
   };
+}
+
+// Fetch full food library for the Foods tab
+async function loadLibraryFoods(q = '') {
+  if (!WORKER_URL || !FS_API_KEY) return;
+  try {
+    const url = q ? `/api/foods/all?q=${encodeURIComponent(q)}` : '/api/foods/all';
+    const res = await wFetch(url);
+    v2LibraryFoods = (res.foods || []).map(f => ({
+      id:           String(f.id),
+      name:         f.name,
+      displayName:  f.display_name || f.name,
+      calories:     f.calories   || 0,
+      protein:      f.protein_g  || 0,
+      carbs:        f.carbs_g    || 0,
+      fat:          f.fat_g      || 0,
+      fiber:        f.fiber_g    || 0,
+      serving:      f.serving    || null,
+      pinned:       !!f.is_pinned,
+      useCount:     f.use_count  || 0,
+      foodLibraryId: f.id ? parseInt(f.id) : null,
+      source:       f.source || 'manual',
+    }));
+    renderLibrary();
+  } catch (e) { /* offline */ }
 }
 
 // Fetch smart food list from v2 and cache in v2SmartFoods
@@ -3025,7 +3051,7 @@ function saveCustomFood() {
       fiber:    food.fiber,
       serving:  food.serving,
       source:   'manual',
-    })}).then(() => { loadSmartFoods().then(() => renderLibrary()); }).catch(() => {});
+    })}).then(() => { loadSmartFoods(); loadLibraryFoods(); }).catch(() => {});
   }
   ['lib-name','lib-cal','lib-prot','lib-carb','lib-fat','lib-fiber','lib-serving']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -3033,9 +3059,22 @@ function saveCustomFood() {
   toast(`✓ ${food.name} added to library!`);
 }
 
+function onLibrarySearch() {
+  const q = (document.getElementById('lib-search')?.value || '').trim();
+  if (q.length >= 2 && WORKER_URL && FS_API_KEY) {
+    loadLibraryFoods(q);  // server-side search for large libraries
+  } else if (!q) {
+    loadLibraryFoods();   // reload full list
+  } else {
+    renderLibrary();      // local filter for 1-char queries
+  }
+}
+
 function renderLibrary() {
   const q   = (document.getElementById('lib-search')?.value || '').toLowerCase();
-  const all = getAllFoods().filter(f => !q || f.name.toLowerCase().includes(q));
+  // Use full library list for the Foods tab — getAllFoods() only has smart/used foods
+  const source = v2LibraryFoods.length ? v2LibraryFoods : getAllFoods();
+  const all = source.filter(f => !q || f.name.toLowerCase().includes(q));
   const el  = document.getElementById('library-list');
 
   if (!all.length) {
@@ -3155,7 +3194,7 @@ function saveEditFood() {
     }
   }
   wFetch('/api/foods', { method: 'PUT', body: JSON.stringify(updates) })
-    .then(() => loadSmartFoods().then(() => renderLibrary()))
+    .then(() => { loadSmartFoods(); loadLibraryFoods(); })
     .catch(e => toast('Sync failed: ' + e.message, true));
   closeEditFood();
   toast('✅ Updated!');
