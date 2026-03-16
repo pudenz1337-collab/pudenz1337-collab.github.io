@@ -2048,7 +2048,10 @@ function addFoodToLog(food, qty = 1) {
         foodLibraryId:  food.foodLibraryId || null,
       }),
     }).then(res => {
-      if (res.id) localEntry.id = String(res.id);
+      if (res.id) {
+        localEntry.id = String(res.id);
+        renderFoodTimeline();  // re-render so onclick has the updated D1 id
+      }
     }).catch(() => {});
   }
 }
