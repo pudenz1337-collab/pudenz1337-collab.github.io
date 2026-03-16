@@ -2721,22 +2721,55 @@ async function searchOFF(q) {
 
   try {
     const res = await wFetch(`/api/foods/search?q=${encodeURIComponent(q)}`);
-    const products = res.products || [];
 
-    // Deduplicate against local
-    const localIds = new Set(getAllFoods().map(f => f.id));
-    const fresh    = products.filter(p => !localIds.has(p.id));
+    // Local library matches
+    const localMatches = (res.results || []).map(f => ({
+      id:       String(f.id),
+      name:     f.name,
+      brand:    null,
+      calories: f.calories || 0,
+      protein:  f.protein_g || 0,
+      carbs:    f.carbs_g || 0,
+      fat:      f.fat_g || 0,
+      fiber:    f.fiber_g || 0,
+      serving:  f.serving || null,
+      source:   'library',
+      foodLibraryId: f.id ? parseInt(f.id) : null,
+    }));
 
-    if (fresh.length) {
-      statusEl.textContent = `+ ${fresh.length} results from Open Food Facts`;
-      const el = document.getElementById('qa-results');
-      el.innerHTML += `<div class="section-label" style="margin-top:12px">Open Food Facts</div>`;
-      el.innerHTML += fresh.map(f => offItemHTML(f)).join('');
-    } else {
-      statusEl.textContent = 'No additional results from Open Food Facts';
+    // Real OFF products
+    const offProducts = res.products || [];
+
+    const el = document.getElementById('qa-results');
+    let html = '';
+
+    // Show local matches first if any
+    if (localMatches.length) {
+      const localIds = new Set(getAllFoods().map(f => f.id));
+      const newLocal = localMatches.filter(f => !localIds.has(f.id));
+      if (newLocal.length) {
+        html += newLocal.map(f => foodItemHTML(f)).join('');
+      }
     }
+
+    // Then OFF results
+    if (offProducts.length) {
+      const existingNames = new Set(getAllFoods().map(f => f.name.toLowerCase()));
+      const fresh = offProducts.filter(p => !existingNames.has(p.name.toLowerCase()));
+      if (fresh.length) {
+        html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 2px 4px">Open Food Facts</div>`;
+        html += fresh.map(f => offItemHTML(f)).join('');
+      }
+      statusEl.textContent = fresh.length
+        ? `${fresh.length} result${fresh.length !== 1 ? 's' : ''} from Open Food Facts`
+        : 'No new results from Open Food Facts';
+    } else {
+      statusEl.textContent = localMatches.length ? 'Library matches shown above' : 'No results found';
+    }
+
+    el.innerHTML = html || `<div style="font-size:12px;color:var(--muted);padding:10px 2px">No results for "${q}"</div>`;
   } catch (e) {
-    statusEl.textContent = 'Search requires Worker connection';
+    statusEl.textContent = 'Search unavailable — check connection';
   }
 }
 
@@ -2792,28 +2825,48 @@ let _qaEstTimer = null;
 
 function qaEstimateDebounced() {
   clearTimeout(_qaEstTimer);
-  _qaEstTimer = setTimeout(qaRunEstimate, 800);
+  _qaEstTimer = setTimeout(qaRunOFFSearch, 600);
 }
 
-async function qaRunEstimate() {
+async function qaRunOFFSearch() {
   const name = document.getElementById('qa-fname').value.trim();
   if (!name || name.length < 3 || !WORKER_URL || !FS_API_KEY) return;
   const bar = document.getElementById('qa-estimate-bar');
   bar.style.display = 'block';
-  bar.textContent = '✨ Estimating…';
+  bar.textContent = '🔍 Searching Open Food Facts…';
   try {
-    const r = await wFetch('/api/estimate', { method: 'POST', body: JSON.stringify({ name }) });
-    if (r.error) throw new Error(r.error);
-    const est = r.estimate;
-    // Fill blanks only — don't overwrite user-entered values
-    if (!document.getElementById('qa-fcal').value   && est.cal)     document.getElementById('qa-fcal').value   = est.cal;
-    if (!document.getElementById('qa-fprot').value  && est.protein) document.getElementById('qa-fprot').value  = est.protein;
-    if (!document.getElementById('qa-ffiber').value && est.fiber)   document.getElementById('qa-ffiber').value = est.fiber;
-    const c = est.confidence === 'high' ? 'var(--accent)' : est.confidence === 'medium' ? 'var(--yellow)' : 'var(--orange)';
-    bar.innerHTML = `<span style="color:${c}">✨ ${est.serving || '1 serving'} · ${est.confidence} confidence</span> — edit if needed`;
+    const res = await wFetch(`/api/foods/search?q=${encodeURIComponent(name)}`);
+    const products = res.products || [];
+    if (!products.length) {
+      bar.textContent = 'No matches found — enter macros manually';
+      return;
+    }
+    // Show top matches as quick-fill options
+    const top = products.slice(0, 3);
+    bar.innerHTML = top.map((p, i) =>
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0${i < top.length-1 ? ';border-bottom:1px solid var(--border)' : ''}">
+        <div>
+          <div style="font-size:12px;font-weight:500">${p.name}${p.brand ? ' <span style="color:var(--muted);font-size:10px">· '+p.brand+'</span>' : ''}</div>
+          <div style="font-size:10px;color:var(--muted)">${p.calories} kcal · ${p.protein}g P · ${p.serving || '1 serving'}</div>
+        </div>
+        <button class="btn btn-g btn-sm" style="font-size:10px;padding:3px 8px" onclick="qaFillFromOFF(${i}, ${JSON.stringify(top).replace(/"/g,'&quot;')})">Use</button>
+      </div>`
+    ).join('');
   } catch (e) {
     bar.style.display = 'none';
   }
+}
+
+function qaFillFromOFF(idx, productsJson) {
+  const products = typeof productsJson === 'string' ? JSON.parse(productsJson) : productsJson;
+  const p = products[idx];
+  if (!p) return;
+  document.getElementById('qa-fname').value  = p.name;
+  document.getElementById('qa-fcal').value   = p.calories || 0;
+  document.getElementById('qa-fprot').value  = p.protein  || 0;
+  document.getElementById('qa-ffiber').value = p.fiber    || 0;
+  const bar = document.getElementById('qa-estimate-bar');
+  bar.innerHTML = `<span style="color:var(--accent)">✓ Filled from Open Food Facts${p.brand ? ' · ' + p.brand : ''}</span>`;
 }
 
 function qaAddCustomFood(saveToLibrary) {
@@ -3048,22 +3101,58 @@ async function estimateByName() {
   const txt = document.getElementById('lib-estimate-txt');
   bar.style.display = 'block';
   txt.style.color   = 'var(--text)';
-  txt.textContent   = '✨ Estimating…';
+  txt.textContent   = '🔍 Searching Open Food Facts…';
   try {
-    const r = await wFetch('/api/estimate', { method: 'POST', body: JSON.stringify({ name }) });
-    if (r.error) throw new Error(r.error);
-    const est = r.estimate;
-    const map = { cal:'lib-cal', protein:'lib-prot', carbs:'lib-carb', fat:'lib-fat', fiber:'lib-fiber' };
-    Object.entries(map).forEach(([k, id]) => {
+    const res = await wFetch(`/api/foods/search?q=${encodeURIComponent(name)}`);
+    const products = res.products || [];
+    if (!products.length) {
+      txt.textContent = 'No matches found in Open Food Facts — enter macros manually';
+      return;
+    }
+    // Fill fields from best match
+    const best = products[0];
+    const map = {
+      'lib-cal':    best.calories || 0,
+      'lib-prot':   best.protein  || 0,
+      'lib-carb':   best.carbs    || 0,
+      'lib-fat':    best.fat      || 0,
+      'lib-fiber':  best.fiber    || 0,
+    };
+    Object.entries(map).forEach(([id, val]) => {
       const el = document.getElementById(id);
-      if (el && !el.value && est[k] != null) el.value = est[k];
+      if (el && !el.value) el.value = val;
     });
-    const c = est.confidence === 'high' ? 'var(--accent)' : est.confidence === 'medium' ? 'var(--yellow)' : 'var(--orange)';
-    txt.innerHTML = `✨ <strong>${est.serving}</strong> — <span style="color:${c}">${est.confidence} confidence</span>. Edit if needed.`;
+    if (best.serving && !document.getElementById('lib-serving').value) {
+      document.getElementById('lib-serving').value = best.serving;
+    }
+    txt.innerHTML = `✓ <strong>${best.name}</strong>${best.brand ? ' · ' + best.brand : ''} — from Open Food Facts. Edit if needed.`;
+    txt.style.color = 'var(--accent)';
+    // Show other matches as alternatives
+    if (products.length > 1) {
+      txt.innerHTML += products.slice(1, 3).map((p, i) =>
+        ` <span style="font-size:10px;color:var(--muted);cursor:pointer;text-decoration:underline"
+          onclick="libFillFromOFF(${i+1}, '${encodeURIComponent(JSON.stringify(products.slice(0,3)))}')"
+          >Alt ${i+2}: ${p.name.slice(0,20)}…</span>`
+      ).join('');
+    }
   } catch (e) {
     txt.style.color = 'var(--danger)';
-    txt.textContent = '⚠️ ' + e.message;
+    txt.textContent = '⚠️ Search failed — enter macros manually';
   }
+}
+
+function libFillFromOFF(idx, encoded) {
+  const products = JSON.parse(decodeURIComponent(encoded));
+  const p = products[idx];
+  if (!p) return;
+  document.getElementById('lib-cal').value   = p.calories || 0;
+  document.getElementById('lib-prot').value  = p.protein  || 0;
+  document.getElementById('lib-carb').value  = p.carbs    || 0;
+  document.getElementById('lib-fat').value   = p.fat      || 0;
+  document.getElementById('lib-fiber').value = p.fiber    || 0;
+  if (p.serving) document.getElementById('lib-serving').value = p.serving;
+  document.getElementById('lib-estimate-txt').innerHTML =
+    `✓ <strong>${p.name}</strong>${p.brand ? ' · ' + p.brand : ''} — from Open Food Facts`;
 }
 
 function clearEstimate() { document.getElementById('lib-estimate-bar').style.display = 'none'; }

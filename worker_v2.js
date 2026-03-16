@@ -404,14 +404,46 @@ async function getSmartFoods(request, env, url) {
 
 async function searchFoods(request, env, url) {
   const q = url.searchParams.get('q') || '';
-  if (!q) return reply({ results: [] });
+  if (!q) return reply({ results: [], products: [] });
 
-  const results = await env.FUELSTRONG_DB.prepare(
-    'SELECT * FROM food_library WHERE name LIKE ? ORDER BY use_count DESC, name ASC LIMIT 20'
+  // Search local library first
+  const localResults = await env.FUELSTRONG_DB.prepare(
+    'SELECT * FROM food_library WHERE name LIKE ? ORDER BY use_count DESC, name ASC LIMIT 10'
   ).bind(`%${q}%`).all();
 
-  // Rename to 'products' for OFF-compatible shape expected by client
-  return reply({ results: results.results || [], products: results.results || [] });
+  // Also search Open Food Facts for real product data
+  let offProducts = [];
+  try {
+    const offRes = await fetch(
+      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=10&fields=product_name,brands,nutriments,serving_size,code`,
+      { headers: { 'User-Agent': 'FuelStrong/2.0 (nutrition tracking app)' } }
+    );
+    if (offRes.ok) {
+      const offData = await offRes.json();
+      offProducts = (offData.products || [])
+        .filter(p => p.product_name && p.nutriments)
+        .map(p => ({
+          id:       'off_' + (p.code || Math.random().toString(36).slice(2)),
+          name:     p.product_name,
+          brand:    p.brands || null,
+          calories: Math.round(p.nutriments['energy-kcal_serving'] || p.nutriments['energy-kcal_100g'] || 0),
+          protein:  Math.round((p.nutriments['proteins_serving'] || p.nutriments['proteins_100g'] || 0) * 10) / 10,
+          carbs:    Math.round((p.nutriments['carbohydrates_serving'] || p.nutriments['carbohydrates_100g'] || 0) * 10) / 10,
+          fat:      Math.round((p.nutriments['fat_serving'] || p.nutriments['fat_100g'] || 0) * 10) / 10,
+          fiber:    Math.round((p.nutriments['fiber_serving'] || p.nutriments['fiber_100g'] || 0) * 10) / 10,
+          serving:  p.serving_size || null,
+          source:   'openfoodfacts',
+        }))
+        .filter(p => p.calories > 0 || p.protein > 0);  // skip empty nutrition entries
+    }
+  } catch (e) {
+    // OFF unavailable — local results only
+  }
+
+  return reply({
+    results:  localResults.results || [],
+    products: offProducts,
+  });
 }
 
 async function getAllFoodsLibrary(env, url) {
