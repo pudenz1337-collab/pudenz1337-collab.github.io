@@ -3383,6 +3383,7 @@ function buildCoachPayload(question = null, mode = 'checkin') {
 
   return {
     mode,
+    date:        viewDate,  // ensure coach uses the viewed date, not server's today
     goals,
     flags:       dayData.flags,
     foodLog:     dayData.foodLog,
