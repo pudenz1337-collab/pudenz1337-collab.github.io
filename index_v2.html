@@ -1537,8 +1537,9 @@ function mapV2ToDayData(v2, dateStr) {
 
 // Map a v2 food_library row to the local food object shape
 function mapV2FoodToLocal(f) {
+  const libId = f.id ? parseInt(f.id) : null;  // always integer for D1 ops
   return {
-    id:          f.id || f.name,   // integer id from food_library (fallback to name for OFF results)
+    id:          libId ? String(libId) : f.name,  // always STRING for comparisons
     name:        f.name,
     displayName: f.display_name || f.name,
     calories:    f.calories  || 0,
@@ -1549,7 +1550,7 @@ function mapV2FoodToLocal(f) {
     serving:     f.serving   || null,
     pinned:      !!f.is_pinned,
     useCount:    f.use_count || 0,
-    foodLibraryId: f.id || null,   // explicit integer for D1 operations
+    foodLibraryId: libId,  // integer for D1 API calls
   };
 }
 
@@ -2697,7 +2698,7 @@ function addOFFFood(food, qtyId) {
         fat:      food.fat    || 0,
         fiber:    food.fiber  || 0,
         serving:  food.serving || null,
-      })}).then(() => loadSmartFoods()).catch(() => {});
+      })}).then(() => loadSmartFoods().then(() => renderLibrary())).catch(() => {});
     }
     addFoodToLog(food, qty);
     toast(`✓ "${food.name}" saved to library`);
@@ -2775,7 +2776,7 @@ function qaAddCustomFood(saveToLibrary) {
       fiber:    food.fiber,
       serving:  food.serving,
       source:   'manual',
-    })}).then(() => loadSmartFoods()).catch(() => {});
+    })}).then(() => loadSmartFoods().then(() => renderLibrary())).catch(() => {});
     toast(`✓ "${food.name}" saved to library & logged`);
   } else {
     toast(`✓ "${food.name}" logged`);
@@ -2912,7 +2913,7 @@ function saveScannedToLib() {
       fat:      food.fat      || 0,
       fiber:    food.fiber    || 0,
       serving:  food.serving  || null,
-    })}).then(() => loadSmartFoods()).catch(() => {});
+    })}).then(() => loadSmartFoods().then(() => renderLibrary())).catch(() => {});
   }
   addScanned();
   toast('📚 Saved to library!');
@@ -3024,7 +3025,7 @@ function saveCustomFood() {
       fiber:    food.fiber,
       serving:  food.serving,
       source:   'manual',
-    })}).then(() => loadSmartFoods()).catch(() => {});
+    })}).then(() => { loadSmartFoods().then(() => renderLibrary()); }).catch(() => {});
   }
   ['lib-name','lib-cal','lib-prot','lib-carb','lib-fat','lib-fiber','lib-serving']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -3100,7 +3101,7 @@ function deleteFood(id) {
   v2SmartFoods.pinned = v2SmartFoods.pinned.filter(f => f.id !== id);
   v2SmartFoods.today  = v2SmartFoods.today.filter(f => f.id !== id);
   v2SmartFoods.recent = v2SmartFoods.recent.filter(f => f.id !== id);
-  const food = getAllFoods().find(f => f.id == id);
+  const food = getAllFoods().find(f => f.id === id);
   const delPayload = food?.foodLibraryId
     ? { id: food.foodLibraryId }
     : { name: id };
@@ -3131,7 +3132,7 @@ function closeEditFood() {
 
 function saveEditFood() {
   if (!_editFoodId) return;
-  const food    = getAllFoods().find(f => f.id == _editFoodId);
+  const food    = getAllFoods().find(f => f.id === _editFoodId);
   const newName = document.getElementById('ef-name').value.trim();
   const updates = {
     id:       food?.foodLibraryId || null,
@@ -3146,7 +3147,7 @@ function saveEditFood() {
   };
   // Update v2SmartFoods cache in all buckets
   for (const bucket of [v2SmartFoods.pinned, v2SmartFoods.today, v2SmartFoods.recent]) {
-    const f = bucket.find(f => f.id == _editFoodId);
+    const f = bucket.find(f => f.id === _editFoodId);
     if (f) {
       Object.assign(f, { calories: updates.calories, protein: updates.protein,
         carbs: updates.carbs, fat: updates.fat, fiber: updates.fiber, serving: updates.serving });
@@ -3154,10 +3155,9 @@ function saveEditFood() {
     }
   }
   wFetch('/api/foods', { method: 'PUT', body: JSON.stringify(updates) })
-    .then(() => { loadSmartFoods(); })
+    .then(() => loadSmartFoods().then(() => renderLibrary()))
     .catch(e => toast('Sync failed: ' + e.message, true));
   closeEditFood();
-  renderLibrary();
   toast('✅ Updated!');
 }
 
