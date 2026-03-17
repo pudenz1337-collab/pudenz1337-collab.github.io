@@ -1373,9 +1373,10 @@ function showPanel(id, btn) {
 // DATE NAVIGATION
 // ══════════════════════════════════════════════════
 async function navigateDate(delta) {
-  const d = new Date(viewDate + 'T12:00:00');
+  const parts = viewDate.split('-');
+  const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
   d.setDate(d.getDate() + delta);
-  const newDate = d.toISOString().split('T')[0];
+  const newDate = [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
   if (newDate > todayISO()) return;
   await loadDate(newDate);
 }
@@ -1563,7 +1564,7 @@ function mapV2FoodToLocal(f) {
 async function loadWeeklyAvg() {
   if (!WORKER_URL || !FS_API_KEY) return;
   try {
-    const res = await wFetch(`/api/log?since=${daysAgoStr(7)}&until=${viewDate}&limit=7`);
+    const res = await wFetch(`/api/log?since=${daysAgoStr(7, viewDate)}&until=${viewDate}&limit=7`);
     const logs = (res.logs || []).filter(d => (d.calories || 0) > 0 || (d.protein_g || 0) > 0);
     if (!logs.length) return;
     const days    = logs.length;
@@ -1784,9 +1785,9 @@ function pushProfile() {
   setTimeout(async () => {
     try {
       await wFetch('/api/goals', { method: 'POST', body: JSON.stringify({
-        protein:      goals.protein || 150,
-        protein_g:    goals.protein || 150,
-        caloriesLow:  goals.calLow  || goals.cal || null,
+        protein:      goals.protein || null,
+        protein_g:    goals.protein || null,
+        caloriesLow:  goals.calLow  || null,   // null = not set, don't fallback to ceiling
         caloriesHigh: goals.cal     || null,
         water:        goals.water   || 80,
         source:       'manual',
@@ -4101,8 +4102,11 @@ function renderCoachNotes() {
   thread.innerHTML = html;
 }
 
-function daysAgoStr(n) {
-  const d = new Date();
+function daysAgoStr(n, fromDate) {
+  // Use fromDate (local) as anchor if provided, else today
+  const anchor = fromDate || todayISO();
+  const parts = anchor.split('-');
+  const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
   d.setDate(d.getDate() - n);
   return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
 }
