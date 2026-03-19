@@ -2550,12 +2550,29 @@ function openQuickAdd() {
   document.getElementById('qa-time').value = nowTimeStr();
   activeTab = 'smart';
   switchTab('smart');
+  // Push a history state so phone back button closes the sheet instead of leaving the app
+  if (window.history && window.history.pushState) {
+    window.history.pushState({ qaOpen: true }, '');
+  }
 }
 
 function closeQuickAdd() {
   document.getElementById('qa-overlay').classList.remove('open');
   stopBarcode();
+  // Clear the pushed state without triggering popstate
+  if (window.history.state?.qaOpen) {
+    window.history.back();
+  }
 }
+
+// Intercept browser/phone back button when quick-add is open
+window.addEventListener('popstate', (e) => {
+  const overlay = document.getElementById('qa-overlay');
+  if (overlay?.classList.contains('open')) {
+    overlay.classList.remove('open');
+    stopBarcode();
+  }
+});
 
 function switchTab(tab) {
   activeTab = tab;
@@ -3340,7 +3357,7 @@ function saveEditFood() {
 async function loadMomentum() {
   if (!WORKER_URL) return;
   try {
-    const m = await wFetch('/api/momentum');
+    const m = await wFetch('/api/momentum?date=' + viewDate);
     momentumData = m;
     renderMomentum(m);
     // Rings, water segments, and insights all use getEffectiveTargets() which reads

@@ -411,9 +411,11 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
       <!-- Scan Interval Analysis -->
       <div class="section-label" id="intervals-section-label" style="display:none">Interval Analysis — What Each Period Produced</div>
       <div id="scan-intervals-wrap"></div>
+    </div><!-- end body-content -->
 
-      <!-- Measurements -->
-      <div class="section-label" style="margin-top:18px">📏 Tape Measurements</div>
+    <!-- Measurements — always visible, no scan required -->
+    <div style="margin-top:18px">
+      <div class="section-label">📏 Tape Measurements</div>
       <div class="card">
         <div class="card-title" style="margin-bottom:12px">Log Measurements</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
@@ -454,8 +456,8 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
         <span id="m-saved" style="font-size:12px;color:var(--accent);display:none;margin-left:8px">✓ Saved</span>
       </div>
       <div id="measurements-list"></div>
-    </div>
-  </div>
+    </div><!-- end measurements section -->
+  </div><!-- end panel-body -->
 
   <!-- ═══════ TRAINING ═══════ -->
   <div id="panel-training" class="panel">
@@ -727,7 +729,7 @@ function showPanel(id, btn) {
   btn.classList.add('active');
 
   if (id === 'overview')  { renderOverview(); loadMomentum(); }
-  if (id === 'body')      { renderBody(); loadScanIntervals(); renderMeasurements(); }
+  if (id === 'body')      { renderBody(); loadScanIntervals(); renderMeasurements(); initMeasurementDate(); }
   if (id === 'training')  renderTraining();
   if (id === 'insights') {
     document.getElementById('ins-badge').classList.remove('show');
@@ -1429,7 +1431,9 @@ function normalizeMuscleGroup(str) {
 async function loadMomentum() {
   if (!WORKER_URL) return;
   try {
-    const m = await wFetch('/api/momentum');
+    const now = new Date();
+    const localDate = [now.getFullYear(), String(now.getMonth()+1).padStart(2,'0'), String(now.getDate()).padStart(2,'0')].join('-');
+    const m = await wFetch('/api/momentum?date=' + localDate);
     renderMomentum(m);
   } catch (e) {
     console.log('[Momentum] Load failed:', e.message);
@@ -1539,7 +1543,7 @@ function renderScanIntervals(intervals) {
           <div class="interval-stat-label">Body Fat</div>
         </div>
         <div class="interval-stat">
-          <div class="interval-stat-val" style="color:${weightColor}">${fmt(wc)}lbs</div>
+          <div class="interval-stat-val" style="color:${weightColor}">${typeof wc === 'number' ? parseFloat(wc).toFixed(2) : wc}lbs</div>
           <div class="interval-stat-label">Weight</div>
         </div>
       </div>
@@ -1934,7 +1938,7 @@ function renderTraining() {
         .sort((a, b) => b[1] - a[1])
         .map(([mg, vol]) => {
           const setCount  = mgSets[mg] || 0;
-          const volLabel  = vol >= 1000 ? `${(vol/1000).toFixed(1)}k` : `${Math.round(vol)}`;
+          const volLabel  = vol >= 1000 ? `${(vol/1000).toFixed(2)}k lbs` : `${parseFloat(vol).toFixed(2)} lbs`;
           return `
           <div class="mg-row">
             <div class="mg-label">${mg}</div>
@@ -1948,10 +1952,13 @@ function renderTraining() {
   const prs = buildPRs(sessions);
   document.getElementById('pr-list').innerHTML = prs.slice(0, 10).map(pr =>
     `<div class="pr-item">
-      <div><div class="pr-name">${pr.exercise}</div><div style="font-size:10px;color:var(--muted)">${pr.date}</div></div>
-      <div class="pr-val">${(+pr.weight).toFixed(2)}lbs × ${pr.reps}</div>
+      <div>
+        <div class="pr-name">${pr.exercise}</div>
+        <div style="font-size:10px;color:var(--muted)">${pr.date}</div>
+      </div>
+      <div class="pr-val">${parseFloat(pr.weight).toFixed(2)} lbs × ${pr.reps}</div>
     </div>`
-  ).join('') || '<div style="text-align:center;padding:16px;color:var(--muted)">No PR data yet</div>';
+  ).join('') || '<div style="text-align:center;padding:16px;color:var(--muted)">No PR data yet — upload Fitbod CSV</div>';
 
   // Recent sessions table
   const recent = [...sessions].reverse().slice(0, 15);
@@ -1963,7 +1970,7 @@ function renderTraining() {
       <tr>
         <td style="font-family:'DM Mono',monospace;color:var(--accent);font-size:11px">${s.date}</td>
         <td style="color:var(--text)">${(s.muscleGroupsWorked||[]).slice(0,3).join(', ')}</td>
-        <td style="font-family:'DM Mono',monospace">${(s.totalVolume||0) >= 1000 ? (((s.totalVolume||0)/1000).toFixed(1))+'k' : Math.round(s.totalVolume||0)} lbs</td>
+        <td style="font-family:'DM Mono',monospace">${(s.totalVolume||0) >= 1000 ? (((s.totalVolume||0)/1000).toFixed(2))+'k lbs' : parseFloat(s.totalVolume||0).toFixed(2)+' lbs'}</td>
         <td style="color:var(--muted)">${s.rpe ? s.rpe + '/10' : '—'}</td>
       </tr>`).join('')}
     </tbody>`;
@@ -2009,15 +2016,27 @@ function buildMuscleGroupVol(sessions) {
 function buildPRs(sessions) {
   const bests = {};
   sessions.forEach(s => (s.exercises || []).forEach(ex => {
+    if (!ex.name) return;  // guard against undefined exercise name
     (ex.sets || []).forEach(set => {
-      if (!set.weight || !set.reps) return;
-      const key = ex.name;
-      if (!bests[key] || set.weight > bests[key].weight) {
-        bests[key] = { exercise: ex.name, weight: set.weight, reps: set.reps, date: s.date };
+      const w = parseFloat(set.weight);
+      const r = parseInt(set.reps);
+      if (!w || w <= 0 || !r || r <= 0) return;  // skip zero/missing weight or reps
+      // Use e1rm if available for ranking, display actual weight
+      const e1rm = set.e1rm || Math.round(w * (1 + r / 30));
+      if (!bests[ex.name] || e1rm > bests[ex.name].e1rm) {
+        bests[ex.name] = {
+          exercise: ex.name,
+          weight:   parseFloat(w.toFixed(2)),   // always 2 decimal places, lbs
+          reps:     r,
+          e1rm,
+          date:     s.date,
+        };
       }
     });
   }));
-  return Object.values(bests).sort((a, b) => b.weight - a.weight);
+  return Object.values(bests)
+    .filter(p => p.exercise && p.weight > 0)   // final safety filter
+    .sort((a, b) => b.e1rm - a.e1rm);
 }
 
 // ══════════════════════════════════════════════
@@ -2151,7 +2170,7 @@ function buildUnifiedCoachPayload(question = null) {
     last8weeks:         last8w.length,
     avgWorkoutsPerWeek: parseFloat((last4w.length / 4).toFixed(1)),
     compoundPct:        totalSets ? Math.round(compoundSets / totalSets * 100) : 0,
-    topPRs:             prs.slice(0, 5).map(p => `${p.exercise} ${(+p.weight).toFixed(2)}lbs × ${p.reps} (${p.date})`).join(', '),
+    topPRs:             prs.slice(0, 5).map(p => `${p.exercise} ${parseFloat(p.weight).toFixed(2)}lbs × ${p.reps} (${p.date})`).join(', '),
   };
 
   // Training trends — weekly volume (last 8 weeks) + muscle group distribution (last 30 days)
@@ -2398,7 +2417,12 @@ function initMeasurementDate() {
   const el = document.getElementById('m-date');
   if (el && !el.value) {
     const d = new Date();
-    el.value = d.toISOString().slice(0, 10);
+    // Use local date parts - toISOString() returns UTC which can be wrong at night
+    el.value = [
+      d.getFullYear(),
+      String(d.getMonth() + 1).padStart(2, '0'),
+      String(d.getDate()).padStart(2, '0'),
+    ].join('-');
   }
 }
 
@@ -2511,7 +2535,10 @@ function renderDataSummary() {
 // UTILITIES
 // ══════════════════════════════════════════════
 function daysDiff(dateStr) {
-  return Math.round((Date.now() - new Date(dateStr + 'T12:00:00')) / 86400000);
+  // Use local today at noon to avoid UTC midnight timezone issues
+  const now = new Date();
+  const todayNoon = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+  return Math.round((todayNoon - new Date(dateStr + 'T12:00:00')) / 86400000);
 }
 
 function mdToHtml(text) {
