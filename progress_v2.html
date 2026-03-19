@@ -452,8 +452,11 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
             <input class="setting-input" id="m-notes" placeholder="e.g. morning, post-workout">
           </div>
         </div>
-        <button class="btn btn-p btn-sm" onclick="saveMeasurement()">Save Measurement</button>
-        <span id="m-saved" style="font-size:12px;color:var(--accent);display:none;margin-left:8px">✓ Saved</span>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+          <button class="btn btn-p btn-sm" onclick="saveMeasurement()">Save Measurement</button>
+          <span id="m-saved" style="font-size:12px;color:var(--accent);display:none">✓ Saved to D1</span>
+          <span style="font-size:10px;color:var(--muted)">Tap Save to record — not auto-saved</span>
+        </div>
       </div>
       <div id="measurements-list"></div>
     </div><!-- end measurements section -->
@@ -729,7 +732,7 @@ function showPanel(id, btn) {
   btn.classList.add('active');
 
   if (id === 'overview')  { renderOverview(); loadMomentum(); }
-  if (id === 'body')      { renderBody(); loadScanIntervals(); renderMeasurements(); initMeasurementDate(); }
+  if (id === 'body')      { renderBody(); loadScanIntervals(); }
   if (id === 'training')  renderTraining();
   if (id === 'insights') {
     document.getElementById('ins-badge').classList.remove('show');
@@ -839,7 +842,7 @@ async function loadFromWorker() {
     const activePanel = document.querySelector('.panel.active');
     const activeId    = activePanel ? activePanel.id.replace('panel-', '') : 'overview';
     renderOverview();
-    if (activeId === 'body')     { renderBody(); renderMeasurements(); }
+    if (activeId === 'body')     { renderBody(); }
     if (activeId === 'training') renderTraining();
     renderDataSummary();
     checkInsightsFreshness();
@@ -878,19 +881,21 @@ function mapD1ScanToEvolt(s) {
 // Map D1 workouts/full session → v1 fitbod shape
 function mapD1WorkoutToFitbod(s) {
   return {
-    id:          s.id,
-    date:        s.date,
-    duration:    s.durationMins,
-    totalVolume: s.totalVolume,
-    rpe:         s.rpe,
-    notes:       s.notes,
-    exercises:   (s.exercises || []).map(ex => ({
+    id:                s.id,
+    date:              s.date,
+    duration:          s.durationMins,
+    totalVolume:       s.totalVolume,
+    rpe:               s.rpe,
+    notes:             s.notes,
+    muscleGroupsWorked: s.muscleGroupsWorked || [],
+    exercises:   (s.exercises || []).filter(ex => ex.name).map(ex => ({
       name:        ex.name,
       muscleGroup: ex.muscleGroup || 'Other',
+      totalVolume: ex.totalVolume || 0,
       sets:        (ex.sets || []).map(set => ({
-        weight: set.weight || 0,
+        weight: parseFloat((set.weight || 0).toFixed(2)),
         reps:   set.reps   || 0,
-        e1rm:   set.e1rm   || null,
+        e1rm:   set.e1rm   ? parseFloat(set.e1rm.toFixed(2)) : null,
       })),
     })),
   };
@@ -1790,6 +1795,10 @@ function renderBody() {
   const scans = data.evolt;
   const el_empty   = document.getElementById('body-empty');
   const el_content = document.getElementById('body-content');
+
+  // Always init measurements regardless of scan state
+  renderMeasurements();
+  initMeasurementDate();
 
   if (!scans.length) {
     el_empty.style.display = 'block'; el_content.style.display = 'none'; return;
