@@ -1970,13 +1970,16 @@ function renderTraining() {
 
   // PRs
   const prs = buildPRs(sessions);
-  document.getElementById('pr-list').innerHTML = prs.slice(0, 10).map(pr =>
+  document.getElementById('pr-list').innerHTML = prs.slice(0, 12).map((pr, i) =>
     `<div class="pr-item">
       <div>
-        <div class="pr-name">${pr.exercise}</div>
+        <div class="pr-name">${i + 1}. ${pr.exercise}</div>
         <div style="font-size:10px;color:var(--muted)">${pr.date}</div>
       </div>
-      <div class="pr-val">${parseFloat(pr.weight).toFixed(2)} lbs × ${pr.reps}</div>
+      <div style="text-align:right">
+        <div class="pr-val">${parseFloat(pr.weight).toFixed(2)} lbs</div>
+        <div style="font-size:10px;color:var(--muted)">× ${pr.reps} reps</div>
+      </div>
     </div>`
   ).join('') || '<div style="text-align:center;padding:16px;color:var(--muted)">No PR data yet — upload Fitbod CSV</div>';
 
@@ -2034,29 +2037,30 @@ function buildMuscleGroupVol(sessions) {
 }
 
 function buildPRs(sessions) {
+  // Track two things per exercise:
+  // 1. heaviestWeight — the single heaviest set ever (your true weight PR)
+  // 2. bestVolSet — highest volume set (weight × reps) for context
   const bests = {};
   sessions.forEach(s => (s.exercises || []).forEach(ex => {
-    if (!ex.name) return;  // guard against undefined exercise name
+    if (!ex.name) return;
     (ex.sets || []).forEach(set => {
       const w = parseFloat(set.weight);
       const r = parseInt(set.reps);
-      if (!w || w <= 0 || !r || r <= 0) return;  // skip zero/missing weight or reps
-      // Use e1rm if available for ranking, display actual weight
-      const e1rm = set.e1rm || Math.round(w * (1 + r / 30));
-      if (!bests[ex.name] || e1rm > bests[ex.name].e1rm) {
+      if (!w || w <= 0 || !r || r <= 0) return;
+      if (!bests[ex.name] || w > bests[ex.name].weight ||
+         (w === bests[ex.name].weight && r > bests[ex.name].reps)) {
         bests[ex.name] = {
           exercise: ex.name,
-          weight:   parseFloat(w.toFixed(2)),   // always 2 decimal places, lbs
+          weight:   parseFloat(w.toFixed(2)),  // actual heaviest weight, lbs, 2dp
           reps:     r,
-          e1rm,
           date:     s.date,
         };
       }
     });
   }));
   return Object.values(bests)
-    .filter(p => p.exercise && p.weight > 0)   // final safety filter
-    .sort((a, b) => b.e1rm - a.e1rm);
+    .filter(p => p.exercise && p.weight > 0)
+    .sort((a, b) => b.weight - a.weight);  // sort by actual weight, heaviest first
 }
 
 // ══════════════════════════════════════════════
@@ -2190,7 +2194,7 @@ function buildUnifiedCoachPayload(question = null) {
     last8weeks:         last8w.length,
     avgWorkoutsPerWeek: parseFloat((last4w.length / 4).toFixed(1)),
     compoundPct:        totalSets ? Math.round(compoundSets / totalSets * 100) : 0,
-    topPRs:             prs.slice(0, 5).map(p => `${p.exercise} ${parseFloat(p.weight).toFixed(2)}lbs × ${p.reps} (${p.date})`).join(', '),
+    topPRs:             prs.slice(0, 5).map(p => `${p.exercise}: ${parseFloat(p.weight).toFixed(2)}lbs × ${p.reps} reps (${p.date})`).join(', '),
   };
 
   // Training trends — weekly volume (last 8 weeks) + muscle group distribution (last 30 days)
