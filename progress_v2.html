@@ -41,8 +41,8 @@ body{
 .conn-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:all .3s}
 .conn-dot.ok{background:var(--accent);box-shadow:0 0 6px rgba(0,229,160,.5)}
 .conn-dot.err{background:var(--danger);box-shadow:0 0 6px rgba(255,69,96,.4)}
-.app-content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(var(--nav-h)+16px)}
-.panel{display:none;padding:14px 14px 24px}
+.app-content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;touch-action:pan-y;padding-bottom:calc(var(--nav-h)+32px)}
+.panel{display:none;padding:14px 14px 80px;min-height:100%}
 .panel.active{display:block}
 .bottom-nav{
   position:fixed;bottom:0;left:50%;transform:translateX(-50%);
@@ -955,11 +955,22 @@ function mapEvoltToD1Scan(e) {
 }
 
 async function clearType(type) {
-  if (!confirm(`Clear all ${type} data from this view? (Data remains in D1 database.)`)) return;
+  const label = type === 'fitbod' ? 'Fitbod workout' : 'Evolt scan';
+  if (!confirm(`Delete all ${label} data from D1 permanently?\n\nThis cannot be undone. You will need to re-upload your CSV/PDFs.`)) return;
+
+  if (type === 'fitbod' && WORKER_URL && FS_API_KEY) {
+    try {
+      await wFetch('/api/workouts/all', { method: 'DELETE' });
+      toast('✓ All Fitbod data deleted from D1');
+    } catch (e) {
+      toast('Delete failed: ' + e.message, true); return;
+    }
+  }
+
   data[type] = [];
   destroyCharts();
   renderOverview(); renderBody(); renderTraining(); renderDataSummary();
-  toast(`${type} cleared from view — reload to restore from D1`);
+  toast(`${label} data cleared — re-upload to restore`);
 }
 
 async function backupToGitHub() {
