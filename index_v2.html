@@ -431,6 +431,12 @@ body{
   background:var(--card2);
 }
 .scan-area:hover,.scan-area.scanning{border-color:var(--accent);background:var(--accent-dim)}
+.plate-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
+.plate-item:last-child{border-bottom:none}
+.plate-item-name{font-size:13px;font-weight:500}
+.plate-item-portion{font-size:11px;color:var(--muted)}
+.plate-item-macros{font-size:12px;color:var(--blue);text-align:right}
+.plate-totals{background:var(--card2);border-radius:8px;padding:10px 12px;margin-top:10px}
 #barcode-video{width:100%;border-radius:9px;display:none;max-height:180px;object-fit:cover}
 .scan-result{
   background:var(--accent-dim);border:1px solid rgba(0,229,160,.25);
@@ -1120,6 +1126,25 @@ body{
           </div>
         </div>
         <div class="scan-result" id="scan-result"></div>
+
+        <!-- Plate Photo Estimator -->
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          <div style="font-size:12px;font-weight:600;margin-bottom:6px">🍽️ Estimate from Photo</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Take a photo of your meal — AI will identify foods and estimate macros</div>
+          <label style="display:block">
+            <input type="file" accept="image/*" style="display:none" id="plate-photo-input" onchange="scanPlate(event)">
+            <div style="display:flex;gap:8px">
+              <label style="flex:1;cursor:pointer" onclick="document.getElementById('plate-photo-input').removeAttribute('capture');document.getElementById('plate-photo-input').click();event.preventDefault()">
+                <div class="btn btn-g" style="text-align:center;width:100%">🖼️ Gallery</div>
+              </label>
+              <label style="flex:1;cursor:pointer" onclick="document.getElementById('plate-photo-input').setAttribute('capture','environment');document.getElementById('plate-photo-input').click();event.preventDefault()">
+                <div class="btn btn-g" style="text-align:center;width:100%">📸 Camera</div>
+              </label>
+            </div>
+          </label>
+          <div id="plate-status" style="font-size:12px;margin-top:8px;display:none"></div>
+          <div id="plate-result" style="margin-top:8px"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -3063,6 +3088,107 @@ function saveScannedToLib() {
 // ══════════════════════════════════════════════════
 // NUTRITION LABEL SCAN
 // ══════════════════════════════════════════════════
+async function scanPlate(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = '';
+
+  const statusEl = document.getElementById('plate-status');
+  const resultEl = document.getElementById('plate-result');
+  statusEl.style.display = 'block';
+  statusEl.style.color   = 'var(--muted)';
+  statusEl.textContent   = '🍽️ Analyzing your meal…';
+  resultEl.innerHTML     = '';
+
+  if (!WORKER_URL || !FS_API_KEY) {
+    statusEl.style.color = 'var(--danger)';
+    statusEl.textContent = '⚠️ Connect Worker in Settings first';
+    return;
+  }
+
+  try {
+    const base64 = await new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload  = e => res(e.target.result.split(',')[1]);
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+    });
+
+    const r = await wFetch('/api/scan-plate', {
+      method: 'POST',
+      body:   JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+    });
+
+    if (r.error) throw new Error(r.error);
+
+    const items  = r.items  || [];
+    const totals = r.totals || {};
+    const confColor = r.confidence === 'high' ? 'var(--accent)'
+                    : r.confidence === 'medium' ? 'var(--yellow)' : 'var(--orange)';
+
+    statusEl.innerHTML = `<span style="color:${confColor}">
+      ${r.confidence === 'high' ? '✅' : r.confidence === 'medium' ? '⚠️' : '❓'}
+      ${r.confidence} confidence</span>${r.notes ? ' — ' + r.notes : ''}`;
+
+    // Render item breakdown
+    const itemsHtml = items.map(item => `
+      <div class="plate-item">
+        <div>
+          <div class="plate-item-name">${escHtml(item.name)}</div>
+          <div class="plate-item-portion">${escHtml(item.portion || '')}</div>
+        </div>
+        <div class="plate-item-macros">${item.calories} kcal · ${item.protein}g P</div>
+      </div>`).join('');
+
+    // Render totals with Add button
+    resultEl.innerHTML = `
+      <div class="card" style="padding:10px 12px;margin-top:0">
+        ${itemsHtml}
+        <div class="plate-totals">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Estimated Total</div>
+          <div style="font-size:15px;font-weight:700">${totals.calories || 0} kcal · ${totals.protein || 0}g protein</div>
+          ${totals.carbs != null ? `<div style="font-size:11px;color:var(--muted)">${totals.carbs}g carbs · ${totals.fat || 0}g fat · ${totals.fiber || 0}g fiber</div>` : ''}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-p" style="flex:1" onclick="logPlateEstimate(${JSON.stringify(totals).replace(/"/g,'&quot;')}, ${JSON.stringify(items).replace(/"/g,'&quot;')})">
+            Log This Meal
+          </button>
+          <button class="btn btn-g btn-sm" onclick="document.getElementById('plate-result').innerHTML='';document.getElementById('plate-status').style.display='none'">
+            Discard
+          </button>
+        </div>
+      </div>`;
+
+  } catch (e) {
+    statusEl.style.color = 'var(--danger)';
+    statusEl.textContent = '⚠️ ' + e.message;
+  }
+}
+
+function logPlateEstimate(totals, items) {
+  // Build a single food entry representing the whole plate
+  // Name is a summary of the items
+  const names = items.slice(0, 3).map(i => i.name).join(', ');
+  const name  = names + (items.length > 3 ? ` +${items.length - 3} more` : '');
+
+  const food = {
+    id:          'plate_' + Date.now(),
+    name,
+    displayName: name,
+    calories:    totals.calories || 0,
+    protein:     totals.protein  || 0,
+    carbs:       totals.carbs    || 0,
+    fat:         totals.fat      || 0,
+    fiber:       totals.fiber    || 0,
+    serving:     '1 plate (estimated)',
+    foodLibraryId: null,  // don't save to library — it's an estimate
+  };
+
+  addFoodToLog(food, 1);
+  closeQuickAdd();
+  toast('🍽️ Meal logged as estimate');
+}
+
 async function scanLabel(event) {
   const file = event.target.files[0];
   if (!file) return;

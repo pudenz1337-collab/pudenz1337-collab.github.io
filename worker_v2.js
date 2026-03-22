@@ -103,15 +103,17 @@ export default {
       // ── FOOD AI ────────────────────────────────────────────────────────────
       if (path === '/api/estimate'       && method === 'POST') return await estimateMacros(request, env);
       if (path === '/api/scan-label'     && method === 'POST') return await scanNutritionLabel(request, env);
+      if (path === '/api/scan-plate'     && method === 'POST') return await scanPlatePhoto(request, env);
 
       // ── ANALYTICS ─────────────────────────────────────────────────────────
-      if (path === '/api/momentum'       && method === 'GET')  return await getMomentum(env);
+      if (path === '/api/momentum'       && method === 'GET')  return await getMomentum(env, request);
       if (path === '/api/scan-intervals' && method === 'GET')  return await getScanIntervals(env);
       if (path === '/api/insights'       && method === 'GET')  return await getInsights(env);
       if (path === '/api/insights'       && method === 'POST') return await generateInsights(env);
 
       // ── BULK IMPORT ────────────────────────────────────────────────────────
       if (path === '/api/workouts/bulk'  && method === 'POST') return await bulkImportWorkouts(request, env);
+      if (path === '/api/workouts/all'   && method === 'DELETE') return await clearAllWorkouts(env);
       if (path === '/api/workouts/full'  && method === 'GET')  return await getWorkoutsFull(env, url);
 
       return reply({ error: 'not found', path }, 404);
@@ -593,7 +595,7 @@ async function getCoaching(request, env) {
   const db       = env.FUELSTRONG_DB;
 
   // Build context dataset from D1
-  const [goals, allScans, tirz, recent30, recentWorkouts, muscleGroups, hemRows, noteRows] = await Promise.all([
+  const [goals, allScans, tirz, recent30, recentWorkouts, muscleGroups, hemRows, noteRows, foodLibRows] = await Promise.all([
     db.prepare('SELECT * FROM goals ORDER BY effective_date DESC LIMIT 1').first(),
     db.prepare('SELECT scan_date, weight_lbs, body_fat_pct, skeletal_muscle_mass, lean_body_mass, bmr, tee, rec_protein_high_g, rec_cal_low, rec_cal_high FROM body_scans ORDER BY scan_date ASC').all(),
     db.prepare('SELECT * FROM tirzepatide_log ORDER BY date DESC LIMIT 1').first(),
@@ -603,31 +605,39 @@ async function getCoaching(request, env) {
       FROM daily_logs dl
       WHERE dl.date >= ? AND dl.date <= ?
       ORDER BY dl.date DESC
-    `).bind(daysAgo(30), date).all(),
+    `).bind(localDaysAgo(date, 30), date).all(),
     db.prepare(`
       SELECT session_date, session_type, total_volume_lbs, total_sets, muscle_groups
       FROM workout_sessions
       WHERE session_date >= ?
       ORDER BY session_date DESC LIMIT 20
-    `).bind(daysAgo(56)).all(),
+    `).bind(localDaysAgo(date, 56)).all(),
     db.prepare(`
       SELECT muscle_groups, COUNT(*) as sessions
       FROM workout_sessions
       WHERE session_date >= ? AND muscle_groups IS NOT NULL
       GROUP BY muscle_groups ORDER BY sessions DESC LIMIT 8
-    `).bind(daysAgo(28)).all(),
+    `).bind(localDaysAgo(date, 28)).all(),
     db.prepare(`
       SELECT date, hunger, energy, mood, note, timestamp
       FROM hem_entries
       WHERE date >= ?
       ORDER BY timestamp ASC
-    `).bind(daysAgo(14)).all(),
+    `).bind(localDaysAgo(date, 14)).all(),
     db.prepare(`
       SELECT date, notes
       FROM daily_logs
       WHERE date >= ? AND notes IS NOT NULL
       ORDER BY date ASC
-    `).bind(daysAgo(3)).all(),
+    `).bind(localDaysAgo(date, 3)).all(),
+    // Top frequent and preferred foods for personalized coaching suggestions
+    db.prepare(`
+      SELECT name, calories, protein_g, fiber_g, serving, use_count, is_pinned
+      FROM food_library
+      WHERE use_count > 0 OR is_pinned = 1
+      ORDER BY use_count DESC, is_pinned DESC
+      LIMIT 20
+    `).all(),
   ]);
 
   const scans    = allScans.results   || [];
@@ -638,6 +648,13 @@ async function getCoaching(request, env) {
   const mgData   = muscleGroups.results   || [];
   const hemData  = hemRows.results  || [];
   const noteData = noteRows.results || [];
+  const foodLibData = foodLibRows?.results || [];
+  // Build coached foods list — what Hanna actually eats
+  const coachedFoods = foodLibData.length
+    ? foodLibData.map(f =>
+        `${f.name} (${f.calories}kcal, ${f.protein_g}g P${f.fiber_g ? ', ' + f.fiber_g + 'g fiber' : ''}${f.serving ? ' / ' + f.serving : ''})`
+      ).join('\n  ')
+    : null;
 
   // ── Build coach notes thread (last 3 days, highest priority context) ────────
   const coachNotesBlock = noteData.length ? noteData.map(r => {
@@ -660,9 +677,25 @@ async function getCoaching(request, env) {
       }).join('\n')
     : null;
 
+  // Label D1 notes relative to today so coach knows which are current vs historical
+  const labeledNotesBlock = noteData.length ? noteData.map(r => {
+    let notes = [];
+    try { notes = JSON.parse(r.notes); } catch { notes = []; }
+    if (!notes.length) return null;
+    const noteLines = notes.map(n => {
+      const t = n.ts ? new Date(n.ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }) : '';
+      return `  ${t}: ${n.text}`;
+    }).join('\n');
+    const daysBack = Math.round((new Date(date) - new Date(r.date)) / 86400000);
+    const label = daysBack === 0 ? `${r.date} (today)`
+                : daysBack === 1 ? `${r.date} (yesterday — context only, not today)`
+                : `${r.date} (${daysBack} days ago — context only)`;
+    return `${label}:\n${noteLines}`;
+  }).filter(Boolean).join('\n') : null;
+
   const allNotesBlock = [
-    clientNotesBlock ? `${date} (today):\n${clientNotesBlock}` : null,
-    coachNotesBlock,
+    clientNotesBlock ? `${date} (today — highest priority):\n${clientNotesBlock}` : null,
+    labeledNotesBlock || null,
   ].filter(Boolean).join('\n');
 
   // ── HEM summary (last 14 days) ────────────────────────────────────────────
@@ -703,6 +736,12 @@ async function getCoaching(request, env) {
         }).join('\n')
     : null;
 
+  // ── Weekly averages from client payload ──────────────────────────────────
+  const clientWeeklyAvg  = body.weeklyAvg || {};
+  const weeklyAvgProtein  = clientWeeklyAvg.protein  || null;
+  const weeklyAvgCalories = clientWeeklyAvg.calories || null;
+  const weeklyAvgDays     = clientWeeklyAvg.days     || 0;
+
   // ── Scan trend ────────────────────────────────────────────────────────────
   const scanTrend = (scan && prevScan) ? {
     muscleDelta: scan.skeletal_muscle_mass && prevScan.skeletal_muscle_mass
@@ -736,20 +775,43 @@ async function getCoaching(request, env) {
   // Derive targets from scan or goals
   const bodyWeight  = scan?.weight_lbs || null;
   const tee         = scan?.tee || null;
-  const protTarget  = goals?.protein_g || (bodyWeight ? Math.round(bodyWeight * 0.85) : null);
-  const calLow      = goals?.calories_low  || (tee ? Math.round(tee - 400) : null);
-  const calHigh     = goals?.calories_high || (tee ? Math.round(tee - 200) : null);
-  const waterTarget = goals?.water_oz || 80;
 
-  // Tirzepatide context — prefer client-sent daysPostInjection (based on settings day-of-week)
-  // Fall back to D1 log date only if client didn't send it
-  const clientTirz      = body.tirzepatide || {};
-  const daysSinceInj    = clientTirz.daysPostInjection !== null && clientTirz.daysPostInjection !== undefined
-    ? clientTirz.daysPostInjection
-    : (tirz?.date ? Math.floor((new Date(date) - new Date(tirz.date)) / 86400000) : null);
-  const tirzDose        = clientTirz.dose || tirz?.dose_mg || '?';
-  // Today's injection flag comes from client (most accurate — user just set it)
-  const todayIsInjDay   = body.flags?.injectionDay || false;
+  // Target priority: user-set goals → Evolt rec_ fields → tee-derived estimate → null
+  // rec_ fields come from the Evolt scan machine's own body-composition analysis — most accurate
+  const protTarget  = goals?.protein_g
+    || scan?.rec_protein_high_g
+    || (bodyWeight ? Math.round(bodyWeight * 0.85) : null);
+  const calLow      = goals?.calories_low
+    || scan?.rec_cal_low
+    || (tee ? Math.round(tee - 400) : null);
+  const calHigh     = goals?.calories_high
+    || scan?.rec_cal_high
+    || (tee ? Math.round(tee - 200) : null);
+  const waterTarget = goals?.water_oz || 80;  // 80oz is a reasonable physiological default
+
+  // Tirzepatide context
+  const clientTirz = body.tirzepatide || {};
+  const tirzDose   = clientTirz.dose || tirz?.dose_mg || '?';
+
+  // Compute daysSinceInj from day-of-week (most reliable — avoids UTC offset issues)
+  // tirzDayOfWk already extracted above for injection cycle stats
+  let daysSinceInj = null;
+  if (tirzDayOfWk !== null) {
+    // Parse date string directly (avoids UTC midnight conversion)
+    const dateParts = date.split('-');
+    const dateObj   = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]));
+    const dateDow   = dateObj.getDay();
+    daysSinceInj    = ((dateDow - tirzDayOfWk) + 7) % 7;
+  } else if (clientTirz.daysPostInjection !== null && clientTirz.daysPostInjection !== undefined) {
+    // Fall back to client-sent value
+    daysSinceInj = clientTirz.daysPostInjection;
+  } else if (tirz?.date) {
+    // Last resort: D1 log date
+    daysSinceInj = Math.floor((new Date(date + 'T12:00:00') - new Date(tirz.date + 'T12:00:00')) / 86400000);
+  }
+
+  // Today's injection flag comes from client or derived from daysSinceInj
+  const todayIsInjDay = body.flags?.injectionDay || daysSinceInj === 0;
 
   // Low-calorie threshold: 200 below the lower goal bound, never less than 1100
   const lowCalThreshold = calLow ? Math.max(calLow - 200, 1100) : 1200;
@@ -758,7 +820,7 @@ async function getCoaching(request, env) {
   // ── Scan history summary ──────────────────────────────────────────────────
   const scanHistorySummary = scans.length
     ? scans.slice(-4).map(s =>
-        `${s.scan_date}: ${s.weight_lbs}lbs | ${s.body_fat_pct}% BF | ${s.skeletal_muscle_mass}lbs muscle${s.tee ? ' | TEE ' + s.tee : ''}`
+        `${s.scan_date}: ${s.weight_lbs != null ? parseFloat(s.weight_lbs).toFixed(2) : '?'}lbs | ${s.body_fat_pct != null ? parseFloat(s.body_fat_pct).toFixed(1) : '?'}% BF | ${s.skeletal_muscle_mass != null ? parseFloat(s.skeletal_muscle_mass).toFixed(2) : '?'}lbs muscle${s.tee ? ' | TEE ' + Math.round(s.tee) : ''}`
       ).join('\n')
     : 'No scans yet';
 
@@ -776,11 +838,11 @@ ABOUT HANNA:
 - 50yo woman, body recomposition goal: build visible muscle + lose fat simultaneously
 - Training at Anytime Fitness with Fitbod (Get Stronger/hypertrophy), 4-5x/week, 40-45 min sessions since Nov 2024
 - On tirzepatide — hunger cues suppressed, undereating is the #1 risk
-- Calorie goal: ${calLow || 1500}–${calHigh || 1800} kcal. Below ${lowCalThreshold} kcal = flag as too low.
+- Calorie goal: ${calLow ? calLow + '–' + calHigh + ' kcal' : 'not set — derive from scan TEE if available'}. Below ${lowCalThreshold} kcal = flag as too low.
 - Goal: visible muscle definition especially arms/shoulders. Scale weight is irrelevant — muscle up, fat down is success.
 
 COACHING RULES:
-- Be specific with numbers: "You need 47g more protein today" not "eat more protein"
+- Be specific with numbers — use actual logged values, not approximations
 - Reference her actual scan deltas, training patterns, and nutrition trends — not generic advice
 - Protein on training days is critical — name specific high-protein foods she can actually eat
 - Never explain basic fitness concepts she already knows
@@ -789,7 +851,17 @@ COACHING RULES:
 - Reason in WEEKLY terms, not just daily: if weekly avg protein and calories are on target, a single low day is not a crisis — acknowledge it but don't catastrophize. Only escalate if the weekly average itself is below target.
 - NOTES FOR COACH are the highest priority context. If a note explains or contradicts the structured data, treat the note as authoritative. Always acknowledge notes directly — if Hanna took the time to write it, it matters and should shape your response.
 - Use HEM (hunger/energy/mood) patterns to explain nutrition behavior — low energy + low calories + injection day = predictable suppression pattern, not a willpower issue
-- Think forward 24-48 hours: if injection day is tomorrow, advise pre-loading today${allNotesBlock ? `
+- Think forward 24-48 hours: if injection day is tomorrow, advise pre-loading today
+
+GLP-1 MEAL SIZING (tirzepatide-aware — non-negotiable):
+- NEVER suggest more than 40g protein or 450 kcal in a single meal or snack recommendation
+- Distribute the daily gap across remaining eating occasions — if 90g protein needed and 2 meals left, suggest ~45g per meal, not 90g at once
+- On injection day and days 1-2 post-injection: appetite is suppressed, hunger signals are unreliable — recommend eating by the clock, prioritize liquid/easy protein (shakes, Greek yogurt) over solid meals
+- Training day exception: post-workout window (within 90 min of session end) is the one time immediate protein matters — still cap at 40g per recommendation
+
+CHECK-IN RESPONSE FORMAT (use this structure every time):
+**Next Step** (1-2 sentences): One specific action for the next meal or next 2 hours. Sized for one sitting — respects the GLP-1 meal cap. Include specific food and amount.
+**By End of Day** (1 sentence): The single most important remaining target for the full day — protein, calories, or water, whichever is furthest from goal.${allNotesBlock ? `
 
 ⭐ NOTES FOR COACH (highest priority — read before anything else):
 ${allNotesBlock}` : ''}
@@ -800,12 +872,17 @@ ${scanDeltaStr}
 ${scan ? `Current targets from scan: protein ${scan.rec_protein_high_g || protTarget}g | ${scan.rec_cal_low || calLow}–${scan.rec_cal_high || calHigh} kcal` : ''}
 
 TRAINING PATTERNS (last 28 days — ${trainDays28} sessions, ${Math.round(totalVolume28).toLocaleString()}lbs total volume):
-${last4wSessions.slice(0,8).map(s => `${s.session_date}: ${s.total_volume_lbs || 0}lbs volume, ${s.total_sets || '?'} sets${s.muscle_groups ? ' [' + s.muscle_groups + ']' : ''}`).join('\n') || 'No sessions'}
+${last4wSessions.slice(0,8).map(s => `${s.session_date}: ${s.total_volume_lbs ? parseFloat(s.total_volume_lbs).toFixed(2) : 0}lbs volume, ${s.total_sets || '?'} sets${s.muscle_groups ? ' [' + s.muscle_groups + ']' : ''}`).join('\n') || 'No sessions'}
 Muscle group distribution (28d): ${mgSummary || 'no data'}
 
 NUTRITION TARGETS:
 Protein: ${protTarget || '?'}g/day | Calories: ${calLow || '?'}–${calHigh || '?'} kcal/day | Water: ${waterTarget}oz/day
-Tirzepatide: ${tirzDose}mg — ${daysSinceInj !== null ? `${daysSinceInj} days since last injection` : 'schedule unknown'}${todayIsInjDay ? ' — TODAY is injection day' : ''}
+${coachedFoods ? `
+HANNA'S ACTUAL FOODS (from her food library — suggest ONLY from this list for Next Step):
+  ${coachedFoods}
+RULE: For Next Step suggestions, use foods from this list by name with exact macros shown. Do NOT suggest foods not on this list.` : 'No food library yet — suggest common high-protein foods.'}
+Tirzepatide: ${tirzDose}mg | Injection day: ${tirzDayOfWk !== null ? ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][tirzDayOfWk] : 'unknown'} (every 7 days)
+Injection status: ${todayIsInjDay ? 'TODAY is injection day' : daysSinceInj !== null ? `Day ${daysSinceInj} post-injection | ${7 - daysSinceInj} days until next injection` : 'schedule unknown'}
 
 NUTRITION HISTORY (last 14 logged days — ${loggedDays.length} days with food):
 ${logDays.slice(0,14).map(d => {
@@ -821,12 +898,6 @@ Training: ${trainDays7}/wk (last 7d) | ${(trainDays28/4).toFixed(1)}/wk avg (las
 ${hemSummary ? '\nHEM LOG (hunger/energy/mood — last 7 days):\n' + hemSummary : ''}
 ${injCycleBlock ? '\nINJECTION CYCLE NUTRITION PATTERN:\n' + injCycleBlock : ''}`;
 
-  // Weekly averages from client (pre-computed from /api/log)
-  const clientWeeklyAvg = body.weeklyAvg || {};
-  const weeklyAvgProtein  = clientWeeklyAvg.protein  || null;
-  const weeklyAvgCalories = clientWeeklyAvg.calories || null;
-  const weeklyAvgDays     = clientWeeklyAvg.days     || 0;
-
   // Build user context — accept both v1 field names (foods/water/workout) and v2 (foodLog/waterLog/workouts)
   const todayFoods   = body.foods   || body.foodLog  || [];
   const waterRaw     = body.water   ?? body.waterLog ?? 0;
@@ -840,21 +911,49 @@ ${injCycleBlock ? '\nINJECTION CYCLE NUTRITION PATTERN:\n' + injCycleBlock : ''}
   if (mode === 'checkin') {
     const todayProt = Math.round(todayFoods.reduce((a, f) => a + (f.protein_g || f.protein || 0), 0));
     const todayCal  = Math.round(todayFoods.reduce((a, f) => a + (f.calories || 0), 0));
-    userContext = `TODAY (${date}): ${todayCal} kcal | ${todayProt}g protein | ${todayWater}oz water\n`;
+    const currentTime = body.currentTime || '';
+    const hourMatch   = currentTime.match(/(\d+)(?::(\d+))? ?(AM|PM)/i);
+    let hourOf24 = 12;
+    if (hourMatch) {
+      hourOf24 = parseInt(hourMatch[1]);
+      if (hourMatch[3]?.toUpperCase() === 'PM' && hourOf24 < 12) hourOf24 += 12;
+      if (hourMatch[3]?.toUpperCase() === 'AM' && hourOf24 === 12) hourOf24 = 0;
+    }
+    // Estimate remaining eating occasions based on time of day
+    const mealsLeft = hourOf24 < 9 ? 3 : hourOf24 < 13 ? 2 : hourOf24 < 18 ? 1 : 0;
+    const protLeft  = protTarget ? Math.max(0, protTarget - todayProt) : null;
+    const calLeft   = calLow    ? Math.max(0, calLow - todayCal)    : null;
+
+    // Lead with weekly context if available — prevents catastrophizing a single low morning
+    let weeklyCtx = '';
+    if (weeklyAvgDays >= 3) {
+      const weeklyOnTrack = weeklyAvgProtein && protTarget && weeklyAvgProtein >= protTarget * 0.9;
+      weeklyCtx = `WEEKLY CONTEXT (${weeklyAvgDays}d avg): ${weeklyAvgProtein || '?'}g protein | ${weeklyAvgCalories || '?'} kcal${weeklyOnTrack ? ' ✓ weekly average on track' : ''}\n`;
+    }
+
+    userContext = `${weeklyCtx}TODAY (${date}) at ${currentTime || 'unknown time'}: ${todayCal} kcal | ${todayProt}g protein | ${todayWater}oz water\n`;
+    if (protLeft !== null || calLeft !== null) {
+      const protPerMeal = (protLeft !== null && mealsLeft > 0) ? Math.round(protLeft / mealsLeft) : null;
+      const calPerMeal  = (calLeft  !== null && calLeft > 0 && mealsLeft > 0) ? Math.round(calLeft  / mealsLeft) : null;
+      userContext += `Remaining today: ${protLeft !== null ? protLeft + 'g protein needed' : 'protein target not set'} | ${calLeft !== null ? (calLeft > 0 ? calLeft + ' kcal below floor' : 'calories at or above floor') : 'calorie target not set'} | ${mealsLeft} eating occasion${mealsLeft !== 1 ? 's' : ''} likely left\n`;
+      if (protPerMeal !== null) {
+        const cappedProt = Math.min(protPerMeal, 40);
+        userContext += `Per-meal target: ~${cappedProt}g protein${protPerMeal > 40 ? ' (capped at 40g — GLP-1 limit)' : ''}${calPerMeal ? ' | ~' + Math.min(calPerMeal, 450) + ' kcal' : ''}\n`;
+      }
+    }
     if (todayFoods.length) {
-      userContext += `Foods: ${todayFoods.map(f => `${f.displayName || f.display_name || f.name}(${f.calories || 0}kcal,${f.protein_g || f.protein || 0}g P)`).join(', ')}\n`;
+      userContext += `Foods logged: ${todayFoods.map(f => `${f.displayName || f.display_name || f.name}(${f.calories || 0}kcal,${f.protein_g || f.protein || 0}g P)`).join(', ')}\n`;
     }
     if (todayWorkout) {
       userContext += `Workout: ${todayWorkout.session_type || 'strength'}, ${todayWorkout.total_sets || '?'} sets, volume ${todayWorkout.total_volume_lbs || '?'}lbs\n`;
     }
-    userContext += '\nGive me my daily check-in. What do I need to know and do right now?';
+    userContext += '\nGive me my daily check-in. Be realistic about what\'s achievable for the rest of today, not the full daily target from scratch.';
   } else if (mode === 'ask') {
     userContext = userMsg;
   } else if (mode === 'progress') {
     userContext = `Analyze my recent data and tell me what patterns you see across nutrition, training, and body composition. What's working? What needs to change before my next Evolt scan?\n\n${userMsg || ''}`;
   } else if (mode === 'weekly') {
-    const t = getTotals ? getTotals() : {};
-    userContext = `Give me a weekly summary and coaching. What went well this week? What's the one thing I should focus on next week?\n\n${userMsg || ''}`;
+    userContext = `Give me a weekly summary and coaching based on my data above. What went well this week? What's the one thing I should focus on next week?\n\n${userMsg || ''}`;
   } else if (mode === 'dashboard') {
     // Payload from progress_v2.html — carries pre-built summaries
     const ws  = body.workoutSummary  || {};
@@ -1190,7 +1289,7 @@ async function addWorkout(request, env) {
       setNum++;
       const weightLbs = s.weightKg ? Math.round(s.weightKg * 2.20462 * 10) / 10 : (s.weightLbs || 0);
       const e1rm = weightLbs && s.reps
-        ? Math.round(weightLbs * (1 + s.reps / 30))
+        ? Math.round(weightLbs * (1 + s.reps / 30) * 100) / 100
         : null;
 
       await env.FUELSTRONG_DB.prepare(`
@@ -1411,22 +1510,90 @@ async function scanNutritionLabel(request, env) {
   }
 }
 
+// POST /api/scan-plate — photo of a plate/meal → food items + estimated macros
+// Body: { imageBase64: string, mimeType: string }
+async function scanPlatePhoto(request, env) {
+  if (!env.ANTHROPIC_API_KEY) return reply({ error: 'ANTHROPIC_API_KEY not set' }, 500);
+  const body = await request.json().catch(() => ({}));
+  const { imageBase64, mimeType = 'image/jpeg' } = body;
+  if (!imageBase64) return reply({ error: 'imageBase64 required' }, 400);
+
+  try {
+    const res = await claudeCall(env, {
+      model:      'claude-sonnet-4-20250514',  // use Sonnet for better vision accuracy
+      max_tokens: 600,
+      messages: [{
+        role:    'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
+          { type: 'text',  text: `Analyze this photo of food and estimate the nutritional content.
+
+Identify each distinct food item you can see. For each item estimate the portion size and macros.
+Then provide totals for the whole plate.
+
+Respond ONLY with this JSON structure (no markdown, no extra text):
+{
+  "items": [
+    {
+      "name": "food name",
+      "portion": "estimated portion e.g. 4oz, 1 cup",
+      "calories": number,
+      "protein": number,
+      "carbs": number,
+      "fat": number,
+      "fiber": number
+    }
+  ],
+  "totals": {
+    "calories": number,
+    "protein": number,
+    "carbs": number,
+    "fat": number,
+    "fiber": number
+  },
+  "confidence": "high|medium|low",
+  "notes": "brief note about accuracy e.g. sauces/oils may add calories not visible"
+}
+
+Be realistic about portions. If something is hard to see or identify, use your best estimate and reflect that in confidence level.` },
+        ],
+      }],
+    });
+
+    const text    = res.content?.[0]?.text || '{}';
+    const cleaned = text.replace(/```json\n?|\n?```/g, '').trim();
+    const result  = JSON.parse(cleaned);
+    return reply(result);
+  } catch (e) {
+    return reply({ error: e.message }, 500);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  ANALYTICS — MOMENTUM SIGNAL (pure D1 computation, no Claude call)
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function getMomentum(env) {
+async function getMomentum(env, request) {
   const db = env.FUELSTRONG_DB;
+  // Accept client-sent local date if provided (avoids UTC offset at night)
+  let localDate = todayStr();
+  if (request) {
+    try {
+      const url = new URL(request.url);
+      const d = url.searchParams.get('date');
+      if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) localDate = d;
+    } catch {}
+  }
 
   const [goals, latestScans, recent14, workouts28] = await Promise.all([
     db.prepare('SELECT * FROM goals ORDER BY effective_date DESC LIMIT 1').first(),
     db.prepare('SELECT * FROM body_scans ORDER BY scan_date DESC LIMIT 2').all(),
     db.prepare(
       'SELECT date, calories, protein_g, water_oz, training_day, injection_day FROM daily_logs WHERE date >= ? ORDER BY date DESC'
-    ).bind(daysAgo(14)).all(),
+    ).bind(localDaysAgo(localDate, 7)).all(),  // 7-day window matches rings display
     db.prepare(
       'SELECT session_date, muscle_groups FROM workout_sessions WHERE session_date >= ? ORDER BY session_date DESC'
-    ).bind(daysAgo(28)).all(),
+    ).bind(localDaysAgo(localDate, 28)).all(),
   ]);
 
   const logDays  = recent14.results  || [];
@@ -1438,7 +1605,7 @@ async function getMomentum(env) {
   const daysWithCal  = logDays.filter(d => (d.calories  || 0) > 0);
   const daysWithProt = logDays.filter(d => (d.protein_g || 0) > 0);
 
-  if (logDays.length < 3) {
+  if (logDays.length < 2) {  // 7-day window — 2 days minimum
     return reply({
       state:        'Building',
       headline:     'Getting started — keep logging to unlock pattern analysis',
@@ -1455,8 +1622,17 @@ async function getMomentum(env) {
   const avgCal = daysWithCal.length
     ? Math.round(daysWithCal.reduce((a, d) => a + (d.calories || 0), 0) / daysWithCal.length)
     : 0;
-  const lowCalDays     = daysWithCal.filter(d => d.calories < 1200).length;
-  const weeklyTraining = parseFloat((sessions.length / 4).toFixed(1)); // 28d ÷ 4 weeks
+  const calFloor       = goals?.calories_low
+    ? Math.max(goals.calories_low - 200, 1100)
+    : 1200;
+  const lowCalDays     = daysWithCal.filter(d => d.calories < calFloor).length;
+  // weeklyTraining: count distinct training days from daily_logs (authoritative)
+  // Using training_day flag avoids double-counting when both fitbod + app sessions exist
+  // Extend to 28-day window by pulling from daily_logs separately
+  const trainDays28 = await env.FUELSTRONG_DB.prepare(
+    'SELECT COUNT(*) as cnt FROM daily_logs WHERE date >= ? AND training_day = 1'
+  ).bind(localDaysAgo(localDate, 28)).first();
+  const weeklyTraining = parseFloat(((trainDays28?.cnt || 0) / 4).toFixed(1));
 
   // Scan direction
   const muscleUp = (latestScan?.skeletal_muscle_mass != null && prevScan?.skeletal_muscle_mass != null)
@@ -1464,17 +1640,24 @@ async function getMomentum(env) {
   const fatDown  = (latestScan?.body_fat_pct != null && prevScan?.body_fat_pct != null)
     ? latestScan.body_fat_pct < prevScan.body_fat_pct : null;
 
-  // Goals/targets
-  const proteinGoal = goals?.protein_g || (latestScan?.weight_lbs ? Math.round(latestScan.weight_lbs * 0.85) : null);
-  const calLow      = goals?.calories_low  || (latestScan?.tee ? Math.round(latestScan.tee - 400) : null);
-  const calHigh     = goals?.calories_high || (latestScan?.tee ? Math.round(latestScan.tee - 200) : null);
+  // Goals/targets — same priority chain as coaching:
+  // user goals → Evolt rec_ fields → tee-derived → weight-based estimate → null
+  const proteinGoal = goals?.protein_g
+    || latestScan?.rec_protein_high_g
+    || (latestScan?.weight_lbs ? Math.round(latestScan.weight_lbs * 0.85) : null);
+  const calLow      = goals?.calories_low
+    || latestScan?.rec_cal_low
+    || (latestScan?.tee ? Math.round(latestScan.tee - 400) : null);
+  const calHigh     = goals?.calories_high
+    || latestScan?.rec_cal_high
+    || (latestScan?.tee ? Math.round(latestScan.tee - 200) : null);
   const calTarget   = calLow;
 
   // Composite score: protein 40% · calories 35% · training 25%
   const proteinScore = proteinGoal ? Math.min(1, avgProtein / proteinGoal) : 0.5;
   const calScore     = calTarget
-    ? (avgCal >= calTarget * 0.95 ? 1 : avgCal >= calTarget * 0.80 ? 0.75 : avgCal >= 1200 ? 0.5 : 0.2)
-    : (avgCal >= 1500 ? 1 : avgCal >= 1300 ? 0.75 : avgCal >= 1200 ? 0.5 : 0.2);
+    ? (avgCal >= calTarget * 0.95 ? 1 : avgCal >= calTarget * 0.80 ? 0.75 : avgCal >= calFloor ? 0.5 : 0.2)
+    : (avgCal >= 1500 ? 1 : avgCal >= 1300 ? 0.75 : avgCal >= calFloor ? 0.5 : 0.2);
   const trainTarget  = 3; // minimum health floor
   const trainScore   = weeklyTraining >= trainTarget ? 1
     : weeklyTraining >= trainTarget * 0.75 ? 0.75
@@ -1495,7 +1678,7 @@ async function getMomentum(env) {
   } else if (composite >= 0.52 || lowCalDays <= 3) {
     state = 'Holding';
     if (lowCalDays > 2) {
-      headline = `${lowCalDays} days under 1,200 cal in the last ${logDays.length} days — muscle is protected but not actively building`;
+      headline = `${lowCalDays} days under ${calFloor} cal in the last ${logDays.length} days — muscle is protected but not actively building`;
       priority = `Add a protein-dense snack on your next low-appetite day — Greek yogurt, cottage cheese, or a shake`;
     } else if (proteinScore < 0.8) {
       const pGap = proteinGoal ? Math.round(proteinGoal - avgProtein) : null;
@@ -1508,7 +1691,7 @@ async function getMomentum(env) {
   } else {
     state = 'Drifting';
     if (lowCalDays > 4) {
-      headline = `${lowCalDays} of ${logDays.length} days under 1,200 cal — this is actively working against the muscle you're building in the gym`;
+      headline = `${lowCalDays} of ${logDays.length} days under ${calFloor} cal — this is actively working against the muscle you're building in the gym`;
       priority = `Today: add 300+ calories before your next workout, even if you're not hungry`;
     } else if (proteinScore < 0.6) {
       headline = `Protein averaging ${avgProtein}g — significantly below the ${proteinGoal || 'target'}g needed to protect muscle during fat loss`;
@@ -1545,10 +1728,11 @@ async function getMomentum(env) {
 async function getScanIntervals(env) {
   const db = env.FUELSTRONG_DB;
 
-  const scansResult = await db.prepare(
-    'SELECT * FROM body_scans ORDER BY scan_date ASC'
-  ).all();
-  const scans = scansResult.results || [];
+  const [scansResult, goals] = await Promise.all([
+    db.prepare('SELECT * FROM body_scans ORDER BY scan_date ASC').all(),
+    db.prepare('SELECT * FROM goals ORDER BY effective_date DESC LIMIT 1').first(),
+  ]);
+  const scans = (scansResult?.results || []);
 
   if (scans.length < 2) {
     return reply({
@@ -1577,7 +1761,11 @@ async function getScanIntervals(env) {
       ? Math.round(nutDays.reduce((a, d) => a + (d.protein_g || 0), 0) / nutDays.length) : null;
     const avgCal = nutDays.length
       ? Math.round(nutDays.reduce((a, d) => a + (d.calories || 0), 0) / nutDays.length) : null;
-    const lowCalDays = nutDays.filter(d => (d.calories || 0) < 1200).length;
+    // Use goals-derived floor if available, else conservative 1200 minimum
+    const scanCalFloor = goals?.calories_low
+      ? Math.max(goals.calories_low - 200, 1100)
+      : 1200;
+    const lowCalDays = nutDays.filter(d => (d.calories || 0) < scanCalFloor).length;
 
     // Training between scans
     const woResult = await db.prepare(
@@ -1665,6 +1853,16 @@ async function getScanIntervals(env) {
 //    overwrite: false   // if true, delete existing sessions on each date first
 //  }
 //
+async function clearAllWorkouts(env) {
+  const db = env.FUELSTRONG_DB;
+  // Delete all fitbod-sourced workout data
+  await db.prepare("DELETE FROM workout_sets WHERE source = 'fitbod'").run();
+  await db.prepare("DELETE FROM workout_sessions WHERE source = 'fitbod'").run();
+  // Also clear training_day flags set from fitbod
+  // (leave them if user also manually flagged training days)
+  return reply({ ok: true, message: 'All Fitbod workout data cleared from D1' });
+}
+
 async function bulkImportWorkouts(request, env) {
   const body     = await request.json();
   const sessions = body.sessions || [];
@@ -1722,9 +1920,9 @@ async function bulkImportWorkouts(request, env) {
           let weightLbs = s.weight || 0;
           if (s.unit === 'kg') weightLbs = Math.round(weightLbs * 2.20462 * 10) / 10;
 
-          // e1RM rounded to whole lb
+          // e1RM to 2 decimal places in lbs
           const e1rm = weightLbs && s.reps
-            ? Math.round(weightLbs * (1 + s.reps / 30))
+            ? Math.round(weightLbs * (1 + s.reps / 30) * 100) / 100
             : null;
 
           await db.prepare(`
@@ -1863,13 +2061,28 @@ function cors() {
 }
 
 function todayStr() {
+  // UTC date — used only when no client date available
   return new Date().toISOString().slice(0, 10);
 }
 
 function daysAgo(n) {
+  // UTC-based — used only when no client date available
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d.toISOString().slice(0, 10);
+}
+
+// Compute a local date string N days before a given YYYY-MM-DD date string
+// This is timezone-safe because it operates on the date string directly
+function localDaysAgo(localDateStr, n) {
+  const parts = localDateStr.split('-');
+  const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  d.setDate(d.getDate() - n);
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-');
 }
 
 function clamp(val, min, max) {
@@ -1910,36 +2123,56 @@ async function getWorkoutsFull(env, url) {
     if (result.results) allSets = allSets.concat(result.results);
   }
 
-  // Group sets by session_id → exercise_name
+  // Group sets by session_id → exercise name
+  // D1 columns: exercise (not exercise_name), estimated_1rm (not e1rm_lbs)
+  // muscle_group does NOT exist on workout_sets — derive from session.muscle_groups
   const setsBySession = {};
   for (const set of allSets) {
+    if (!set.exercise) continue;  // skip rows with no exercise name
     if (!setsBySession[set.session_id]) setsBySession[set.session_id] = {};
     const exMap = setsBySession[set.session_id];
-    if (!exMap[set.exercise_name]) {
-      exMap[set.exercise_name] = {
-        name:        set.exercise_name,
-        muscleGroup: set.muscle_group || 'Other',
+    if (!exMap[set.exercise]) {
+      exMap[set.exercise] = {
+        name:        set.exercise,
+        muscleGroup: 'Other',   // muscle group is at session level, set later
+        totalVolume: 0,
         sets:        [],
       };
     }
-    exMap[set.exercise_name].sets.push({
-      weight: set.weight_lbs || 0,
-      reps:   set.reps       || 0,
-      e1rm:   set.e1rm_lbs  || null,
+    const w = set.weight_lbs || 0;
+    const r = set.reps || 0;
+    exMap[set.exercise].totalVolume += w * r;
+    exMap[set.exercise].sets.push({
+      weight: parseFloat(w.toFixed(2)),
+      reps:   r,
+      e1rm:   set.estimated_1rm ? parseFloat(set.estimated_1rm.toFixed(2)) : null,
     });
   }
 
   // Build Fitbod-shaped response
-  const result = sessions.results.map(s => ({
-    id:          s.id,
-    date:        s.session_date,
-    durationMins: s.duration_mins,
-    totalVolume: s.total_volume_lbs,
-    rpe:         s.rpe,
-    notes:       s.notes,
-    source:      s.source,
-    exercises:   Object.values(setsBySession[s.id] || {}),
-  }));
+  const result = sessions.results.map(s => {
+    const exercises = Object.values(setsBySession[s.id] || {});
+    // Derive muscleGroupsWorked from session-level muscle_groups string
+    const muscleGroupsWorked = s.muscle_groups
+      ? s.muscle_groups.split(',').map(m => m.trim()).filter(Boolean)
+      : [];
+    // Back-fill muscleGroup onto each exercise from session-level data
+    // (workout_sets has no muscle_group column — it's stored at session level)
+    if (muscleGroupsWorked.length && exercises.length) {
+      exercises.forEach(ex => { ex.muscleGroup = muscleGroupsWorked[0] || 'Other'; });
+    }
+    return {
+      id:               s.id,
+      date:             s.session_date,
+      durationMins:     s.duration_mins,
+      totalVolume:      s.total_volume_lbs,
+      rpe:              s.rpe,
+      notes:            s.notes,
+      source:           s.source,
+      muscleGroupsWorked,
+      exercises,
+    };
+  });
 
   return reply({ sessions: result });
 }
@@ -2011,7 +2244,7 @@ async function generateInsights(env) {
 
   const prompt = `You are a performance coach analyzing a 50-year-old woman's body recomposition data. She is on tirzepatide (GLP-1), trains at Anytime Fitness with Fitbod 4-5x/week, and gets monthly Evolt 360 body composition scans.
 
-Goals: protein ${goalsRow?.protein_g || 150}g/day, calories ${goalsRow?.calories_high || 1800}/day.
+Goals: protein ${goalsRow?.protein_g || '?'}g/day, calories ${goalsRow?.calories_high || '?'}/day.
 
 NUTRITION (last 30 days — ${nutritionDays} logged days):
 ${nutritionSummary || 'No data'}
