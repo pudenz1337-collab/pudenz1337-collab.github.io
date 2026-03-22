@@ -3159,6 +3159,9 @@ async function scanPlate(event) {
         </div>
       </div>`;
 
+    // Scroll result into view inside the sheet
+    setTimeout(() => resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
+
   } catch (e) {
     statusEl.style.color = 'var(--danger)';
     statusEl.textContent = '⚠️ ' + e.message;
