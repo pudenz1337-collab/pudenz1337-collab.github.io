@@ -629,11 +629,11 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
       <div class="card-title">☁️ Worker Connection</div>
       <div class="setting-row">
         <div class="setting-label" style="font-size:11px;color:var(--muted);margin-bottom:4px">Worker URL</div>
-        <input class="setting-input" id="worker-url" placeholder="https://fuelstrong-v2.yourname.workers.dev">
+        <input class="setting-input" id="worker-url" placeholder="https://fuelstrong-v2.yourname.workers.dev" autocomplete="off">
       </div>
       <div class="setting-row" style="margin-top:8px">
         <div class="setting-label" style="font-size:11px;color:var(--muted);margin-bottom:4px">API Key (X-FS-Key)</div>
-        <input class="setting-input" id="api-key" type="password" placeholder="your fuelstrong key">
+        <input class="setting-input" id="api-key" type="text" placeholder="your fuelstrong key" autocomplete="off" data-lpignore="true" data-form-type="other">
       </div>
       <div class="btn-row">
         <button class="btn btn-p btn-sm" onclick="saveWorkerUrl()">Save</button>

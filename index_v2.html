@@ -962,11 +962,11 @@ body{
       <div class="card-title">☁️ Worker Connection</div>
       <div class="setting-row">
         <div class="setting-label" style="font-size:11px;color:var(--muted);margin-bottom:4px">Worker URL</div>
-        <input class="setting-input" id="worker-url" placeholder="https://fuelstrong-v2.yourname.workers.dev">
+        <input class="setting-input" id="worker-url" placeholder="https://fuelstrong-v2.yourname.workers.dev" autocomplete="off">
       </div>
       <div class="setting-row" style="margin-top:8px">
         <div class="setting-label" style="font-size:11px;color:var(--muted);margin-bottom:4px">API Key (X-FS-Key)</div>
-        <input class="setting-input" id="api-key" type="password" placeholder="your fuelstrong key">
+        <input class="setting-input" id="api-key" type="text" placeholder="your fuelstrong key" autocomplete="off" data-lpignore="true" data-form-type="other">
       </div>
       <div class="btn-row">
         <button class="btn btn-p btn-sm" onclick="saveWorkerUrl()">Save</button>
@@ -2807,12 +2807,19 @@ async function searchOFF(q) {
         ? `${fresh.length} result${fresh.length !== 1 ? 's' : ''} from Open Food Facts`
         : 'No new results from Open Food Facts';
     } else {
-      statusEl.textContent = localMatches.length ? 'Library matches shown above' : 'No results found';
+      // Show offError if present to help diagnose the issue
+      if (res.offError) {
+        statusEl.style.color = 'var(--orange)';
+        statusEl.textContent = `Open Food Facts unavailable: ${res.offError}`;
+      } else {
+        statusEl.textContent = localMatches.length ? 'Library matches shown above' : 'No results found';
+      }
     }
 
     el.innerHTML = html || `<div style="font-size:12px;color:var(--muted);padding:10px 2px">No results for "${q}"</div>`;
   } catch (e) {
-    statusEl.textContent = 'Search unavailable — check connection';
+    statusEl.style.color = 'var(--danger)';
+    statusEl.textContent = 'Search unavailable: ' + e.message;
   }
 }
 
@@ -3252,6 +3259,11 @@ async function estimateByName() {
   try {
     const res = await wFetch(`/api/foods/search?q=${encodeURIComponent(name)}`);
     const products = res.products || [];
+    if (res.offError) {
+      txt.style.color = 'var(--orange)';
+      txt.textContent = `Open Food Facts unavailable (${res.offError}) — enter macros manually`;
+      return;
+    }
     if (!products.length) {
       txt.textContent = 'No matches found in Open Food Facts — enter macros manually';
       return;
