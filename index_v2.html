@@ -1090,7 +1090,7 @@ body{
         <div class="search-wrap" style="margin-bottom:10px">
           <span class="search-icon">🔍</span>
           <input class="search-input" id="qa-search"
-            placeholder="Search foods or Open Food Facts…"
+            placeholder="Search foods or USDA FoodData…"
             oninput="onSearchInput()">
           <button class="search-clear" id="qa-clear" onclick="clearSearch()">✕</button>
         </div>
@@ -2760,7 +2760,7 @@ function onSearchInput() {
 async function searchOFF(q) {
   const statusEl = document.getElementById('qa-search-status');
   statusEl.style.display = 'block';
-  statusEl.textContent = 'Searching Open Food Facts…';
+  statusEl.textContent = 'Searching USDA FoodData…';
 
   try {
     const res = await wFetch(`/api/foods/search?q=${encodeURIComponent(q)}`);
@@ -2800,17 +2800,17 @@ async function searchOFF(q) {
       const existingNames = new Set(getAllFoods().map(f => f.name.toLowerCase()));
       const fresh = offProducts.filter(p => !existingNames.has(p.name.toLowerCase()));
       if (fresh.length) {
-        html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 2px 4px">Open Food Facts</div>`;
+        html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 2px 4px">USDA FoodData</div>`;
         html += fresh.map(f => offItemHTML(f)).join('');
       }
       statusEl.textContent = fresh.length
-        ? `${fresh.length} result${fresh.length !== 1 ? 's' : ''} from Open Food Facts`
-        : 'No new results from Open Food Facts';
+        ? `${fresh.length} result${fresh.length !== 1 ? 's' : ''} from USDA FoodData`
+        : 'No new results from USDA FoodData';
     } else {
       // Show offError if present to help diagnose the issue
       if (res.offError) {
         statusEl.style.color = 'var(--orange)';
-        statusEl.textContent = `Open Food Facts unavailable: ${res.offError}`;
+        statusEl.textContent = `USDA FoodData unavailable: ${res.offError}`;
       } else {
         statusEl.textContent = localMatches.length ? 'Library matches shown above' : 'No results found';
       }
@@ -2828,7 +2828,7 @@ function offItemHTML(food) {
     <div class="qa-item-info">
       <div class="qa-item-name">${food.name}${food.brand ? ' <span style="color:var(--muted);font-weight:400;font-size:11px">· ' + food.brand + '</span>' : ''}</div>
       <div class="qa-item-meta">${food.calories} kcal · ${food.protein}g P${food.serving ? ' · ' + food.serving : ''}</div>
-      <div class="qa-item-badges"><span class="qa-badge" style="background:var(--blue-dim);color:var(--blue)">OFF</span></div>
+      <div class="qa-item-badges"><span class="qa-badge" style="background:var(--blue-dim);color:var(--blue)">USDA</span></div>
     </div>
     <div class="qty-row">
       <input class="qty-input" id="off-${food.id}" type="number" value="1" min="0.5" step="0.5">
@@ -2883,7 +2883,7 @@ async function qaRunOFFSearch() {
   if (!name || name.length < 3 || !WORKER_URL || !FS_API_KEY) return;
   const bar = document.getElementById('qa-estimate-bar');
   bar.style.display = 'block';
-  bar.textContent = '🔍 Searching Open Food Facts…';
+  bar.textContent = '🔍 Searching USDA FoodData…';
   try {
     const res = await wFetch(`/api/foods/search?q=${encodeURIComponent(name)}`);
     const products = res.products || [];
@@ -2916,7 +2916,7 @@ function qaFillFromOFF(idx, productsJson) {
   document.getElementById('qa-fprot').value  = p.protein  || 0;
   document.getElementById('qa-ffiber').value = p.fiber    || 0;
   const bar = document.getElementById('qa-estimate-bar');
-  bar.innerHTML = `<span style="color:var(--accent)">✓ Filled from Open Food Facts${p.brand ? ' · ' + p.brand : ''}</span>`;
+  bar.innerHTML = `<span style="color:var(--accent)">✓ Filled from USDA FoodData${p.brand ? ' · ' + p.brand : ''}</span>`;
 }
 
 function qaAddCustomFood(saveToLibrary) {
@@ -3255,17 +3255,17 @@ async function estimateByName() {
   const txt = document.getElementById('lib-estimate-txt');
   bar.style.display = 'block';
   txt.style.color   = 'var(--text)';
-  txt.textContent   = '🔍 Searching Open Food Facts…';
+  txt.textContent   = '🔍 Searching USDA FoodData…';
   try {
     const res = await wFetch(`/api/foods/search?q=${encodeURIComponent(name)}`);
     const products = res.products || [];
     if (res.offError) {
       txt.style.color = 'var(--orange)';
-      txt.textContent = `Open Food Facts unavailable (${res.offError}) — enter macros manually`;
+      txt.textContent = `USDA FoodData unavailable (${res.offError}) — enter macros manually`;
       return;
     }
     if (!products.length) {
-      txt.textContent = 'No matches found in Open Food Facts — enter macros manually';
+      txt.textContent = 'No matches found in USDA FoodData — enter macros manually';
       return;
     }
     // Fill fields from best match
@@ -3284,7 +3284,7 @@ async function estimateByName() {
     if (best.serving && !document.getElementById('lib-serving').value) {
       document.getElementById('lib-serving').value = best.serving;
     }
-    txt.innerHTML = `✓ <strong>${best.name}</strong>${best.brand ? ' · ' + best.brand : ''} — from Open Food Facts. Edit if needed.`;
+    txt.innerHTML = `✓ <strong>${best.name}</strong>${best.brand ? ' · ' + best.brand : ''} — from USDA FoodData. Edit if needed.`;
     txt.style.color = 'var(--accent)';
     // Show other matches as alternatives
     if (products.length > 1) {
@@ -3311,7 +3311,7 @@ function libFillFromOFF(idx, encoded) {
   document.getElementById('lib-fiber').value = p.fiber    || 0;
   if (p.serving) document.getElementById('lib-serving').value = p.serving;
   document.getElementById('lib-estimate-txt').innerHTML =
-    `✓ <strong>${p.name}</strong>${p.brand ? ' · ' + p.brand : ''} — from Open Food Facts`;
+    `✓ <strong>${p.name}</strong>${p.brand ? ' · ' + p.brand : ''} — from USDA FoodData`;
 }
 
 function clearEstimate() { document.getElementById('lib-estimate-bar').style.display = 'none'; }
@@ -3389,7 +3389,7 @@ function renderLibrary() {
   }
 
   el.innerHTML = all.map(f => {
-    const srcLabel = f.source === 'barcode' ? 'barcode' : f.source === 'openfoodfacts' ? 'OFF' : f.source || 'manual';
+    const srcLabel = f.source === 'barcode' ? 'barcode' : f.source === 'usda' ? 'USDA' : f.source || 'manual';
     const eid = encodeURIComponent(f.id);
     return `<div class="lib-item">
       <span class="lib-pin" data-action="pin" data-id="${eid}" title="${f.pinned ? 'Unpin' : 'Pin'}">${f.pinned ? '📌' : '🔲'}</span>
