@@ -1197,7 +1197,11 @@ async function handleFiles(files, type) {
             data.fitbod = (fresh.sessions || []).map(mapD1WorkoutToFitbod);
             plog(`✅ ${inserted} new session${inserted !== 1 ? 's' : ''} added` +
               (skipped ? ` · ${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped` : '') +
-              (errors  ? ` · ${errors} error${errors !== 1 ? 's' : ''}` : ''), 'linfo');
+              (errors  ? ` · ${errors} error${errors !== 1 ? 's' : ''}` : ''), errors ? 'lwarn' : 'linfo');
+        if (res.errorSamples && res.errorSamples.length) {
+          plog('⚠ First errors:', 'lwarn');
+          res.errorSamples.forEach(e => plog(`  ${e.date}: ${e.error}`, 'lwarn'));
+        }
           } catch {
             data.fitbod.push(...results);
             plog(`✅ ${inserted} new, ${skipped} skipped`, 'linfo');
