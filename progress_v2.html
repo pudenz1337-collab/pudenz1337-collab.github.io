@@ -212,6 +212,8 @@ body{
 .mg-row{display:grid;grid-template-columns:90px 1fr 48px;align-items:center;gap:8px}
 .mg-label{font-size:12px;color:var(--muted)}
 .mg-bar-bg{background:var(--border2);border-radius:99px;height:6px}
+.overload-stat{text-align:center;padding:4px 8px}
+.overload-val{font-family:'Bebas Neue',sans-serif;font-size:20px;line-height:1}
 .mg-bar-fill{background:var(--blue);border-radius:99px;height:6px;transition:width .7s ease}
 .mg-val{font-size:11px;font-family:'DM Mono',monospace;text-align:right;color:var(--text)}
 
@@ -486,6 +488,21 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
       <div class="card">
         <div class="card-title">Muscle Group Volume (last 30 days)</div>
         <div class="mg-list" id="mg-bars"></div>
+      </div>
+
+      <!-- Progressive Overload -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:10px">📈 Progressive Overload</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <select id="overload-exercise" class="setting-input" style="flex:1" onchange="renderOverloadChart()">
+            <option value="">— Select exercise —</option>
+          </select>
+        </div>
+        <div class="chart-wrap" id="overload-wrap">
+          <canvas id="chart-overload"></canvas>
+          <div class="chart-nodata" id="chart-overload-nodata"></div>
+        </div>
+        <div id="overload-summary" style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center"></div>
       </div>
 
       <!-- PRs -->
@@ -1106,7 +1123,7 @@ async function testParseFitbod(files) {
 
   plog('── COLUMN DETECTION ─────────────────────────────────', 'ldim');
   const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/["\s]/g,''));
-  const colTests = ['date','exercise','exercisename','reps','weight','weight_kg','musclegroup','muscle group','isbodyweight'];
+  const colTests = ['date','exercise','exercisename','reps','weight','weight_kg','category','musclegroup','muscle group','isbodyweight'];
   colTests.forEach(name => {
     const cleanName = name.replace(/["\s]/g,'').toLowerCase();
     const exact = header.indexOf(cleanName);
@@ -1166,9 +1183,29 @@ async function handleFiles(files, type) {
       plog(`💪 Parsing ${file.name}…`, 'linfo');
       const results = await parseFitbodCSV(file);
       if (results.length) {
-        await saveToWorker('fitbod', results);
-        data.fitbod.push(...results);
-        plog(`✓ ${results.length} sessions from ${file.name}`, 'linfo');
+        plog(`📋 Found ${results.length} sessions in CSV — checking for duplicates…`, 'linfo');
+        const res = await saveToWorker('fitbod', results);
+        const inserted = res?.inserted || 0;
+        const skipped  = res?.skipped  || 0;
+        const errors   = res?.errors   || 0;
+        // Only add genuinely new sessions to in-memory data
+        // The worker skips duplicates so we need to know which ones are new
+        if (inserted > 0) {
+          // Re-fetch from D1 to get accurate in-memory state after import
+          try {
+            const fresh = await wFetch('/api/workouts/full');
+            data.fitbod = (fresh.sessions || []).map(mapD1WorkoutToFitbod);
+            plog(`✅ ${inserted} new session${inserted !== 1 ? 's' : ''} added` +
+              (skipped ? ` · ${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped` : '') +
+              (errors  ? ` · ${errors} error${errors !== 1 ? 's' : ''}` : ''), 'linfo');
+          } catch {
+            data.fitbod.push(...results);
+            plog(`✅ ${inserted} new, ${skipped} skipped`, 'linfo');
+          }
+        } else {
+          plog(`⏭ All ${skipped} sessions already in database — no new data added`, 'lwarn');
+          plog(`💡 Use 🗑 Clear Fitbod to reset and re-import if needed`, 'lwarn');
+        }
       } else {
         plog(`⚠ No sessions found in ${file.name}`, 'lwarn');
       }
@@ -1371,8 +1408,18 @@ async function parseFitbodCSV(file) {
     const isBodyweight = weight === 0 && weightKg === 0;
     if (weightKg && !weight) weight = Math.round(weightKg * 2.205 * 10) / 10;
 
-    const muscleGroupRaw = (row[col('muscle group')] || row[col('musclegroup')] || '').replace(/"/g,'').trim();
-    const muscleGroup    = normalizeMuscleGroup(muscleGroupRaw || exercise);
+    // Fitbod exports 'Category' column for muscle group - check all variants
+    const muscleGroupRaw = (
+      row[col('category')] ||        // Fitbod primary column name
+      row[col('muscle group')] ||    // fallback variants
+      row[col('musclegroup')] ||
+      row[col('bodypart')] ||
+      ''
+    ).replace(/"/g,'').trim();
+    // If CSV has a category, use it directly; otherwise infer from exercise name
+    const muscleGroup = muscleGroupRaw
+      ? normalizeMuscleGroup(muscleGroupRaw)   // normalize Fitbod's own labels
+      : normalizeMuscleGroup(exercise);          // infer from exercise name
 
     if (!sessionMap[dateStr]) {
       sessionMap[dateStr] = {
@@ -1431,13 +1478,25 @@ function normalizeDate(str) {
 
 function normalizeMuscleGroup(str) {
   if (!str) return 'Other';
-  const s = str.toLowerCase();
-  if (/chest|pec|bench/.test(s)) return 'Chest';
-  if (/back|lat|row|pull|rhom|trap/.test(s)) return 'Back';
-  if (/quad|ham|glut|leg|squat|lunge|calf|hip/.test(s)) return 'Legs';
-  if (/delt|shoulder|press|ohp/.test(s)) return 'Shoulders';
-  if (/bicep|tricep|arm|curl|push.*down/.test(s)) return 'Arms';
-  if (/core|ab|plank|crunch/.test(s)) return 'Core';
+  const s = str.toLowerCase().trim();
+  // Fitbod's own category names (direct match first)
+  if (s === 'chest' || s === 'pecs') return 'Chest';
+  if (s === 'back' || s === 'lats' || s === 'upper back') return 'Back';
+  if (s === 'legs' || s === 'quads' || s === 'hamstrings' || s === 'glutes' || s === 'calves') return 'Legs';
+  if (s === 'shoulders' || s === 'delts') return 'Shoulders';
+  if (s === 'biceps' || s === 'triceps' || s === 'arms' || s === 'forearms') return 'Arms';
+  if (s === 'core' || s === 'abs' || s === 'obliques') return 'Core';
+  if (s === 'full body' || s === 'compound') return 'Full Body';
+  if (s === 'cardio' || s === 'conditioning') return 'Cardio';
+  if (s === 'traps' || s === 'trapezius') return 'Back';
+  // Fuzzy match for exercise names and other variants
+  if (/chest|pec|bench|fly|flye/.test(s)) return 'Chest';
+  if (/back|lat|row|pull.?up|chin.?up|rhom|trap|deadlift/.test(s)) return 'Back';
+  if (/quad|ham|glut|leg|squat|lunge|calf|hip.?thrust|rdl/.test(s)) return 'Legs';
+  if (/delt|shoulder|ohp|overhead|lateral.?raise|front.?raise/.test(s)) return 'Shoulders';
+  if (/bicep|tricep|arm|curl|push.?down|extension/.test(s)) return 'Arms';
+  if (/core|ab|plank|crunch|sit.?up|oblique/.test(s)) return 'Core';
+  if (/cardio|run|bike|row|elliptical|swim/.test(s)) return 'Cardio';
   return 'Other';
 }
 
@@ -1854,17 +1913,53 @@ function renderBody() {
   };
   makeOrUpdate('chart-bmr', bmrLbm);
 
-  // Scan list
+  // Scan list — expandable with all fields
   const listEl = document.getElementById('scan-list');
-  listEl.innerHTML = [...scans].reverse().map(s => `
-    <div class="scan-item">
-      <div>
-        <div class="scan-item-date">${s.date}</div>
-        <div class="scan-item-vals">${s.weight || '—'}lbs · ${s.bodyFatPct || '—'}% BF · ${s.skeletalMuscleMass || '—'}lbs muscle</div>
-        ${s.bmr ? `<div class="scan-item-vals">BMR: ${s.bmr} kcal</div>` : ''}
+  listEl.innerHTML = [...scans].reverse().map((s, i) => {
+    const uid = 'scan_' + i;
+    const fmt = v => v != null ? parseFloat(v).toFixed(2) : '—';
+    const fmtInt = v => v != null ? Math.round(v) : '—';
+    return `<div class="scan-item" style="flex-direction:column;align-items:stretch;cursor:pointer" onclick="toggleScanDetail('${uid}')">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="scan-item-date">${s.date}</div>
+          <div class="scan-item-vals">${fmt(s.weight)}lbs · ${s.bodyFatPct != null ? parseFloat(s.bodyFatPct).toFixed(1) : '—'}% BF · ${fmt(s.skeletalMuscleMass)}lbs muscle</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="${uid}_chevron" style="font-size:11px;color:var(--muted)">▼</span>
+          <button class="scan-item-remove" onclick="event.stopPropagation();removeScan('${s.id}')">✕</button>
+        </div>
       </div>
-      <button class="scan-item-remove" onclick="removeScan('${s.id}')">✕</button>
-    </div>`).join('');
+      <div id="${uid}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;font-size:11px">
+          ${[
+            ['Weight', fmt(s.weight) + ' lbs'],
+            ['Body Fat', s.bodyFatPct != null ? parseFloat(s.bodyFatPct).toFixed(1) + '%' : '—'],
+            ['Muscle Mass', fmt(s.skeletalMuscleMass) + ' lbs'],
+            ['Lean Body Mass', fmt(s.leanBodyMass) + ' lbs'],
+            ['BMR', fmtInt(s.bmr) + ' kcal'],
+            ['TEE', fmtInt(s.tee) + ' kcal'],
+            ['Bio Age', s.bioAge ? s.bioAge + ' yrs' : '—'],
+            ['BWI Score', s.bwiScore || '—'],
+            ['Visceral Fat Level', s.visceralFatLevel || '—'],
+            ['Rec Calories', s.recCalLow && s.recCalHigh ? fmtInt(s.recCalLow) + '–' + fmtInt(s.recCalHigh) + ' kcal' : '—'],
+            ['Rec Protein', s.recProteinLow && s.recProteinHigh ? fmtInt(s.recProteinLow) + '–' + fmtInt(s.recProteinHigh) + 'g' : '—'],
+          ].map(([label, val]) => `
+            <div><span style="color:var(--muted)">${label}: </span><span style="color:var(--text)">${val}</span></div>
+          `).join('')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleScanDetail(uid) {
+  const el  = document.getElementById(uid);
+  const chv = document.getElementById(uid + '_chevron');
+  if (!el) return;
+  const open = el.style.display === 'none';
+  el.style.display  = open ? 'block' : 'none';
+  if (chv) chv.textContent = open ? '▲' : '▼';
 }
 
 function removeScan(id) {
@@ -1963,10 +2058,14 @@ function renderTraining() {
           <div class="mg-row">
             <div class="mg-label">${mg}</div>
             <div class="mg-bar-bg"><div class="mg-bar-fill" style="width:${Math.round(vol/mgMax*100)}%"></div></div>
-            <div class="mg-val">${volLabel} lbs · ${setCount} sets</div>
+            <div class="mg-val">${volLabel} · ${setCount} sets</div>
           </div>`;
         }).join('')
     : '<div style="padding:16px;color:var(--muted);font-size:12px;text-align:center">Re-upload Fitbod CSV to see muscle group volume</div>';
+
+  // Progressive overload — populate exercise dropdown
+  populateOverloadDropdown(sessions);
+  renderOverloadChart();
 
   // PRs
   const prs = buildPRs(sessions);
@@ -2034,6 +2133,108 @@ function buildMuscleGroupVol(sessions) {
     sets[mg] = (sets[mg] || 0) + setCount;
   }));
   return { vol, sets };
+}
+
+function populateOverloadDropdown(sessions) {
+  const sel = document.getElementById('overload-exercise');
+  if (!sel) return;
+  const current = sel.value;
+  // Collect all exercises with weighted sets, sorted by frequency
+  const exCount = {};
+  sessions.forEach(s => (s.exercises || []).forEach(ex => {
+    if (ex.name && (ex.sets || []).some(set => set.weight > 0)) {
+      exCount[ex.name] = (exCount[ex.name] || 0) + 1;
+    }
+  }));
+  const exercises = Object.entries(exCount)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
+
+  sel.innerHTML = '<option value="">— Select exercise —</option>' +
+    exercises.map(name =>
+      `<option value="${name.replace(/"/g,'&quot;')}"${name === current ? ' selected' : ''}>${name}</option>`
+    ).join('');
+}
+
+function renderOverloadChart() {
+  const sel = document.getElementById('overload-exercise');
+  const exercise = sel?.value;
+  const nodata = document.getElementById('chart-overload-nodata');
+  const summary = document.getElementById('overload-summary');
+  const sessions = data.fitbod;
+
+  if (!exercise) {
+    showChartNoData('chart-overload', 'Select an exercise above');
+    if (summary) summary.textContent = '';
+    return;
+  }
+
+  // Collect heaviest set per session date for this exercise
+  const points = [];
+  sessions.forEach(s => {
+    const ex = (s.exercises || []).find(e => e.name === exercise);
+    if (!ex) return;
+    const heaviest = (ex.sets || [])
+      .filter(set => set.weight > 0 && set.reps > 0)
+      .sort((a, b) => b.weight - a.weight)[0];
+    if (heaviest) {
+      points.push({ date: s.date, weight: heaviest.weight, reps: heaviest.reps });
+    }
+  });
+
+  if (!points.length) {
+    showChartNoData('chart-overload', 'No weighted sets found for ' + exercise);
+    if (summary) summary.textContent = '';
+    return;
+  }
+
+  points.sort((a, b) => a.date.localeCompare(b.date));
+
+  // Calculate trend
+  const first = points[0];
+  const last  = points[points.length - 1];
+  const gain  = last.weight - first.weight;
+  const gainStr = gain > 0 ? `+${parseFloat(gain.toFixed(2))} lbs` : `${parseFloat(gain.toFixed(2))} lbs`;
+  const weeks = Math.max(1, Math.round((new Date(last.date) - new Date(first.date)) / (7 * 86400000)));
+
+  if (summary) {
+    summary.textContent = `${points.length} sessions · Best: ${parseFloat(last.weight).toFixed(2)} lbs × ${last.reps} reps · Progress: ${gainStr} over ${weeks} week${weeks !== 1 ? 's' : ''}`;
+    summary.style.color = gain >= 0 ? 'var(--accent)' : 'var(--orange)';
+  }
+
+  makeOrUpdate('chart-overload', {
+    type: 'line',
+    data: {
+      labels: points.map(p => p.date.slice(5)),  // MM-DD
+      datasets: [{
+        label: 'Heaviest set (lbs)',
+        data:  points.map(p => parseFloat(p.weight.toFixed(2))),
+        borderColor:     '#4da8ff',
+        backgroundColor: 'rgba(77,168,255,.1)',
+        pointBackgroundColor: '#4da8ff',
+        pointRadius: 4,
+        tension: 0.3,
+        fill: true,
+      }],
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      scales: {
+        x: CHART_DEFAULTS.scales.x,
+        y: {
+          ...CHART_DEFAULTS.scales.y,
+          beginAtZero: false,
+          ticks: { callback: v => v.toFixed(2) + ' lbs' },
+        },
+      },
+      plugins: {
+        ...((CHART_DEFAULTS.plugins) || {}),
+        tooltip: { callbacks: {
+          label: ctx => `${ctx.parsed.y.toFixed(2)} lbs × ${points[ctx.dataIndex]?.reps || '?'} reps`,
+        }},
+      },
+    },
+  });
 }
 
 function buildPRs(sessions) {
