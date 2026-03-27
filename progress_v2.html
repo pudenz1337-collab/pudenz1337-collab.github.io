@@ -934,12 +934,23 @@ async function saveToWorker(type, newEntries) {
       return { saved, dupes };
     }
     if (type === 'fitbod') {
-      // Bulk import — newEntries is array of sessions from parseFitbodCSV
-      const res = await wFetch('/api/workouts/bulk', {
-        method: 'POST',
-        body:   JSON.stringify({ sessions: newEntries }),
-      });
-      return res;
+      // Send in chunks of 15 to stay under Cloudflare's 1000 subrequest limit
+      // Each session can use ~30-40 D1 calls (session + sets + PRs + training_day)
+      const CHUNK = 15;
+      let totalInserted = 0, totalSkipped = 0, totalErrors = 0;
+      const allErrorSamples = [];
+      for (let i = 0; i < newEntries.length; i += CHUNK) {
+        const chunk = newEntries.slice(i, i + CHUNK);
+        const res = await wFetch('/api/workouts/bulk', {
+          method: 'POST',
+          body:   JSON.stringify({ sessions: chunk }),
+        });
+        totalInserted += res?.inserted || 0;
+        totalSkipped  += res?.skipped  || 0;
+        totalErrors   += res?.errors   || 0;
+        if (res?.errorSamples) allErrorSamples.push(...res.errorSamples);
+      }
+      return { inserted: totalInserted, skipped: totalSkipped, errors: totalErrors, errorSamples: allErrorSamples };
     }
     return {};
   } catch (e) {
