@@ -733,6 +733,34 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
     </div>
 
     <div class="card">
+      <div class="card-title" style="margin-bottom:10px">🏋️ Exercise Muscle Groups</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
+        Override the muscle group for any exercise. Changes apply to all sessions past and future.
+        <span style="color:var(--accent)">⭐ = built-in table</span> ·
+        <span style="color:var(--yellow)">✏️ = your override</span> ·
+        <span style="color:var(--orange)">❓ = guessed</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <input class="setting-input" id="em-search" placeholder="Filter exercises…" oninput="filterExerciseMap()" style="flex:1;min-width:120px">
+        <select class="setting-input" id="em-filter-mg" onchange="filterExerciseMap()" style="flex:0 0 auto">
+          <option value="">All groups</option>
+          <option value="unknown">Unknown only</option>
+          <option value="Chest">Chest</option>
+          <option value="Back">Back</option>
+          <option value="Legs">Legs</option>
+          <option value="Shoulders">Shoulders</option>
+          <option value="Arms">Arms</option>
+          <option value="Core">Core</option>
+          <option value="Cardio">Cardio</option>
+          <option value="Other">Other</option>
+        </select>
+        <button class="btn btn-g btn-sm" onclick="loadExerciseMap()">🔄 Refresh</button>
+      </div>
+      <div id="em-status" style="font-size:11px;color:var(--muted);margin-bottom:6px"></div>
+      <div id="em-list" style="max-height:360px;overflow-y:auto"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">📤 Backup</div>
       <div class="btn-row">
         <button class="btn btn-g btn-sm" onclick="backupToGitHub()">☁️ GitHub Backup</button>
@@ -820,6 +848,7 @@ function showPanel(id, btn) {
     document.getElementById('coach-badge').classList.remove('show');
   }
   if (id === 'upload')   { renderDataSummary(); initManualWorkoutDate(); }
+  if (id === 'settings')  { loadExerciseMap(); }
 }
 
 // ══════════════════════════════════════════════
@@ -1466,6 +1495,33 @@ async function parseFitbodCSV(file) {
     return header.findIndex(h => words.every(w => h.includes(w)));
   };
 
+  // Detect column layout from actual header
+  // This CSV uses: Date, Exercise, Reps, Weight(kg), Duration(s), Distance(m),
+  //                Incline, Resistance, isWarmup, Note, multiplier
+  // Detect if weight is in kg or lbs by column name
+  const weightColIdx = (() => {
+    const exact = header.indexOf('weight(lbs)');
+    if (exact !== -1) return { idx: exact, isKg: false };
+    const kg = header.findIndex(h => h.includes('weight') && h.includes('kg'));
+    if (kg !== -1) return { idx: kg, isKg: true };
+    const lbs = header.findIndex(h => h.includes('weight') && h.includes('lb'));
+    if (lbs !== -1) return { idx: lbs, isKg: false };
+    // fallback: any column containing 'weight'
+    const any = header.findIndex(h => h.includes('weight'));
+    return { idx: any, isKg: true };  // assume kg if ambiguous
+  })();
+  const exerciseColIdx = (() => {
+    // Try 'exercise name' first, then 'exercise'
+    let idx = header.findIndex(h => h.includes('exercise') && h.includes('name'));
+    if (idx === -1) idx = header.findIndex(h => h.includes('exercise'));
+    return idx !== -1 ? idx : 1;
+  })();
+  const multiplierColIdx = header.findIndex(h => h.includes('multiplier'));
+  const categoryColIdx   = header.findIndex(h =>
+    h === 'category' || h.includes('musclegroup') || h.includes('muscle group') ||
+    h.includes('bodypart')
+  );
+
   const sessionMap = {};
   for (let i = 1; i < lines.length; i++) {
     const raw = lines[i];
@@ -1477,25 +1533,30 @@ async function parseFitbodCSV(file) {
     const dateStr = normalizeDate(dateRaw);
     if (!dateStr) continue;
 
-    const exercise   = (row[col('exercise')] || row[0] || '').replace(/"/g,'').trim();
-    const reps        = parseFloat(row[col('reps')]) || 0;
-    let   weight      = parseFloat(row[col('weight')]) || 0;
-    const weightKg    = parseFloat(row[col('weight_kg')]) || 0;
-    const isBodyweight = weight === 0 && weightKg === 0;
-    if (weightKg && !weight) weight = Math.round(weightKg * 2.205 * 10) / 10;
+    const exercise = (weightColIdx.idx !== -1 ? row[exerciseColIdx] : row[col('exercise')] || row[0] || '')
+                       .replace(/"/g,'').trim();
+    if (!exercise) continue;
 
-    // Fitbod exports 'Category' column for muscle group - check all variants
-    const muscleGroupRaw = (
-      row[col('category')] ||        // Fitbod primary column name
-      row[col('muscle group')] ||    // fallback variants
-      row[col('musclegroup')] ||
-      row[col('bodypart')] ||
-      ''
-    ).replace(/"/g,'').trim();
-    // If CSV has a category, use it directly; otherwise infer from exercise name
+    const reps = parseFloat(row[col('reps')]) || 0;
+
+    // Weight: use detected column and convert kg→lbs if needed
+    let weight = 0;
+    if (weightColIdx.idx !== -1) {
+      const rawW = parseFloat(row[weightColIdx.idx]) || 0;
+      weight = weightColIdx.isKg ? Math.round(rawW * 2.20462 * 100) / 100 : rawW;
+    }
+
+    // multiplier=0 means bodyweight/assisted — don't count as volume
+    const multiplier  = multiplierColIdx !== -1 ? parseFloat(row[multiplierColIdx]) : 1;
+    const isBodyweight = weight === 0 || multiplier === 0;
+
+    // Muscle group: from column if available, otherwise infer from exercise name
+    const muscleGroupRaw = categoryColIdx !== -1
+      ? (row[categoryColIdx] || '').replace(/"/g,'').trim()
+      : '';
     const muscleGroup = muscleGroupRaw
-      ? normalizeMuscleGroup(muscleGroupRaw)   // normalize Fitbod's own labels
-      : normalizeMuscleGroup(exercise);          // infer from exercise name
+      ? normalizeMuscleGroup(muscleGroupRaw)
+      : normalizeMuscleGroup(exercise);
 
     if (!sessionMap[dateStr]) {
       sessionMap[dateStr] = {
@@ -2730,6 +2791,108 @@ function restoreCoachThread() {
 // ══════════════════════════════════════════════
 // SETTINGS
 // ══════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════
+// EXERCISE MUSCLE GROUP MAP
+// ══════════════════════════════════════════════════
+let exerciseMapData = [];  // {name, muscleGroup, source}
+
+async function loadExerciseMap() {
+  const statusEl = document.getElementById('em-status');
+  const listEl   = document.getElementById('em-list');
+  if (!statusEl || !listEl) return;
+  if (!WORKER_URL || !FS_API_KEY) {
+    statusEl.textContent = '⚠ Connect Worker in Settings first';
+    return;
+  }
+  statusEl.textContent = 'Loading…';
+  try {
+    const res = await wFetch('/api/exercise-list');
+    exerciseMapData = res.exercises || [];
+    const unknown = exerciseMapData.filter(e => e.source === 'unknown').length;
+    statusEl.textContent = `${exerciseMapData.length} exercises · ${unknown} unknown`;
+    renderExerciseMap();
+  } catch (e) {
+    statusEl.textContent = '⚠ ' + e.message;
+  }
+}
+
+function filterExerciseMap() {
+  renderExerciseMap();
+}
+
+function renderExerciseMap() {
+  const listEl  = document.getElementById('em-list');
+  if (!listEl) return;
+  const search  = (document.getElementById('em-search')?.value || '').toLowerCase();
+  const mgFilt  = document.getElementById('em-filter-mg')?.value || '';
+
+  let filtered = exerciseMapData;
+  if (search)  filtered = filtered.filter(e => e.name.toLowerCase().includes(search));
+  if (mgFilt === 'unknown') filtered = filtered.filter(e => e.source === 'unknown');
+  else if (mgFilt) filtered = filtered.filter(e => e.muscleGroup === mgFilt);
+
+  if (!filtered.length) {
+    listEl.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px">No exercises found.</div>';
+    return;
+  }
+
+  const srcIcon = s => s === 'override' ? '✏️' : s === 'builtin' ? '⭐' : s === 'inferred' ? '🔍' : '❓';
+  const srcColor = s => s === 'override' ? 'var(--yellow)' : s === 'builtin' ? 'var(--accent)' : s === 'inferred' ? 'var(--muted)' : 'var(--orange)';
+
+  listEl.innerHTML = filtered.map(e => {
+    const eid = encodeURIComponent(e.name);
+    const icon = srcIcon(e.source);
+    const color = srcColor(e.source);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:13px;color:${color};flex-shrink:0" title="${e.source}">${icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.name}</div>
+      </div>
+      <select style="font-size:11px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:2px 4px;cursor:pointer"
+        onchange="setExerciseGroup('${eid}', this.value, this)">
+                      <option value="Chest">Chest</option>
+              <option value="Back">Back</option>
+              <option value="Legs">Legs</option>
+              <option value="Shoulders">Shoulders</option>
+              <option value="Arms">Arms</option>
+              <option value="Core">Core</option>
+              <option value="Cardio">Cardio</option>
+              <option value="Full Body">Full Body</option>
+              <option value="Other">Other</option>
+      </select>
+    </div>`;
+  }).join('');
+
+  // Set selected values after rendering
+  filtered.forEach(e => {
+    const eid = encodeURIComponent(e.name);
+    const sel = listEl.querySelector(`select[onchange*="${eid}"]`);
+    if (sel) sel.value = e.muscleGroup;
+  });
+}
+
+async function setExerciseGroup(encodedName, muscleGroup, selectEl) {
+  const exercise = decodeURIComponent(encodedName);
+  selectEl.disabled = true;
+  try {
+    const res = await wFetch('/api/exercise-map', {
+      method: 'POST',
+      body:   JSON.stringify({ exercise, muscleGroup }),
+    });
+    // Update local data
+    const entry = exerciseMapData.find(e => e.name === exercise);
+    if (entry) { entry.muscleGroup = muscleGroup; entry.source = 'override'; }
+    const updated = res.sessionsUpdated || 0;
+    toast(`✓ ${exercise} → ${muscleGroup}${updated ? ' · ' + updated + ' sessions updated' : ''}`);
+    // Re-render to update icon
+    renderExerciseMap();
+  } catch (e) {
+    toast('⚠ ' + e.message, true);
+    selectEl.disabled = false;
+  }
+}
+
 // ══════════════════════════════════════════════════
 // MANUAL WORKOUT ENTRY
 // ══════════════════════════════════════════════════
