@@ -706,7 +706,10 @@ body{
     <div class="day-hero">
       <div class="hero-top">
         <div class="hero-flags" id="hero-flags"></div>
-        <div style="font-size:11px;color:var(--muted)" id="hero-time"></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:11px;color:var(--muted)" id="hero-time"></div>
+          <div id="hero-streak" style="font-size:11px;color:var(--accent);display:none"></div>
+        </div>
       </div>
       <div class="macro-rings">
         <div>
@@ -998,6 +1001,31 @@ body{
     </div>
 
     <div class="card">
+      <div class="card-title">🏃 Activity Level</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Used to estimate your daily calorie burn (TEE) from your Evolt BMR</div>
+      <select class="setting-input" id="s-activity" onchange="saveActivityLevel()">
+        <option value="1.2">Sedentary — desk job, little exercise</option>
+        <option value="1.375">Lightly Active — light exercise 1-3 days/wk</option>
+        <option value="1.55" selected>Moderately Active — exercise 4-5 days/wk</option>
+        <option value="1.725">Very Active — hard exercise 6-7 days/wk</option>
+      </select>
+      <div id="activity-tee" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📅 Typical Training Days</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Coach assumes training intent on these days — correct with Recovery flag if plans change</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d,i) =>
+          `<label style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer">
+            <input type="checkbox" id="td-${i}" onchange="saveTrainingDays()" style="accent-color:var(--accent)">
+            <span style="font-size:11px;color:var(--muted)">${d}</span>
+          </label>`).join('')}
+      </div>
+      <span id="training-days-saved" style="font-size:12px;color:var(--accent);display:none;margin-top:6px;display:block">✓ Saved</span>
+    </div>
+
+    <div class="card">
       <div class="card-title">💉 Tirzepatide</div>
       <div class="field-grid">
         <div>
@@ -1267,8 +1295,10 @@ const OFF_API     = 'https://world.openfoodfacts.org/api/v2/product/';
 // ══════════════════════════════════════════════════
 let WORKER_URL = localStorage.getItem(WORKER_KEY)  || 'https://fuelstrong-v2.pudenz1337.workers.dev';
 let FS_API_KEY = localStorage.getItem(FS_KEY_STOR) || '';
-let goals   = JSON.parse(localStorage.getItem('fs3-goals-v2') || '{}');
-let tirz    = JSON.parse(localStorage.getItem('fs3-tirz-v2')  || '{}');
+let goals         = JSON.parse(localStorage.getItem('fs3-goals-v2')    || '{}');
+let tirz          = JSON.parse(localStorage.getItem('fs3-tirz-v2')     || '{}');
+let appSettings   = JSON.parse(localStorage.getItem('fs3-settings-v2') || '{}');
+// appSettings: { activityMultiplier, trainingDays: [0-6], preferredFoodIds: [] }
 let library = JSON.parse(localStorage.getItem('fs3-lib-v2')   || '{"foods":[]}');
 // Smart foods from v2 server (pinned / today / recent)
 let v2SmartFoods   = { pinned: [], today: [], recent: [] };
@@ -1429,6 +1459,7 @@ async function loadDate(dateStr) {
 function updateDateUI() {
   loadCoachNotes();
   loadWeeklyAvg();
+  loadAppSettings();
   const display = document.getElementById('date-display');
   display.textContent = fmtDateDisplay(viewDate);
   display.className = 'date-display' + (isToday(viewDate) ? '' : ' past');
@@ -2395,6 +2426,21 @@ function buildInsights() {
   const gw   = tg.water;
   const now  = new Date();
   const hour = now.getHours();
+
+  // ── Optimistic training day coaching ──────────────────────────────────────
+  const todayDow2      = now.getDay();
+  const typicalDays    = appSettings.trainingDays || [];
+  const isTodayTypical = typicalDays.includes(todayDow2);
+  const isRecovery     = dayData.flags.recoveryDay;
+  const hasWorkout     = dayData.workouts.length > 0;
+  if (isTodayTypical && !isRecovery && !hasWorkout && hour < 20) {
+    const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][todayDow2];
+    ins.push({
+      type: '', icon: '🏋️', color: 'var(--blue)',
+      title: `${dayName} — training day`,
+      body: `One of your typical training days. Front-load protein before your workout — aim for at least ${gp ? Math.round(gp * 0.35) : 40}g before you lift.`,
+    });
+  }
 
   // ── Tirzepatide cycle phase (full 7-day awareness) ────────────────────────
   const tirzDay = tirz.day !== undefined && tirz.day !== '' ? parseInt(tirz.day) : null;
@@ -3385,12 +3431,14 @@ function renderLibrary() {
       if (action === 'edit')   openEditFood(id);
       if (action === 'delete') deleteFood(id);
       if (action === 'pin')    togglePin(id);
+      if (action === 'prefer') togglePreferredFood(id);
     });
   }
 
   el.innerHTML = all.map(f => {
     const srcLabel = f.source === 'barcode' ? 'barcode' : f.source === 'usda' ? 'USDA' : f.source || 'manual';
     const eid = encodeURIComponent(f.id);
+    const isPreferred = (appSettings.preferredFoodIds || []).includes(f.id);
     return `<div class="lib-item">
       <span class="lib-pin" data-action="pin" data-id="${eid}" title="${f.pinned ? 'Unpin' : 'Pin'}">${f.pinned ? '📌' : '🔲'}</span>
       <div class="lib-info">
@@ -3399,11 +3447,26 @@ function renderLibrary() {
         <div class="lib-use">${f.useCount ? 'Used ' + f.useCount + '×' + (f.lastUsed ? ' · last ' + fmtTime(f.lastUsed) : '') : 'Never used'}</div>
       </div>
       <div class="lib-actions">
+        <button class="lib-btn" data-action="prefer" data-id="${eid}" title="${isPreferred ? 'Remove from coach suggestions' : 'Add to coach suggestions'}" style="opacity:${isPreferred ? 1 : 0.35}" title="Coach suggestion">${isPreferred ? '⭐' : '☆'}</button>
         <button class="lib-btn" data-action="edit" data-id="${eid}" title="Edit">✏️</button>
         <button class="lib-btn" data-action="delete" data-id="${eid}" title="Delete">🗑</button>
       </div>
     </div>`;
   }).join('');
+}
+
+function togglePreferredFood(foodId) {
+  const prefs = new Set(appSettings.preferredFoodIds || []);
+  if (prefs.has(foodId)) {
+    prefs.delete(foodId);
+    toast('Removed from coach suggestions');
+  } else {
+    prefs.add(foodId);
+    toast('⭐ Added to coach suggestions');
+  }
+  appSettings.preferredFoodIds = [...prefs];
+  localStorage.setItem('fs3-settings-v2', JSON.stringify(appSettings));
+  renderLibrary();
 }
 
 function togglePin(foodId) {
@@ -3549,8 +3612,9 @@ function buildCoachPayload(question = null, mode = 'checkin') {
     waterLog:    dayData.waterLog,
     hem:         dayData.hem,
     workouts:    dayData.workouts,
-    coachNotes,  // today's notes — highest priority context
-    weeklyAvg,   // 7-day rolling averages for trend-aware coaching
+    coachNotes,   // today's notes — highest priority context
+    weeklyAvg,    // 7-day rolling averages for trend-aware coaching
+    appSettings,  // activity multiplier, training days, preferred foods
     currentTime: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
     timezoneOffset: new Date().getTimezoneOffset(),
     tirzepatide: { ...tirz, daysPostInjection: daysPostInj },
@@ -3973,16 +4037,24 @@ function renderHistory() {
     return;
   }
   const canUndo = undoEntry && Date.now() < undoEntry.expiresAt;
+  const tg = getEffectiveTargets();
   el.innerHTML = history.map((e, i) => {
     const isLatest = i === 0 && canUndo;
+    const prot  = e.protein || 0;
+    const cal   = e.cal ?? e.calories ?? 0;
+    const protOk = tg.protein ? prot >= tg.protein * 0.9 : true;
+    const calOk  = tg.calLow && tg.calHigh ? (cal >= tg.calLow && cal <= tg.calHigh * 1.05) : true;
+    const dot    = protOk && calOk ? 'var(--accent)' : (!protOk && !calOk) ? 'var(--danger)' : 'var(--yellow)';
+    const dotTitle = protOk && calOk ? 'Goals met' : !protOk ? 'Protein below target' : 'Calories off target';
     return `<div class="hist-entry">
-      <div class="hist-date">
+      <div class="hist-date" style="display:flex;align-items:center;gap:6px">
+        <span title="${dotTitle}" style="width:8px;height:8px;border-radius:50%;background:${dot};flex-shrink:0;display:inline-block"></span>
         <span>${e.date}</span>
         ${isLatest ? '<button class="undo-btn" onclick="undoClose()">↩ Undo</button>' : ''}
       </div>
       <div class="hist-row">
-        <div class="hist-stat">P: <strong>${e.protein}g</strong></div>
-        <div class="hist-stat">Cal: <strong>${e.cal ?? e.calories ?? '—'}</strong></div>
+        <div class="hist-stat" style="color:${protOk ? 'var(--accent)' : 'var(--yellow)'}">P: <strong>${prot}g</strong></div>
+        <div class="hist-stat" style="color:${calOk ? 'inherit' : 'var(--yellow)'}">Cal: <strong>${cal || '—'}</strong></div>
         <div class="hist-stat">Water: <strong>${e.water}oz</strong></div>
         ${e.fiber ? `<div class="hist-stat">Fiber: <strong>${e.fiber}g</strong></div>` : ''}
         ${e.flags?.trainingDay ? '<div class="hist-stat">💪</div>' : ''}
@@ -4111,6 +4183,31 @@ function renderHeroTime() {
   const el = document.getElementById('hero-time');
   const now = new Date();
   el.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  renderStreak();
+}
+
+function renderStreak() {
+  const el = document.getElementById('hero-streak');
+  if (!el || !history.length) return;
+  // Count consecutive logged days ending yesterday
+  let streak = 0;
+  const today = todayISO();
+  let check = daysAgoStr(1, today);  // start from yesterday
+  for (let i = 0; i < 90; i++) {
+    const entry = history.find(h => h.isoDate === check);
+    if (!entry || (!entry.protein && !entry.cal)) break;
+    streak++;
+    check = daysAgoStr(1, check);
+  }
+  // Count today if it has food logged
+  const todayHasFood = dayData.foodLog.length > 0;
+  const displayStreak = todayHasFood ? streak + 1 : streak;
+  if (displayStreak >= 2) {
+    el.style.display = 'block';
+    el.textContent = `🔥 ${displayStreak} day streak`;
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -4200,6 +4297,54 @@ function toast(msg, isErr = false) {
 // ══════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// SETTINGS — ACTIVITY LEVEL + TRAINING DAYS
+// ══════════════════════════════════════════════════
+function saveActivityLevel() {
+  const val = parseFloat(document.getElementById('s-activity')?.value || '1.55');
+  appSettings.activityMultiplier = val;
+  localStorage.setItem('fs3-settings-v2', JSON.stringify(appSettings));
+  updateActivityTEE();
+}
+
+function updateActivityTEE() {
+  const el  = document.getElementById('activity-tee');
+  const sel = document.getElementById('s-activity');
+  if (!el || !sel) return;
+  sel.value = String(appSettings.activityMultiplier || 1.55);
+  // Show estimated TEE if we have a BMR from scan
+  const bmr = evoltScanGoals?.bmr || null;
+  if (bmr) {
+    const mult = parseFloat(sel.value);
+    const tee  = Math.round(bmr * mult);
+    el.textContent = `Estimated TEE: ${tee} kcal/day (BMR ${bmr} × ${mult})`;
+  } else {
+    el.textContent = 'Upload an Evolt scan to see estimated daily burn';
+  }
+}
+
+function saveTrainingDays() {
+  const days = [0,1,2,3,4,5,6].filter(i => document.getElementById('td-'+i)?.checked);
+  appSettings.trainingDays = days;
+  localStorage.setItem('fs3-settings-v2', JSON.stringify(appSettings));
+  const saved = document.getElementById('training-days-saved');
+  if (saved) { saved.style.display = 'block'; setTimeout(() => saved.style.display = 'none', 2000); }
+}
+
+function loadAppSettings() {
+  appSettings = JSON.parse(localStorage.getItem('fs3-settings-v2') || '{}');
+  // Activity level
+  const sel = document.getElementById('s-activity');
+  if (sel) sel.value = String(appSettings.activityMultiplier || 1.55);
+  updateActivityTEE();
+  // Training days
+  const days = appSettings.trainingDays || [];
+  [0,1,2,3,4,5,6].forEach(i => {
+    const cb = document.getElementById('td-'+i);
+    if (cb) cb.checked = days.includes(i);
+  });
+}
+
 // ══════════════════════════════════════════════════
 // NOTES FOR COACH
 // ══════════════════════════════════════════════════

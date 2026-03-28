@@ -478,44 +478,73 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
       <!-- Consistency stats -->
       <div class="stat-row" id="training-stats-row"></div>
 
-      <!-- Volume chart -->
+      <!-- Muscle Group Frequency -->
       <div class="card">
-        <div class="card-title">Weekly Training Volume (lbs)</div>
-        <div class="chart-wrap"><canvas id="chart-volume"></canvas><div class="chart-nodata" id="chart-volume-nodata"></div></div>
+        <div class="card-title">⏱ Muscle Group Frequency</div>
+        <div id="mg-frequency" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:6px"></div>
       </div>
 
-      <!-- Muscle group breakdown -->
+      <!-- Volume chart — collapsible -->
       <div class="card">
-        <div class="card-title">Muscle Group Volume (last 30 days)</div>
-        <div class="mg-list" id="mg-bars"></div>
-      </div>
-
-      <!-- Progressive Overload -->
-      <div class="card">
-        <div class="card-title" style="margin-bottom:10px">📈 Progressive Overload</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <select id="overload-exercise" class="setting-input" style="flex:1" onchange="renderOverloadChart()">
-            <option value="">— Select exercise —</option>
-          </select>
+        <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-volume','chv-volume')">
+          <span>📊 Weekly Training Volume</span>
+          <span id="chv-volume" style="color:var(--muted)">▼</span>
         </div>
-        <div class="chart-wrap" id="overload-wrap">
-          <canvas id="chart-overload"></canvas>
-          <div class="chart-nodata" id="chart-overload-nodata"></div>
+        <div id="sec-volume">
+          <div class="chart-wrap"><canvas id="chart-volume"></canvas><div class="chart-nodata" id="chart-volume-nodata"></div></div>
         </div>
-        <div id="overload-summary" style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center"></div>
       </div>
 
-      <!-- PRs -->
+      <!-- Muscle group volume by week — collapsible -->
       <div class="card">
-        <div class="card-title">Personal Records</div>
-        <div class="pr-list" id="pr-list"></div>
+        <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-mgvol','chv-mgvol')">
+          <span>💪 Muscle Group Volume (30d)</span>
+          <span id="chv-mgvol" style="color:var(--muted)">▼</span>
+        </div>
+        <div id="sec-mgvol">
+          <div class="mg-list" id="mg-bars"></div>
+        </div>
       </div>
 
-      <!-- Recent workouts table -->
+      <!-- Progressive Overload — collapsible -->
       <div class="card">
-        <div class="card-title">Recent Sessions</div>
-        <div style="overflow-x:auto">
-          <table class="wo-table" id="wo-table"></table>
+        <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-overload','chv-overload')">
+          <span>📈 Progressive Overload</span>
+          <span id="chv-overload" style="color:var(--muted)">▼</span>
+        </div>
+        <div id="sec-overload">
+          <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
+            <select id="overload-exercise" class="setting-input" style="flex:1" onchange="renderOverloadChart()">
+              <option value="">— Select exercise —</option>
+            </select>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="chart-overload"></canvas>
+            <div class="chart-nodata" id="chart-overload-nodata"></div>
+          </div>
+          <div id="overload-summary" style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center"></div>
+        </div>
+      </div>
+
+      <!-- PRs — collapsible -->
+      <div class="card">
+        <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-prs','chv-prs')">
+          <span>🏆 Personal Records</span>
+          <span id="chv-prs" style="color:var(--muted)">▼</span>
+        </div>
+        <div id="sec-prs">
+          <div class="pr-list" id="pr-list"></div>
+        </div>
+      </div>
+
+      <!-- Recent Sessions — collapsed by default -->
+      <div class="card">
+        <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-sessions','chv-sessions')">
+          <span>📋 Recent Sessions</span>
+          <span id="chv-sessions" style="color:var(--muted)">▶</span>
+        </div>
+        <div id="sec-sessions" style="display:none">
+          <div id="sessions-list" style="margin-top:8px"></div>
         </div>
       </div>
     </div>
@@ -619,6 +648,38 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
           🔬 Test Fitbod CSV
           <input type="file" accept=".csv" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer" onchange="testParseFitbod(this.files)">
         </label>
+      </div>
+    </div>
+
+    <!-- Manual Workout Entry -->
+    <div class="card">
+      <div class="card-title">✍️ Log Workout Manually</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">No Fitbod? Enter a workout directly.</div>
+      <div class="field-grid">
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Date</div>
+          <input class="setting-input" id="mw-date" type="date">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Muscle Groups</div>
+          <input class="setting-input" id="mw-muscles" placeholder="e.g. Chest, Shoulders">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Volume (lbs total)</div>
+          <input class="setting-input" id="mw-volume" type="number" placeholder="e.g. 8500">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">RPE (1–10)</div>
+          <input class="setting-input" id="mw-rpe" type="number" min="1" max="10" placeholder="e.g. 7">
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Exercises (one per line: Name · Weight lbs × Reps)</div>
+        <textarea class="setting-input" id="mw-exercises" rows="5" placeholder="Bench Press · 95.00 × 8&#10;Incline DB Press · 45.00 × 10&#10;Cable Fly · 35.00 × 12" style="width:100%;resize:vertical;font-family:'DM Mono',monospace;font-size:11px"></textarea>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <button class="btn btn-p btn-sm" onclick="saveManualWorkout()">Save Workout</button>
+        <span id="mw-saved" style="font-size:12px;color:var(--accent);display:none">✓ Saved to D1</span>
       </div>
     </div>
 
@@ -758,7 +819,7 @@ function showPanel(id, btn) {
   if (id === 'coach') {
     document.getElementById('coach-badge').classList.remove('show');
   }
-  if (id === 'upload')   renderDataSummary();
+  if (id === 'upload')   { renderDataSummary(); initManualWorkoutDate(); }
 }
 
 // ══════════════════════════════════════════════
@@ -2097,20 +2158,40 @@ function renderTraining() {
     </div>`
   ).join('') || '<div style="text-align:center;padding:16px;color:var(--muted)">No PR data yet — upload Fitbod CSV</div>';
 
-  // Recent sessions table
-  const recent = [...sessions].reverse().slice(0, 15);
-  document.getElementById('wo-table').innerHTML = `
-    <thead><tr>
-      <th>Date</th><th>Muscle Groups</th><th>Volume</th><th>RPE</th>
-    </tr></thead>
-    <tbody>${recent.map(s => `
-      <tr>
-        <td style="font-family:'DM Mono',monospace;color:var(--accent);font-size:11px">${s.date}</td>
-        <td style="color:var(--text)">${(s.muscleGroupsWorked||[]).slice(0,3).join(', ')}</td>
-        <td style="font-family:'DM Mono',monospace">${(s.totalVolume||0) >= 1000 ? (((s.totalVolume||0)/1000).toFixed(2))+'k lbs' : parseFloat(s.totalVolume||0).toFixed(2)+' lbs'}</td>
-        <td style="color:var(--muted)">${s.rpe ? s.rpe + '/10' : '—'}</td>
-      </tr>`).join('')}
-    </tbody>`;
+  // Muscle group frequency card
+  renderMuscleGroupFrequency(sessions);
+
+  // Recent sessions — expandable list (collapsed by default)
+  const recent = [...sessions].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20);
+  const sessEl = document.getElementById('sessions-list');
+  if (sessEl) {
+    sessEl.innerHTML = recent.map((s, idx) => {
+      const uid    = 'sess_' + idx;
+      const vol    = s.totalVolume || 0;
+      const volStr = vol >= 1000 ? (vol/1000).toFixed(2) + 'k' : parseFloat(vol).toFixed(2);
+      const mgs    = (s.muscleGroupsWorked || []).join(', ') || '—';
+      const exList = (s.exercises || []).filter(e => e.name)
+        .map(e => {
+          const heaviest = (e.sets || []).filter(s => s.weight > 0).sort((a,b) => b.weight - a.weight)[0];
+          return heaviest
+            ? `${e.name}: ${parseFloat(heaviest.weight).toFixed(2)}lbs × ${heaviest.reps}`
+            : e.name;
+        }).slice(0, 8).join('
+');
+      return `<div style="border-bottom:1px solid var(--border);padding:8px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleSection('sx-${uid}','sx-chv-${uid}')">
+          <div>
+            <div style="font-size:12px;font-weight:600;color:var(--accent)">${s.date}</div>
+            <div style="font-size:11px;color:var(--muted)">${mgs} · ${volStr} lbs${s.rpe ? ' · RPE ' + s.rpe : ''}</div>
+          </div>
+          <span id="sx-chv-${uid}" style="color:var(--muted);font-size:11px">▶</span>
+        </div>
+        <div id="sx-${uid}" style="display:none;margin-top:8px">
+          <pre style="font-size:11px;color:var(--muted);white-space:pre-wrap;margin:0;font-family:'DM Mono',monospace">${exList}</pre>
+        </div>
+      </div>`;
+    }).join('');
+  }
 }
 
 // Compute a session's volume — falls back to summing sets if totalVolume is 0
@@ -2651,6 +2732,76 @@ function restoreCoachThread() {
 // SETTINGS
 // ══════════════════════════════════════════════
 // ══════════════════════════════════════════════════
+// MANUAL WORKOUT ENTRY
+// ══════════════════════════════════════════════════
+function initManualWorkoutDate() {
+  const el = document.getElementById('mw-date');
+  if (el && !el.value) {
+    const d = new Date();
+    el.value = [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
+  }
+}
+
+async function saveManualWorkout() {
+  const date    = document.getElementById('mw-date').value;
+  const muscles = document.getElementById('mw-muscles').value.trim();
+  const volume  = parseFloat(document.getElementById('mw-volume').value) || null;
+  const rpe     = parseInt(document.getElementById('mw-rpe').value) || null;
+  const exRaw   = document.getElementById('mw-exercises').value.trim();
+
+  if (!date) { toast('Select a date', true); return; }
+  if (!WORKER_URL || !FS_API_KEY) { toast('Connect Worker in Settings first', true); return; }
+
+  // Parse exercises: "Bench Press · 95.00 × 8" or "Bench Press 95 x 8"
+  const exercises = exRaw ? exRaw.split('\n').map(line => {
+    line = line.trim();
+    if (!line) return null;
+    const m = line.match(/^(.+?)[·\-]\s*([\d.]+)\s*(?:lbs?)?\s*[×x]\s*(\d+)/i)
+           || line.match(/^(.+?)\s+([\d.]+)\s*(?:lbs?)?\s*[×x]\s*(\d+)/i);
+    if (m) {
+      const w = parseFloat(m[2]), r = parseInt(m[3]);
+      return { name: m[1].trim(), sets: [{ weight: w, reps: r, unit: 'lbs' }], totalVolume: w * r, muscleGroup: 'Other' };
+    }
+    return { name: line, sets: [], totalVolume: 0, muscleGroup: 'Other' };
+  }).filter(Boolean) : [];
+
+  const muscleGroupsWorked = muscles ? muscles.split(',').map(m => m.trim()).filter(Boolean) : [];
+
+  const session = {
+    date,
+    source:             'manual',
+    muscleGroupsWorked,
+    totalVolume:        volume || exercises.reduce((a, e) => a + (e.totalVolume || 0), 0),
+    rpe,
+    exercises,
+  };
+
+  try {
+    const res = await wFetch('/api/workouts/bulk', {
+      method: 'POST',
+      body:   JSON.stringify({ sessions: [session], overwrite: false }),
+    });
+    if (res.inserted > 0) {
+      toast('✓ Workout saved');
+      document.getElementById('mw-saved').style.display = 'inline';
+      setTimeout(() => document.getElementById('mw-saved').style.display = 'none', 3000);
+      ['mw-muscles','mw-volume','mw-rpe','mw-exercises'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+      });
+      const fresh = await wFetch('/api/workouts/full');
+      data.fitbod = (fresh.sessions || []).map(mapD1WorkoutToFitbod);
+      destroyCharts(); renderOverview(); renderTraining(); renderDataSummary();
+    } else if (res.skipped > 0) {
+      toast('Workout already exists for ' + date + ' — clear first to replace', true);
+    } else {
+      toast('Save failed — check errors in bulk import', true);
+    }
+  } catch (e) {
+    toast('Save failed: ' + e.message, true);
+  }
+}
+
+// ══════════════════════════════════════════════════
 // MEASUREMENTS
 // ══════════════════════════════════════════════════
 function initMeasurementDate() {
@@ -2779,6 +2930,42 @@ function daysDiff(dateStr) {
   const now = new Date();
   const todayNoon = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
   return Math.round((todayNoon - new Date(dateStr + 'T12:00:00')) / 86400000);
+}
+
+function toggleSection(sectionId, chevronId) {
+  const el  = document.getElementById(sectionId);
+  const chv = document.getElementById(chevronId);
+  if (!el) return;
+  const open = el.style.display === 'none';
+  el.style.display = open ? 'block' : 'none';
+  if (chv) chv.textContent = open ? '▼' : '▶';
+}
+
+function renderMuscleGroupFrequency(sessions) {
+  const el = document.getElementById('mg-frequency');
+  if (!el) return;
+  // Find last session date per muscle group
+  const lastSeen = {};
+  [...sessions].sort((a, b) => b.date.localeCompare(a.date)).forEach(s => {
+    (s.muscleGroupsWorked || []).forEach(mg => {
+      if (!lastSeen[mg]) lastSeen[mg] = s.date;
+    });
+  });
+  const groups = ['Chest','Back','Legs','Shoulders','Arms','Core','Full Body','Cardio'];
+  const activeGroups = Object.keys(lastSeen).sort((a, b) => {
+    const da = daysDiff(lastSeen[a]), db = daysDiff(lastSeen[b]);
+    return da - db;
+  });
+  if (!activeGroups.length) { el.innerHTML = '<div style="color:var(--muted);font-size:12px">No muscle group data yet — re-upload Fitbod CSV</div>'; return; }
+  el.innerHTML = activeGroups.map(mg => {
+    const days = daysDiff(lastSeen[mg]);
+    const color = days <= 3 ? 'var(--accent)' : days <= 7 ? 'var(--yellow)' : 'var(--orange)';
+    const label = days === 0 ? 'Today' : days === 1 ? 'Yesterday' : `${days}d ago`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px;font-weight:500">${mg}</span>
+      <span style="font-size:11px;color:${color}">${label}</span>
+    </div>`;
+  }).join('');
 }
 
 function mdToHtml(text) {
