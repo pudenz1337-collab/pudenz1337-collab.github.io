@@ -406,13 +406,26 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
         <div class="chart-wrap"><canvas id="chart-bmr"></canvas><div class="chart-nodata" id="chart-bmr-nodata"></div></div>
       </div>
 
-      <!-- Scan list -->
-      <div class="section-label">All Scans</div>
-      <div id="scan-list"></div>
+      <!-- Scan list — collapsible -->
+      <div class="section-label" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center"
+           onclick="toggleSection('sec-scan-list','chv-scan-list')">
+        <span>All Scans</span>
+        <span id="chv-scan-list" style="color:var(--muted);font-size:12px">▼</span>
+      </div>
+      <div id="sec-scan-list">
+        <div id="scan-list"></div>
+      </div>
 
-      <!-- Scan Interval Analysis -->
-      <div class="section-label" id="intervals-section-label" style="display:none">Interval Analysis — What Each Period Produced</div>
-      <div id="scan-intervals-wrap"></div>
+      <!-- Scan Interval Analysis — collapsible -->
+      <div id="intervals-section-label" style="display:none;cursor:pointer;justify-content:space-between;align-items:center"
+           class="section-label"
+           onclick="toggleSection('sec-intervals','chv-intervals')">
+        <span>Interval Analysis — What Each Period Produced</span>
+        <span id="chv-intervals" style="color:var(--muted);font-size:12px">▼</span>
+      </div>
+      <div id="sec-intervals">
+        <div id="scan-intervals-wrap"></div>
+      </div>
     </div><!-- end body-content -->
 
     <!-- Measurements — always visible, no scan required -->
@@ -1711,7 +1724,7 @@ async function loadScanIntervals() {
         : '';
       return;
     }
-    if (label) label.style.display = 'block';
+    if (label) label.style.display = 'flex';
     renderScanIntervals(result.intervals);
   } catch (e) {
     console.log('[Intervals] Load failed:', e.message);
