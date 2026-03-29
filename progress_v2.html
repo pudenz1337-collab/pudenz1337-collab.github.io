@@ -1571,16 +1571,19 @@ async function parseFitbodCSV(file) {
     }
     const sess = sessionMap[dateStr];
     if (!sess.exercises[exercise]) {
-      sess.exercises[exercise] = { name: exercise, muscleGroup, sets: [], totalVolume: 0, maxWeight: 0 };
+      sess.exercises[exercise] = { name: exercise, muscleGroup, sets: [], totalVolume: 0, maxWeight: 0, maxReps: 0 };
     }
     const ex = sess.exercises[exercise];
-    if (!isBodyweight) {
+    // Always record the set — bodyweight exercises track reps, weighted track weight
+    // Never inflate session volume with bodyweight (weight=0 keeps volume=0)
+    ex.sets.push({ reps, weight: isBodyweight ? 0 : weight, unit: 'lbs', bodyweight: isBodyweight });
+    if (!isBodyweight && weight > 0 && reps > 0) {
       const vol = reps * weight;
-      ex.sets.push({ reps, weight, unit: 'lbs' });
-      ex.totalVolume += vol;
-      ex.maxWeight    = Math.max(ex.maxWeight, weight);
+      ex.totalVolume   += vol;
+      ex.maxWeight      = Math.max(ex.maxWeight, weight);
       sess.totalVolume += vol;
     }
+    if (reps > 0) ex.maxReps = Math.max(ex.maxReps || 0, reps);
     if (muscleGroup) sess.muscleGroupsWorked.add(muscleGroup);
   }
 
@@ -2207,18 +2210,20 @@ function renderTraining() {
 
   // PRs
   const prs = buildPRs(sessions);
-  document.getElementById('pr-list').innerHTML = prs.slice(0, 12).map((pr, i) =>
-    `<div class="pr-item">
+  document.getElementById('pr-list').innerHTML = prs.slice(0, 12).map((pr, i) => {
+    const metric = pr.hasWeighted
+      ? `<div class="pr-val">${parseFloat(pr.weight).toFixed(2)} lbs</div>
+         <div style="font-size:10px;color:var(--muted)">× ${pr.reps} reps</div>`
+      : `<div class="pr-val">${pr.reps} reps</div>
+         <div style="font-size:10px;color:var(--muted)">bodyweight</div>`;
+    return `<div class="pr-item">
       <div>
         <div class="pr-name">${i + 1}. ${pr.exercise}</div>
         <div style="font-size:10px;color:var(--muted)">${pr.date}</div>
       </div>
-      <div style="text-align:right">
-        <div class="pr-val">${parseFloat(pr.weight).toFixed(2)} lbs</div>
-        <div style="font-size:10px;color:var(--muted)">× ${pr.reps} reps</div>
-      </div>
-    </div>`
-  ).join('') || '<div style="text-align:center;padding:16px;color:var(--muted)">No PR data yet — upload Fitbod CSV</div>';
+      <div style="text-align:right">${metric}</div>
+    </div>`;
+  }).join('') || '<div style="text-align:center;padding:16px;color:var(--muted)">No PR data yet — upload Fitbod CSV</div>';
 
   // Muscle group frequency card
   renderMuscleGroupFrequency(sessions);
@@ -2314,10 +2319,9 @@ function populateOverloadDropdown(sessions) {
 }
 
 function renderOverloadChart() {
-  const sel = document.getElementById('overload-exercise');
+  const sel      = document.getElementById('overload-exercise');
   const exercise = sel?.value;
-  const nodata = document.getElementById('chart-overload-nodata');
-  const summary = document.getElementById('overload-summary');
+  const summary  = document.getElementById('overload-summary');
   const sessions = data.fitbod;
 
   if (!exercise) {
@@ -2326,99 +2330,151 @@ function renderOverloadChart() {
     return;
   }
 
-  // Collect heaviest set per session date for this exercise
-  const points = [];
+  // Collect best set per session for this exercise
+  // Determine if exercise is bodyweight-only or has weighted sets
+  const allSets = [];
   sessions.forEach(s => {
     const ex = (s.exercises || []).find(e => e.name === exercise);
     if (!ex) return;
-    const heaviest = (ex.sets || [])
-      .filter(set => set.weight > 0 && set.reps > 0)
-      .sort((a, b) => b.weight - a.weight)[0];
-    if (heaviest) {
-      points.push({ date: s.date, weight: heaviest.weight, reps: heaviest.reps });
-    }
+    (ex.sets || []).forEach(set => {
+      if (set.reps > 0) allSets.push({ date: s.date, weight: set.weight || 0, reps: set.reps });
+    });
   });
 
-  if (!points.length) {
-    showChartNoData('chart-overload', 'No weighted sets found for ' + exercise);
+  if (!allSets.length) {
+    showChartNoData('chart-overload', 'No sets found for ' + exercise);
     if (summary) summary.textContent = '';
     return;
   }
 
-  points.sort((a, b) => a.date.localeCompare(b.date));
+  // Decide metric: if ANY set has weight > 0, track weight. Otherwise track max reps.
+  const hasWeighted = allSets.some(s => s.weight > 0);
 
-  // Calculate trend
-  const first = points[0];
-  const last  = points[points.length - 1];
-  const gain  = last.weight - first.weight;
-  const gainStr = gain > 0 ? `+${parseFloat(gain.toFixed(2))} lbs` : `${parseFloat(gain.toFixed(2))} lbs`;
-  const weeks = Math.max(1, Math.round((new Date(last.date) - new Date(first.date)) / (7 * 86400000)));
-
-  if (summary) {
-    summary.textContent = `${points.length} sessions · Best: ${parseFloat(last.weight).toFixed(2)} lbs × ${last.reps} reps · Progress: ${gainStr} over ${weeks} week${weeks !== 1 ? 's' : ''}`;
-    summary.style.color = gain >= 0 ? 'var(--accent)' : 'var(--orange)';
-  }
-
-  makeOrUpdate('chart-overload', {
-    type: 'line',
-    data: {
-      labels: points.map(p => p.date.slice(5)),  // MM-DD
-      datasets: [{
-        label: 'Heaviest set (lbs)',
-        data:  points.map(p => parseFloat(p.weight.toFixed(2))),
-        borderColor:     '#4da8ff',
-        backgroundColor: 'rgba(77,168,255,.1)',
-        pointBackgroundColor: '#4da8ff',
-        pointRadius: 4,
-        tension: 0.3,
-        fill: true,
-      }],
-    },
-    options: {
-      ...CHART_DEFAULTS,
-      scales: {
-        x: CHART_DEFAULTS.scales.x,
-        y: {
-          ...CHART_DEFAULTS.scales.y,
-          beginAtZero: false,
-          ticks: { callback: v => v.toFixed(2) + ' lbs' },
-        },
-      },
-      plugins: {
-        ...((CHART_DEFAULTS.plugins) || {}),
-        tooltip: { callbacks: {
-          label: ctx => `${ctx.parsed.y.toFixed(2)} lbs × ${points[ctx.dataIndex]?.reps || '?'} reps`,
-        }},
-      },
-    },
+  // Best set per date
+  const byDate = {};
+  allSets.forEach(s => {
+    if (!byDate[s.date]) byDate[s.date] = s;
+    else {
+      if (hasWeighted) {
+        // Best = heaviest weight; tiebreak by most reps
+        if (s.weight > byDate[s.date].weight ||
+           (s.weight === byDate[s.date].weight && s.reps > byDate[s.date].reps))
+          byDate[s.date] = s;
+      } else {
+        // Best = most reps
+        if (s.reps > byDate[s.date].reps) byDate[s.date] = s;
+      }
+    }
   });
+
+  const points = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+  const first  = points[0];
+  const last   = points[points.length - 1];
+  const weeks  = Math.max(1, Math.round((new Date(last.date) - new Date(first.date)) / (7 * 86400000)));
+
+  if (hasWeighted) {
+    const gain    = last.weight - first.weight;
+    const gainStr = (gain >= 0 ? '+' : '') + parseFloat(gain.toFixed(2)) + ' lbs';
+    if (summary) {
+      summary.textContent = `${points.length} sessions · Best: ${parseFloat(last.weight).toFixed(2)} lbs × ${last.reps} reps · ${gainStr} over ${weeks} wk`;
+      summary.style.color = gain >= 0 ? 'var(--accent)' : 'var(--orange)';
+    }
+    makeOrUpdate('chart-overload', {
+      type: 'line',
+      data: {
+        labels: points.map(p => p.date.slice(5)),
+        datasets: [{
+          label: 'Heaviest set (lbs)',
+          data:  points.map(p => parseFloat(p.weight.toFixed(2))),
+          borderColor: '#4da8ff', backgroundColor: 'rgba(77,168,255,.1)',
+          pointBackgroundColor: '#4da8ff', pointRadius: 4, tension: 0.3, fill: true,
+        }],
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        scales: {
+          x: CHART_DEFAULTS.scales.x,
+          y: { ...CHART_DEFAULTS.scales.y, beginAtZero: false,
+               ticks: { callback: v => v.toFixed(2) + ' lbs' } },
+        },
+        plugins: { tooltip: { callbacks: {
+          label: ctx => `${ctx.parsed.y.toFixed(2)} lbs × ${points[ctx.dataIndex]?.reps || '?'} reps`,
+        }}},
+      },
+    });
+  } else {
+    // Bodyweight — track max reps over time
+    const gain    = last.reps - first.reps;
+    const gainStr = (gain >= 0 ? '+' : '') + gain + ' reps';
+    if (summary) {
+      summary.textContent = `${points.length} sessions · Best: ${last.reps} reps · ${gainStr} over ${weeks} wk · Bodyweight`;
+      summary.style.color = gain >= 0 ? 'var(--accent)' : 'var(--orange)';
+    }
+    makeOrUpdate('chart-overload', {
+      type: 'line',
+      data: {
+        labels: points.map(p => p.date.slice(5)),
+        datasets: [{
+          label: 'Max reps',
+          data:  points.map(p => p.reps),
+          borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,.1)',
+          pointBackgroundColor: '#a78bfa', pointRadius: 4, tension: 0.3, fill: true,
+        }],
+      },
+      options: {
+        ...CHART_DEFAULTS,
+        scales: {
+          x: CHART_DEFAULTS.scales.x,
+          y: { ...CHART_DEFAULTS.scales.y, beginAtZero: true,
+               ticks: { callback: v => v + ' reps' } },
+        },
+        plugins: { tooltip: { callbacks: {
+          label: ctx => `${ctx.parsed.y} reps (bodyweight)`,
+        }}},
+      },
+    });
+  }
 }
 
 function buildPRs(sessions) {
-  // Track two things per exercise:
-  // 1. heaviestWeight — the single heaviest set ever (your true weight PR)
-  // 2. bestVolSet — highest volume set (weight × reps) for context
   const bests = {};
   sessions.forEach(s => (s.exercises || []).forEach(ex => {
     if (!ex.name) return;
     (ex.sets || []).forEach(set => {
-      const w = parseFloat(set.weight);
-      const r = parseInt(set.reps);
-      if (!w || w <= 0 || !r || r <= 0) return;
-      if (!bests[ex.name] || w > bests[ex.name].weight ||
-         (w === bests[ex.name].weight && r > bests[ex.name].reps)) {
-        bests[ex.name] = {
-          exercise: ex.name,
-          weight:   parseFloat(w.toFixed(2)),  // actual heaviest weight, lbs, 2dp
-          reps:     r,
-          date:     s.date,
-        };
+      const w = parseFloat(set.weight) || 0;
+      const r = parseInt(set.reps)     || 0;
+      if (!r) return;  // need at least reps
+      if (!bests[ex.name]) {
+        bests[ex.name] = { exercise: ex.name, weight: w, reps: r, date: s.date, hasWeighted: w > 0 };
+        return;
+      }
+      const cur = bests[ex.name];
+      if (w > 0) {
+        // Weighted set — update if heavier (or same weight, more reps)
+        cur.hasWeighted = true;
+        if (w > cur.weight || (w === cur.weight && r > cur.reps)) {
+          cur.weight = parseFloat(w.toFixed(2));
+          cur.reps   = r;
+          cur.date   = s.date;
+        }
+      } else {
+        // Bodyweight — only update rep PR if no weighted sets seen yet
+        if (!cur.hasWeighted && r > cur.reps) {
+          cur.reps = r;
+          cur.date = s.date;
+        }
       }
     });
   }));
   return Object.values(bests)
-    .filter(p => p.exercise && p.weight > 0)
-    .sort((a, b) => b.weight - a.weight);  // sort by actual weight, heaviest first
+    .filter(p => p.exercise)
+    .sort((a, b) => {
+      // Weighted exercises first (by weight), then bodyweight (by reps)
+      if (a.hasWeighted && !b.hasWeighted) return -1;
+      if (!a.hasWeighted && b.hasWeighted) return 1;
+      if (a.hasWeighted) return b.weight - a.weight;
+      return b.reps - a.reps;
+    });
 }
 
 // ══════════════════════════════════════════════
