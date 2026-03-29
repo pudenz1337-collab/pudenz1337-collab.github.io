@@ -1291,6 +1291,12 @@ async function handleFiles(files, type) {
         const errors   = res?.errors   || 0;
         // Only add genuinely new sessions to in-memory data
         // The worker skips duplicates so we need to know which ones are new
+        // Show error samples regardless of inserted count
+        if (res.errorSamples && res.errorSamples.length) {
+          plog(`⚠ First ${res.errorSamples.length} error(s):`, 'lwarn');
+          res.errorSamples.forEach(e => plog(`  ${e.date}: ${e.error}`, 'lwarn'));
+        }
+
         if (inserted > 0) {
           // Re-fetch from D1 to get accurate in-memory state after import
           try {
@@ -1298,18 +1304,18 @@ async function handleFiles(files, type) {
             data.fitbod = (fresh.sessions || []).map(mapD1WorkoutToFitbod);
             plog(`✅ ${inserted} new session${inserted !== 1 ? 's' : ''} added` +
               (skipped ? ` · ${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped` : '') +
-              (errors  ? ` · ${errors} error${errors !== 1 ? 's' : ''}` : ''), errors ? 'lwarn' : 'linfo');
-        if (res.errorSamples && res.errorSamples.length) {
-          plog('⚠ First errors:', 'lwarn');
-          res.errorSamples.forEach(e => plog(`  ${e.date}: ${e.error}`, 'lwarn'));
-        }
+              (errors  ? ` · ⚠ ${errors} error${errors !== 1 ? 's' : ''}` : ''), errors ? 'lwarn' : 'linfo');
           } catch {
             data.fitbod.push(...results);
             plog(`✅ ${inserted} new, ${skipped} skipped`, 'linfo');
           }
-        } else {
+        } else if (errors > 0) {
+          plog(`⚠ 0 sessions inserted — ${errors} error${errors !== 1 ? 's' : ''} occurred. Check error details above.`, 'lwarn');
+        } else if (skipped > 0) {
           plog(`⏭ All ${skipped} sessions already in database — no new data added`, 'lwarn');
           plog(`💡 Use 🗑 Clear Fitbod to reset and re-import if needed`, 'lwarn');
+        } else {
+          plog(`⚠ Nothing was inserted, skipped, or errored — check worker connection`, 'lwarn');
         }
       } else {
         plog(`⚠ No sessions found in ${file.name}`, 'lwarn');
