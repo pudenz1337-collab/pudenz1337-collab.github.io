@@ -1565,7 +1565,8 @@ async function parseFitbodCSV(file) {
         exercises:        {},
         muscleGroupsWorked: new Set(),
         totalVolume:      0,
-        source:           file.name,
+        source:           'fitbod',   // always 'fitbod' — used by clearAllWorkouts and duplicate check
+        sourceFile:       file.name,  // keep filename for parse log display only
       };
     }
     const sess = sessionMap[dateStr];
