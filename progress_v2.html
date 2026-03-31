@@ -1091,10 +1091,15 @@ async function clearType(type) {
   const label = type === 'fitbod' ? 'Fitbod workout' : 'Evolt scan';
   if (!confirm(`Delete all ${label} data from D1 permanently?\n\nThis cannot be undone. You will need to re-upload your CSV/PDFs.`)) return;
 
-  if (type === 'fitbod' && WORKER_URL && FS_API_KEY) {
+  if (WORKER_URL && FS_API_KEY) {
     try {
-      await wFetch('/api/workouts/all', { method: 'DELETE' });
-      toast('✓ All Fitbod data deleted from D1');
+      if (type === 'fitbod') {
+        await wFetch('/api/workouts/all', { method: 'DELETE' });
+        toast('✓ All Fitbod data deleted from D1');
+      } else if (type === 'evolt') {
+        const res = await wFetch('/api/scans/all', { method: 'DELETE' });
+        toast(`✓ ${res.deleted || 0} scan${res.deleted !== 1 ? 's' : ''} deleted from D1`);
+      }
     } catch (e) {
       toast('Delete failed: ' + e.message, true); return;
     }
