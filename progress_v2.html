@@ -88,6 +88,7 @@ body{
 .delta-val{font-family:'Bebas Neue',sans-serif;font-size:26px;line-height:1}
 .delta-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
 .delta-change{font-size:11px;font-family:'DM Mono',monospace;margin-top:2px}
+.tee-bar{margin-top:8px;padding:8px 10px;background:rgba(0,229,160,.06);border:1px solid rgba(0,229,160,.12);border-radius:8px;font-size:11px;color:var(--muted);line-height:1.8}
 .pos{color:var(--accent)}.neg{color:var(--danger)}.neu{color:var(--muted)}
 
 /* ── STAT ROWS ── */
@@ -834,6 +835,7 @@ const FS_KEY_STOR = 'fs3-api-key-v2';
 let WORKER_URL = localStorage.getItem(WORKER_KEY)  || 'https://fuelstrong-v2.pudenz1337.workers.dev';
 let FS_API_KEY = localStorage.getItem(FS_KEY_STOR) || '';
 let goals       = JSON.parse(localStorage.getItem('fsp-goals-v2') || '{}');
+let appSettings = JSON.parse(localStorage.getItem('fs3-settings-v2') || '{}');  // shared with index_v2
 
 let data = { evolt: [], fitbod: [], fuelstrong: [], measurements: [] };
 let coachThread   = JSON.parse(localStorage.getItem('fsp-coach') || '[]');
@@ -1801,22 +1803,27 @@ function renderOverview() {
   document.getElementById('body-comp-card').style.display = hasEvolt  ? 'block' : 'none';
   document.getElementById('weight-card').style.display    = hasEvolt  ? 'block' : 'none';
 
-  // Stats row
+  // Stats row — wkts/week only (scan data shown in hero cards)
   const statsRow = document.getElementById('overview-stats');
-  if (hasEvolt || hasFitbod) {
+  if (hasFitbod) {
     statsRow.style.display = 'flex';
-    const latest = hasEvolt ? data.evolt[data.evolt.length - 1] : null;
-    const stats  = [];
-    if (latest?.skeletalMuscleMass) stats.push({ val: latest.skeletalMuscleMass + 'lbs', label: 'Muscle', sub: 'latest scan', color: 'var(--accent)' });
-    if (latest?.bodyFatPct)          stats.push({ val: latest.bodyFatPct + '%',           label: 'Body Fat', sub: 'latest scan', color: 'var(--yellow)' });
-    if (hasFitbod) {
-      const last4wks  = data.fitbod.filter(w => daysDiff(w.date) <= 28);
-      const oldest4   = last4wks.length ? Math.min(...last4wks.map(w => daysDiff(w.date))) : 0;
-      const actual4w  = Math.max(1, Math.min(4, Math.ceil((oldest4 + 1) / 7)));
-      const perWeek   = (last4wks.length / actual4w).toFixed(1);
-      stats.push({ val: perWeek, label: 'Wkts/Week', sub: 'last 4 weeks', color: 'var(--blue)' });
-    }
-    statsRow.innerHTML = stats.map(s =>
+    const sessions  = data.fitbod;
+    const last4wks  = sessions.filter(w => daysDiff(w.date) <= 28);
+    // wkts/wk: use distinct training dates (sessions could span < 4 full weeks)
+    const distinctDates = [...new Set(last4wks.map(w => w.date))];
+    const oldest4   = distinctDates.length ? Math.max(...distinctDates.map(d => daysDiff(d))) : 0;
+    const actual4w  = Math.max(1, Math.min(4, oldest4 < 7 ? 1 : Math.round(oldest4 / 7)));
+    const perWeek   = (distinctDates.length / actual4w).toFixed(1);
+    const last4w    = sessions.filter(s => daysDiff(s.date) <= 28);
+    const last8w    = sessions.filter(s => daysDiff(s.date) <= 56);
+    const oldest8   = last8w.length ? Math.max(...last8w.map(s => daysDiff(s.date))) : 0;
+    const actual8w  = Math.max(1, Math.min(8, oldest8 < 7 ? 1 : Math.round(oldest8 / 7)));
+    const avg8w     = (last8w.length / actual8w).toFixed(1);
+    statsRow.innerHTML = [
+      { val: perWeek, label: 'Wkts/Wk', sub: 'last 4 wks', color: 'var(--accent)' },
+      { val: avg8w,   label: 'Wkts/Wk', sub: 'last 8 wks', color: 'var(--blue)' },
+      { val: sessions.length, label: 'Total', sub: 'sessions', color: 'var(--muted)' },
+    ].map(s =>
       `<div class="stat"><div class="stat-val" style="color:${s.color}">${s.val}</div><div class="stat-label">${s.label}</div><div class="stat-sub">${s.sub}</div></div>`
     ).join('');
   } else {
@@ -1828,61 +1835,108 @@ function renderOverview() {
 }
 
 function renderScanHero() {
-  const el = document.getElementById('scan-hero-wrap');
+  const el    = document.getElementById('scan-hero-wrap');
   const scans = data.evolt;
-  if (scans.length < 2) {
-    if (scans.length === 1) {
-      const s = scans[0];
-      el.innerHTML = `<div class="scan-hero">
-        <div class="hero-label">First Scan</div>
-        <div class="scan-dates">${s.date}</div>
-        <div class="delta-grid">
-          ${deltaCell(s.weight,'Weight (lbs)',null,false)}
-          ${deltaCell(s.bodyFatPct,'Body Fat %',null,false)}
-          ${deltaCell(s.skeletalMuscleMass,'Muscle (lbs)',null,false)}
-          ${deltaCell(s.bmr,'BMR (kcal)',null,false)}
-        </div>
-      </div>`;
-    } else {
-      el.innerHTML = '';
-    }
+
+  if (!scans.length) { el.innerHTML = ''; return; }
+
+  const actMult = parseFloat(appSettings.activityMultiplier || 1.55);
+
+  // Helper: compute fat mass from weight and BF%
+  const fatMass = (w, bf) => (w != null && bf != null) ? parseFloat((w * bf / 100).toFixed(2)) : null;
+  // Helper: round deltas cleanly to 2dp
+  const d2 = v => v != null ? parseFloat(parseFloat(v).toFixed(2)) : null;
+  const d1 = v => v != null ? parseFloat(parseFloat(v).toFixed(1)) : null;
+
+  // ── Single scan: just show current values ─────────────────────────────────
+  if (scans.length === 1) {
+    const s = scans[0];
+    const tee = s.bmr ? Math.round(s.bmr * actMult) : null;
+    el.innerHTML = `<div class="scan-hero">
+      <div class="hero-label">Latest Scan · ${s.date}</div>
+      <div class="delta-grid">
+        ${deltaCell(s.weight != null ? parseFloat(s.weight).toFixed(2) : null, 'Weight (lbs)', null, false)}
+        ${deltaCell(s.bodyFatPct != null ? parseFloat(s.bodyFatPct).toFixed(1) : null, 'Body Fat %', null, false)}
+        ${deltaCell(s.skeletalMuscleMass != null ? parseFloat(s.skeletalMuscleMass).toFixed(2) : null, 'Muscle (lbs)', null, true)}
+        ${deltaCell(s.leanBodyMass != null ? parseFloat(s.leanBodyMass).toFixed(2) : null, 'LBM (lbs)', null, true)}
+        ${deltaCell(fatMass(s.weight, s.bodyFatPct) != null ? fatMass(s.weight, s.bodyFatPct).toFixed(2) : null, 'Fat Mass (lbs)', null, false)}
+        ${deltaCell(s.bmr ? Math.round(s.bmr) : null, 'BMR (kcal)', null, true)}
+      </div>
+      ${tee ? `<div class="tee-bar">BMR ${Math.round(s.bmr)} kcal → TEE ~${tee} kcal <span style="font-size:10px;color:var(--muted)">(BMR × ${actMult} activity multiplier)</span></div>` : ''}
+    </div>`;
     return;
   }
 
+  // ── Multiple scans ────────────────────────────────────────────────────────
   const first = scans[0];
   const last  = scans[scans.length - 1];
-  const days  = Math.round((new Date(last.date) - new Date(first.date)) / 86400000);
+  const prev  = scans.length >= 2 ? scans[scans.length - 2] : null;
 
-  // Check if all key values are null (scans parsed without extracting values)
-  const heroHasData = [last.weight, last.bodyFatPct, last.skeletalMuscleMass].some(v => v != null);
-  const wDelta  = (last.weight != null && first.weight != null) ? last.weight - first.weight : null;
-  const bfDelta = (last.bodyFatPct != null && first.bodyFatPct != null) ? (last.bodyFatPct - first.bodyFatPct).toFixed(1) : null;
-  const mDelta  = (last.skeletalMuscleMass != null && first.skeletalMuscleMass != null) ? (last.skeletalMuscleMass - first.skeletalMuscleMass).toFixed(1) : null;
-  const bmrDelta = (last.bmr != null && first.bmr != null) ? Math.round(last.bmr - first.bmr) : null;
+  // Since-last-scan deltas (prev → last)
+  const daysSinceLast = prev ? Math.round((new Date(last.date) - new Date(prev.date)) / 86400000) : 0;
+  const wDL    = prev ? d2(last.weight - prev.weight) : null;
+  const bfDL   = prev ? d1(last.bodyFatPct - prev.bodyFatPct) : null;
+  const mDL    = prev ? d2(last.skeletalMuscleMass - prev.skeletalMuscleMass) : null;
+  const lbmDL  = prev ? d2(last.leanBodyMass - prev.leanBodyMass) : null;
+  const fmLast = fatMass(last.weight, last.bodyFatPct);
+  const fmPrev = fatMass(prev?.weight, prev?.bodyFatPct);
+  const fmDL   = fmLast != null && fmPrev != null ? d2(fmLast - fmPrev) : null;
+  const bmrDL  = prev?.bmr && last.bmr ? Math.round(last.bmr - prev.bmr) : null;
 
-  el.innerHTML = `<div class="scan-hero">
-    <div class="hero-label">Since First Scan · ${days} days</div>
-    <div class="scan-dates">${first.date} → ${last.date}</div>
-    ${heroHasData ? `<div class="delta-grid">
-      ${deltaCell(last.weight,'Weight (lbs)', wDelta, false)}
-      ${deltaCell(last.bodyFatPct,'Body Fat %', bfDelta, false)}
-      ${deltaCell(last.skeletalMuscleMass,'Muscle (lbs)', mDelta, true)}
-      ${deltaCell(last.bmr,'BMR (kcal)', bmrDelta, true)}
+  // All-time deltas (first → last)
+  const totalDays = Math.round((new Date(last.date) - new Date(first.date)) / 86400000);
+  const wDA   = d2(last.weight - first.weight);
+  const bfDA  = d1(last.bodyFatPct - first.bodyFatPct);
+  const mDA   = d2(last.skeletalMuscleMass - first.skeletalMuscleMass);
+  const fmFirst = fatMass(first.weight, first.bodyFatPct);
+  const fmDA  = fmLast != null && fmFirst != null ? d2(fmLast - fmFirst) : null;
+
+  // TEE
+  const tee = last.bmr ? Math.round(last.bmr * actMult) : null;
+  const calGoal = goals?.cal || null;
+  const deficit = tee && calGoal ? Math.round(tee - calGoal) : null;
+  const defLabel = deficit != null
+    ? (deficit > 0 ? `${deficit} kcal deficit` : `${Math.abs(deficit)} kcal surplus`)
+    : null;
+
+  el.innerHTML = `
+    <!-- SINCE LAST SCAN -->
+    <div class="scan-hero" style="margin-bottom:10px">
+      <div class="hero-label">Since Last Scan · ${daysSinceLast} days</div>
+      <div class="scan-dates">${prev?.date || '—'} → ${last.date}</div>
+      <div class="delta-grid">
+        ${deltaCell(last.weight != null ? parseFloat(last.weight).toFixed(2) : null, 'Weight (lbs)', wDL, false)}
+        ${deltaCell(last.bodyFatPct != null ? parseFloat(last.bodyFatPct).toFixed(1) : null, 'Body Fat %', bfDL, false)}
+        ${deltaCell(last.skeletalMuscleMass != null ? parseFloat(last.skeletalMuscleMass).toFixed(2) : null, 'Muscle (lbs)', mDL, true)}
+        ${deltaCell(last.leanBodyMass != null ? parseFloat(last.leanBodyMass).toFixed(2) : null, 'LBM (lbs)', lbmDL, true)}
+        ${deltaCell(fmLast != null ? fmLast.toFixed(2) : null, 'Fat Mass (lbs)', fmDL, false)}
+        ${deltaCell(last.bmr ? Math.round(last.bmr) : null, 'BMR (kcal)', bmrDL, true)}
+      </div>
+      ${tee ? `<div class="tee-bar">BMR ${Math.round(last.bmr)} kcal → TEE ~${tee} kcal${defLabel ? ` → <span style="color:var(--accent)">${defLabel}</span>` : ''} <span style="font-size:10px;color:var(--muted)">(BMR × ${actMult})</span></div>` : ''}
     </div>
-    ${last.bmr ? (() => {
-      const tee     = Math.round(last.bmr * 1.45);
-      const deficit = goals?.cal ? Math.round(tee - goals.cal) : null;
-      const defLabel = deficit !== null
-        ? (deficit > 0 ? `${deficit} kcal deficit` : `${Math.abs(deficit)} kcal surplus`)
-        : null;
-      return `<div style="margin-top:8px;padding:8px 10px;background:rgba(0,229,160,.06);border:1px solid rgba(0,229,160,.12);border-radius:8px;font-size:11px;color:var(--muted);line-height:1.8">
-        <span style="color:var(--text)">BMR</span> ${last.bmr} kcal
-        &nbsp;→&nbsp;<span style="color:var(--text)">TEE</span> ~${tee} kcal
-        ${defLabel ? `&nbsp;→&nbsp;<span style="color:var(--accent)">${defLabel}</span>` : ''}
-        <span style="color:var(--muted);font-size:10px">&nbsp; (TEE = BMR × 1.45 activity)</span>
-      </div>`;
-    })() : ''}` : `<div style="padding:12px 0;color:var(--orange);font-size:12px">⚠ Scan values missing — please clear and re-upload Evolt PDFs from the Upload tab</div>`}
-  </div>`;
+
+    <!-- ALL-TIME SUMMARY -->
+    <div class="card" style="padding:12px 14px;margin-bottom:0">
+      <div style="font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">All-Time · ${first.date} → ${last.date} · ${totalDays} days · ${scans.length} scans</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+        ${[
+          { label: 'Weight', val: wDA, unit: 'lbs', good: false },
+          { label: 'Body Fat', val: bfDA, unit: '%', good: false },
+          { label: 'Muscle', val: mDA, unit: 'lbs', good: true },
+          { label: 'Fat Mass', val: fmDA, unit: 'lbs', good: false },
+        ].map(item => {
+          if (item.val == null) return '';
+          const n = parseFloat(item.val);
+          const isGood = item.good ? n > 0 : n < 0;
+          const color = n === 0 ? 'var(--muted)' : isGood ? 'var(--accent)' : 'var(--danger)';
+          const sign  = n > 0 ? '+' : '';
+          return `<div style="text-align:center;padding:6px 4px;background:var(--card2);border-radius:8px">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:${color}">${sign}${item.val}${item.unit}</div>
+            <div style="font-size:10px;color:var(--muted)">${item.label}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
 }
 
 function deltaCell(val, label, delta, higherGood) {
@@ -1890,11 +1944,13 @@ function deltaCell(val, label, delta, higherGood) {
   let changeHtml = '';
   if (delta != null) {
     const n = parseFloat(delta);
-    const isPositive = n > 0;
+    // Ensure no floating point bleed (e.g. -24.400000000006)
+    const cleanDelta = Number.isInteger(n) ? n : parseFloat(n.toFixed(2));
+    const isPositive = cleanDelta > 0;
     const isGood = higherGood ? isPositive : !isPositive;
-    const cls  = n === 0 ? 'neu' : isGood ? 'pos' : 'neg';
-    const sign = n > 0 ? '+' : '';
-    changeHtml = `<div class="delta-change ${cls}">${sign}${delta}</div>`;
+    const cls  = cleanDelta === 0 ? 'neu' : isGood ? 'pos' : 'neg';
+    const sign = cleanDelta > 0 ? '+' : '';
+    changeHtml = `<div class="delta-change ${cls}">${sign}${cleanDelta}</div>`;
   }
   return `<div class="delta-cell">
     <div class="delta-val">${v}</div>
