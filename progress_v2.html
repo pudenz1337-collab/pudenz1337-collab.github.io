@@ -1295,7 +1295,13 @@ async function handleFiles(files, type) {
           plog(`⏭ ${result.date} already in D1 — skipped (${file.name})`, 'lwarn');
         } else {
           data.evolt.push(result);
-          plog(`✓ ${result.date} — ${result.weight}lbs, ${result.bodyFatPct}% BF`, 'linfo');
+          plog(`✓ ${result.date} — ${result.weight != null ? parseFloat(result.weight).toFixed(2) : '?'}lbs, ${result.bodyFatPct != null ? parseFloat(result.bodyFatPct).toFixed(1) : '?'}% BF`, 'linfo');
+          // New scan uploaded — show coaching badge and auto-refresh insights
+          if (saved?.newScan) {
+            plog(`🧬 New scan detected — refreshing insights…`, 'linfo');
+            document.getElementById('ins-badge').classList.add('show');
+            document.getElementById('coach-badge').classList.add('show');
+          }
         }
       } else {
         plog(`⚠ Could not parse ${file.name}`, 'lwarn');
@@ -2617,26 +2623,37 @@ function renderInsightsList(data) {
   metaEl.style.display  = 'block';
 
   const typeStyles = {
-    muscle_gain_pattern:    { type: '',       icon: '💪', color: 'var(--accent)' },
-    protein_pattern:        { type: 'blue',   icon: '🥩', color: 'var(--blue)' },
-    hydration_pattern:      { type: 'blue',   icon: '💧', color: 'var(--blue)' },
-    energy_pattern:         { type: 'warn',   icon: '⚡', color: 'var(--yellow)' },
-    fat_loss_pattern:       { type: '',       icon: '📉', color: 'var(--accent)' },
-    workout_consistency:    { type: 'blue',   icon: '📅', color: 'var(--blue)' },
-    recovery_pattern:       { type: 'warn',   icon: '😴', color: 'var(--yellow)' },
-    tirzepatide_pattern:    { type: 'urgent', icon: '💉', color: 'var(--orange)' },
-    default:                { type: '',       icon: '💡', color: 'var(--accent)' },
+    lbm_preservation:         { icon: '🛡️', color: 'var(--accent)' },
+    protein_muscle_correlation:{ icon: '🔗', color: 'var(--blue)' },
+    muscle_group_frequency:   { icon: '📅', color: 'var(--blue)' },
+    workout_consistency:      { icon: '📊', color: 'var(--blue)' },
+    body_recomp_quality:      { icon: '⚖️', color: 'var(--accent)' },
+    fat_loss_pattern:         { icon: '📉', color: 'var(--accent)' },
+    protein_pattern:          { icon: '🥩', color: 'var(--blue)' },
+    scan_narrative:           { icon: '🧬', color: 'var(--accent)' },
+    muscle_gain_pattern:      { icon: '💪', color: 'var(--accent)' },
+    hydration_pattern:        { icon: '💧', color: 'var(--blue)' },
+    energy_pattern:           { icon: '⚡', color: 'var(--yellow)' },
+    recovery_pattern:         { icon: '😴', color: 'var(--yellow)' },
+    tirzepatide_pattern:      { icon: '💉', color: 'var(--orange)' },
+    default:                  { icon: '💡', color: 'var(--accent)' },
   };
 
-  el.innerHTML = data.insights.map((ins, i) => {
+  // Separate high-priority from normal
+  const highPri = data.insights.filter(i => i.priority === 'high');
+  const normalPri = data.insights.filter(i => i.priority !== 'high');
+  const sorted = [...highPri, ...normalPri];
+
+  el.innerHTML = sorted.map((ins, i) => {
     const style = typeStyles[ins.type] || typeStyles.default;
-    const confClass = ins.confidence === 'high' ? 'conf-high' : ins.confidence === 'medium' ? 'conf-med' : 'conf-low';
-    return `<div class="insight ${style.type}" style="animation-delay:${i * 0.07}s">
-      <div class="insight-meta">
-        <div class="insight-title" style="color:${style.color}">${style.icon} ${ins.observation}</div>
-        ${ins.confidence ? `<div class="insight-conf ${confClass}">${ins.confidence}</div>` : ''}
+    const confColor = ins.confidence === 'high' ? 'var(--accent)' : ins.confidence === 'medium' ? 'var(--yellow)' : 'var(--muted)';
+    const isHigh = ins.priority === 'high';
+    return `<div class="insight" style="animation-delay:${i*0.07}s${isHigh ? ';border-left:3px solid var(--accent)' : ''}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div class="insight-title" style="color:${style.color};flex:1">${style.icon} ${ins.observation}</div>
+        <span style="font-size:10px;color:${confColor};flex-shrink:0;margin-top:2px">${ins.confidence||''}</span>
       </div>
-      ${ins.recommendation ? `<div class="insight-rec">→ ${ins.recommendation}</div>` : ''}
+      ${ins.recommendation ? `<div class="insight-rec" style="margin-top:5px">→ ${ins.recommendation}</div>` : ''}
     </div>`;
   }).join('');
 
@@ -2715,7 +2732,33 @@ function buildUnifiedCoachPayload(question = null) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
     .map(([mg, vol]) => `${mg} ${vol >= 1000 ? (vol/1000).toFixed(1)+'k' : Math.round(vol)} lbs (${mgSets[mg]||0} sets)`).join(', ');
-  const trainingTrends = { weeklyVolume: weeklyVol, muscleGroupDist };
+
+  // Push/pull ratio
+  const pushGroups = ['Chest','Shoulders','Arms'];
+  const pullGroups = ['Back'];
+  const legGroups  = ['Legs'];
+  const pushVol = pushGroups.reduce((a,mg) => a + (mgVol[mg]||0), 0);
+  const pullVol = pullGroups.reduce((a,mg) => a + (mgVol[mg]||0), 0);
+  const legVol  = legGroups.reduce((a,mg)  => a + (mgVol[mg]||0), 0);
+  const pushPullRatio = pullVol > 0 ? (pushVol / pullVol).toFixed(2) : null;
+
+  // Muscle group frequency — days since each group was last trained
+  const mgLastSeen = {};
+  [...sessions].sort((a,b) => b.date.localeCompare(a.date)).forEach(s => {
+    (s.muscleGroupsWorked || []).forEach(mg => {
+      if (!mgLastSeen[mg]) mgLastSeen[mg] = daysDiff(s.date);
+    });
+  });
+  const neglectedGroups = Object.entries(mgLastSeen)
+    .filter(([,d]) => d > 10)
+    .map(([mg,d]) => `${mg} (${d}d ago)`);
+  const trainingTrends = {
+    weeklyVolume:   weeklyVol,
+    muscleGroupDist,
+    pushPullRatio:  pushPullRatio ? `Push ${(pushVol/1000).toFixed(1)}k lbs / Pull ${(pullVol/1000).toFixed(1)}k lbs (ratio ${pushPullRatio})` : null,
+    legVolume:      `Legs ${(legVol/1000).toFixed(1)}k lbs`,
+    neglectedGroups: neglectedGroups.length ? `Not trained >10d: ${neglectedGroups.join(', ')}` : null,
+  };
 
   // Latest body composition from Evolt
   const evoltScans  = data.evolt;
