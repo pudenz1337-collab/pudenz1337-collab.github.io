@@ -1810,8 +1810,10 @@ function renderOverview() {
     if (latest?.skeletalMuscleMass) stats.push({ val: latest.skeletalMuscleMass + 'lbs', label: 'Muscle', sub: 'latest scan', color: 'var(--accent)' });
     if (latest?.bodyFatPct)          stats.push({ val: latest.bodyFatPct + '%',           label: 'Body Fat', sub: 'latest scan', color: 'var(--yellow)' });
     if (hasFitbod) {
-      const last4wks = data.fitbod.filter(w => daysDiff(w.date) <= 28);
-      const perWeek  = (last4wks.length / 4).toFixed(1);
+      const last4wks  = data.fitbod.filter(w => daysDiff(w.date) <= 28);
+      const oldest4   = last4wks.length ? Math.min(...last4wks.map(w => daysDiff(w.date))) : 0;
+      const actual4w  = Math.max(1, Math.min(4, Math.ceil((oldest4 + 1) / 7)));
+      const perWeek   = (last4wks.length / actual4w).toFixed(1);
       stats.push({ val: perWeek, label: 'Wkts/Week', sub: 'last 4 weeks', color: 'var(--blue)' });
     }
     statsRow.innerHTML = stats.map(s =>
@@ -2147,8 +2149,14 @@ function renderTraining() {
   // Stats
   const last4w = sessions.filter(s => daysDiff(s.date) <= 28);
   const last8w = sessions.filter(s => daysDiff(s.date) <= 56);
-  const avg4w  = (last4w.length / 4).toFixed(1);
-  const avg8w  = (last8w.length / 8).toFixed(1);
+  // Use actual weeks spanned by data (not full window) to avoid misleadingly low avg
+  // when user has less than 4/8 weeks of data
+  const oldest4w = last4w.length ? Math.min(...last4w.map(s => daysDiff(s.date))) : 0;
+  const oldest8w = last8w.length ? Math.min(...last8w.map(s => daysDiff(s.date))) : 0;
+  const weeks4w  = Math.max(1, Math.ceil((oldest4w + 1) / 7));
+  const weeks8w  = Math.max(1, Math.ceil((oldest8w + 1) / 7));
+  const avg4w    = (last4w.length / Math.min(weeks4w, 4)).toFixed(1);
+  const avg8w    = (last8w.length / Math.min(weeks8w, 8)).toFixed(1);
 
   // Compound vs isolation — expanded exercise list
   const compoundExercises = /squat|deadlift|bench|press|row|pull.?up|chin.?up|dip|lunge|rdl|hip.?thrust|clean|snatch|swing|carry|step.?up|split.?squat|bulgarian|sumo|hack.?squat|leg.?press|incline|decline|overhead|cable.?fly|chest.?fly/i;
@@ -2170,7 +2178,7 @@ function renderTraining() {
   ).join('');
 
   // Weekly volume chart
-  const weeklyVol = buildWeeklyVolume(sessions, 12);
+  const weeklyVol = buildWeeklyVolume(sessions, 12);  // 12 weeks for Training tab chart
   const hasVol    = weeklyVol.some(w => w.vol > 0);
   if (!hasVol) {
     showChartNoData('chart-volume', '⚠ Re-upload Fitbod CSV to see volume data');
@@ -2205,7 +2213,7 @@ function renderTraining() {
   }
 
   // Muscle group bars
-  const { vol: mgVol, sets: mgSets } = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 30));
+  const { vol: mgVol, sets: mgSets } = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 28));
   const mgMax    = Math.max(...Object.values(mgVol), 1);
   const hasMgVol = Object.values(mgVol).some(v => v > 0);
   document.getElementById('mg-bars').innerHTML = hasMgVol
@@ -2625,15 +2633,23 @@ function buildUnifiedCoachPayload(question = null) {
     totalWorkouts:      sessions.length,
     last4weeks:         last4w.length,
     last8weeks:         last8w.length,
-    avgWorkoutsPerWeek: parseFloat((last4w.length / 4).toFixed(1)),
+    avgWorkoutsPerWeek: (() => {
+      const oldest = last4w.length ? Math.min(...last4w.map(s => daysDiff(s.date))) : 0;
+      const wks    = Math.max(1, Math.min(4, Math.ceil((oldest + 1) / 7)));
+      return parseFloat((last4w.length / wks).toFixed(1));
+    })(),
     compoundPct:        totalSets ? Math.round(compoundSets / totalSets * 100) : 0,
-    topPRs:             prs.slice(0, 5).map(p => `${p.exercise}: ${parseFloat(p.weight).toFixed(2)}lbs × ${p.reps} reps (${p.date})`).join(', '),
+    topPRs:             prs.slice(0, 5).map(p =>
+      p.hasWeighted
+        ? `${p.exercise}: ${parseFloat(p.weight).toFixed(2)}lbs × ${p.reps} reps (${p.date})`
+        : `${p.exercise}: ${p.reps} reps bodyweight (${p.date})`
+    ).join(', '),
   };
 
   // Training trends — weekly volume (last 8 weeks) + muscle group distribution (last 30 days)
-  const weeklyVol = buildWeeklyVolume(sessions, 8)
+  const weeklyVol = buildWeeklyVolume(sessions, 12)
     .map(w => `${w.label}: ${w.vol >= 1000 ? (w.vol/1000).toFixed(1)+'k' : Math.round(w.vol)} lbs`).join(', ');
-  const { vol: mgVol, sets: mgSets } = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 30));
+  const { vol: mgVol, sets: mgSets } = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 28));
   const muscleGroupDist = Object.entries(mgVol)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
