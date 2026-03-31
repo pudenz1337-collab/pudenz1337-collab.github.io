@@ -1818,18 +1818,17 @@ function renderOverview() {
   const statsRow = document.getElementById('overview-stats');
   if (hasFitbod) {
     statsRow.style.display = 'flex';
-    const sessions  = data.fitbod;
-    const last4wks  = sessions.filter(w => daysDiff(w.date) <= 28);
-    // wkts/wk: use distinct training dates (sessions could span < 4 full weeks)
-    const distinctDates = [...new Set(last4wks.map(w => w.date))];
-    const oldest4   = distinctDates.length ? Math.max(...distinctDates.map(d => daysDiff(d))) : 0;
-    const actual4w  = Math.max(1, Math.min(4, oldest4 < 7 ? 1 : Math.round(oldest4 / 7)));
-    const perWeek   = (distinctDates.length / actual4w).toFixed(1);
-    const last4w    = sessions.filter(s => daysDiff(s.date) <= 28);
-    const last8w    = sessions.filter(s => daysDiff(s.date) <= 56);
-    const oldest8   = last8w.length ? Math.max(...last8w.map(s => daysDiff(s.date))) : 0;
-    const actual8w  = Math.max(1, Math.min(8, oldest8 < 7 ? 1 : Math.round(oldest8 / 7)));
-    const avg8w     = (last8w.length / actual8w).toFixed(1);
+    const sessions   = data.fitbod;
+    const last4wks   = sessions.filter(w => daysDiff(w.date) <= 28);
+    const last8wks   = sessions.filter(w => daysDiff(w.date) <= 56);
+    const dates4w    = [...new Set(last4wks.map(w => w.date))];
+    const dates8w    = [...new Set(last8wks.map(w => w.date))];
+    const oldest4    = dates4w.length ? Math.max(...dates4w.map(d => daysDiff(d))) : 0;
+    const oldest8    = dates8w.length ? Math.max(...dates8w.map(d => daysDiff(d))) : 0;
+    const weeks4     = Math.max(1, Math.min(4, Math.ceil(oldest4 / 7)));
+    const weeks8     = Math.max(1, Math.min(8, Math.ceil(oldest8 / 7)));
+    const perWeek    = (dates4w.length / weeks4).toFixed(1);
+    const avg8w      = (dates8w.length / weeks8).toFixed(1);
     statsRow.innerHTML = [
       { val: perWeek, label: 'Wkts/Wk', sub: 'last 4 wks', color: 'var(--accent)' },
       { val: avg8w,   label: 'Wkts/Wk', sub: 'last 8 wks', color: 'var(--blue)' },
@@ -2216,14 +2215,18 @@ function renderTraining() {
   // Stats
   const last4w = sessions.filter(s => daysDiff(s.date) <= 28);
   const last8w = sessions.filter(s => daysDiff(s.date) <= 56);
-  // Use actual weeks spanned by data (not full window) to avoid misleadingly low avg
-  // when user has less than 4/8 weeks of data
-  const oldest4w = last4w.length ? Math.min(...last4w.map(s => daysDiff(s.date))) : 0;
-  const oldest8w = last8w.length ? Math.min(...last8w.map(s => daysDiff(s.date))) : 0;
-  const weeks4w  = Math.max(1, Math.ceil((oldest4w + 1) / 7));
-  const weeks8w  = Math.max(1, Math.ceil((oldest8w + 1) / 7));
-  const avg4w    = (last4w.length / Math.min(weeks4w, 4)).toFixed(1);
-  const avg8w    = (last8w.length / Math.min(weeks8w, 8)).toFixed(1);
+  // Count DISTINCT training dates (not session rows - same day can have 1 row)
+  // Divide by ACTUAL calendar weeks spanned (oldest session date to today)
+  const dates4w   = [...new Set(last4w.map(s => s.date))];
+  const dates8w   = [...new Set(last8w.map(s => s.date))];
+  // oldest = MAX daysDiff = how many days ago was the oldest session in window
+  const oldest4w  = dates4w.length ? Math.max(...dates4w.map(d => daysDiff(d))) : 0;
+  const oldest8w  = dates8w.length ? Math.max(...dates8w.map(d => daysDiff(d))) : 0;
+  // weeks spanned = oldest/7, minimum 1, capped at window
+  const weeks4w   = Math.max(1, Math.min(4, Math.ceil(oldest4w / 7)));
+  const weeks8w   = Math.max(1, Math.min(8, Math.ceil(oldest8w / 7)));
+  const avg4w     = (dates4w.length / weeks4w).toFixed(1);
+  const avg8w     = (dates8w.length / weeks8w).toFixed(1);
 
   // Compound vs isolation — expanded exercise list
   const compoundExercises = /squat|deadlift|bench|press|row|pull.?up|chin.?up|dip|lunge|rdl|hip.?thrust|clean|snatch|swing|carry|step.?up|split.?squat|bulgarian|sumo|hack.?squat|leg.?press|incline|decline|overhead|cable.?fly|chest.?fly/i;
@@ -2712,9 +2715,10 @@ function buildUnifiedCoachPayload(question = null) {
     last4weeks:         last4w.length,
     last8weeks:         last8w.length,
     avgWorkoutsPerWeek: (() => {
-      const oldest = last4w.length ? Math.min(...last4w.map(s => daysDiff(s.date))) : 0;
-      const wks    = Math.max(1, Math.min(4, Math.ceil((oldest + 1) / 7)));
-      return parseFloat((last4w.length / wks).toFixed(1));
+      const dates  = [...new Set(last4w.map(s => s.date))];
+      const oldest = dates.length ? Math.max(...dates.map(d => daysDiff(d))) : 0;
+      const wks    = Math.max(1, Math.min(4, Math.ceil(oldest / 7)));
+      return parseFloat((dates.length / wks).toFixed(1));
     })(),
     compoundPct:        totalSets ? Math.round(compoundSets / totalSets * 100) : 0,
     topPRs:             prs.slice(0, 5).map(p =>
@@ -2728,10 +2732,15 @@ function buildUnifiedCoachPayload(question = null) {
   const weeklyVol = buildWeeklyVolume(sessions, 12)
     .map(w => `${w.label}: ${w.vol >= 1000 ? (w.vol/1000).toFixed(1)+'k' : Math.round(w.vol)} lbs`).join(', ');
   const { vol: mgVol, sets: mgSets } = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 28));
-  const muscleGroupDist = Object.entries(mgVol)
+  // Use sets and frequency — NOT volume — for muscle group comparison
+  // Volume across groups is meaningless (legs always dominate due to heavier weights)
+  const muscleGroupDist = Object.entries(mgSets)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([mg, vol]) => `${mg} ${vol >= 1000 ? (vol/1000).toFixed(1)+'k' : Math.round(vol)} lbs (${mgSets[mg]||0} sets)`).join(', ');
+    .slice(0, 8)
+    .map(([mg, sets]) => `${mg}: ${sets} sets`).join(', ');
+
+  // Sets per group for coaching context (frequency is what matters for hypertrophy)
+  const muscleGroupSets = muscleGroupDist;
 
   // Push/pull ratio
   const pushGroups = ['Chest','Shoulders','Arms'];
@@ -2752,12 +2761,17 @@ function buildUnifiedCoachPayload(question = null) {
   const neglectedGroups = Object.entries(mgLastSeen)
     .filter(([,d]) => d > 10)
     .map(([mg,d]) => `${mg} (${d}d ago)`);
+  // Push/pull ratio using SETS not volume
+  const pushSets = pushGroups.reduce((a,mg) => a + (mgSets[mg]||0), 0);
+  const pullSets = pullGroups.reduce((a,mg) => a + (mgSets[mg]||0), 0);
+  const ppRatioSets = pullSets > 0 ? (pushSets / pullSets).toFixed(2) : null;
+
   const trainingTrends = {
-    weeklyVolume:   weeklyVol,
+    weeklyVolume:     weeklyVol,
     muscleGroupDist,
-    pushPullRatio:  pushPullRatio ? `Push ${(pushVol/1000).toFixed(1)}k lbs / Pull ${(pullVol/1000).toFixed(1)}k lbs (ratio ${pushPullRatio})` : null,
-    legVolume:      `Legs ${(legVol/1000).toFixed(1)}k lbs`,
-    neglectedGroups: neglectedGroups.length ? `Not trained >10d: ${neglectedGroups.join(', ')}` : null,
+    muscleGroupSets:  `${muscleGroupSets} (sets per group — frequency matters, not volume)`,
+    pushPullRatio:    ppRatioSets ? `Push ${pushSets} sets / Pull ${pullSets} sets (ratio ${ppRatioSets} — ideal ≈1.0)` : null,
+    neglectedGroups:  neglectedGroups.length ? `Not trained >10d: ${neglectedGroups.join(', ')}` : null,
   };
 
   // Latest body composition from Evolt
