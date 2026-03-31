@@ -1001,6 +1001,20 @@ body{
     </div>
 
     <div class="card">
+      <div class="card-title">🏁 Journey Start Date</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">The date you started this body recomposition effort. The coach uses this to focus on relevant data and set appropriate timeline expectations. Saved to D1 — syncs across all devices.</div>
+      <div class="setting-row">
+        <div class="setting-label">Start Date</div>
+        <input class="setting-input" id="s-journey-start" type="date">
+      </div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
+        <button class="btn btn-p btn-sm" onclick="saveJourneyStart()">Save</button>
+        <span id="journey-saved" style="font-size:12px;color:var(--accent);display:none">✓ Saved to D1</span>
+        <span id="journey-weeks" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="card-title">🏃 Activity Level</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Used to estimate your daily calorie burn (TEE) from your Evolt BMR</div>
       <select class="setting-input" id="s-activity" onchange="saveActivityLevel()">
@@ -4354,6 +4368,32 @@ function saveTrainingDays() {
   if (saved) { saved.style.display = 'block'; setTimeout(() => saved.style.display = 'none', 2000); }
 }
 
+async function saveJourneyStart() {
+  const date = document.getElementById('s-journey-start')?.value;
+  if (!date) { toast('Select a date first', true); return; }
+  if (!WORKER_URL || !FS_API_KEY) { toast('Connect Worker in Settings first', true); return; }
+  try {
+    await wFetch('/api/goals', {
+      method: 'POST',
+      body:   JSON.stringify({ journeyStartDate: date, source: 'manual' }),
+    });
+    const savedEl = document.getElementById('journey-saved');
+    savedEl.style.display = 'inline';
+    setTimeout(() => savedEl.style.display = 'none', 3000);
+    updateJourneyWeeks(date);
+    toast('✓ Journey start date saved to D1');
+  } catch (e) {
+    toast('Save failed: ' + e.message, true);
+  }
+}
+
+function updateJourneyWeeks(dateStr) {
+  const el = document.getElementById('journey-weeks');
+  if (!el || !dateStr) return;
+  const weeks = Math.floor((Date.now() - new Date(dateStr)) / (7 * 86400000));
+  el.textContent = weeks >= 0 ? `${weeks} week${weeks !== 1 ? 's' : ''} ago` : '';
+}
+
 function loadAppSettings() {
   appSettings = JSON.parse(localStorage.getItem('fs3-settings-v2') || '{}');
   // Activity level
@@ -4366,6 +4406,14 @@ function loadAppSettings() {
     const cb = document.getElementById('td-'+i);
     if (cb) cb.checked = days.includes(i);
   });
+  // Load journey start date from D1 via profile
+  if (WORKER_URL && FS_API_KEY) {
+    wFetch('/api/profile').then(p => {
+      const jsd = p.goals?.journey_start_date;
+      const el  = document.getElementById('s-journey-start');
+      if (el && jsd) { el.value = jsd; updateJourneyWeeks(jsd); }
+    }).catch(() => {});
+  }
 }
 
 // ══════════════════════════════════════════════════
