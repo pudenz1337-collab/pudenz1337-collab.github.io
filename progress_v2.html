@@ -2814,8 +2814,17 @@ function buildUnifiedCoachPayload(question = null) {
     .map(m => ({ role: m.role === 'coach' ? 'assistant' : 'user', content: m.content }))
     .slice(-16);
 
+  // Send local date so worker uses correct timezone for daily_logs queries
+  const now = new Date();
+  const localDate = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-');
+
   return {
     mode:            'dashboard',
+    date:            localDate,     // client local date — avoids UTC offset shifting day labels
     context:         coachContext,
     goals,                          // actual profile goals (loaded from /api/profile on sync)
     question:        question || null,
