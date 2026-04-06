@@ -955,7 +955,16 @@ async function loadFromWorker() {
     data.fitbod = (workoutsRes.sessions || []).map(mapD1WorkoutToFitbod);
 
     data.fuelstrong    = [];
-    data.measurements  = (measureRes.measurements || []);
+    data.measurements  = (measureRes.measurements || []).map(m => ({
+      date:       m.date,
+      waist:      m.waist_in      ?? m.waist      ?? null,
+      hips:       m.hips_in       ?? m.hips       ?? null,
+      leftArm:    m.left_arm_in   ?? m.leftArm    ?? null,
+      rightArm:   m.right_arm_in  ?? m.rightArm   ?? null,
+      leftThigh:  m.left_thigh_in ?? m.leftThigh  ?? null,
+      rightThigh: m.right_thigh_in?? m.rightThigh ?? null,
+      notes:      m.note          ?? m.notes      ?? null,
+    }));
 
     // Map profile goals
     if (profile.goals && Object.keys(profile.goals).length) {
@@ -1771,7 +1780,7 @@ function renderScanIntervals(intervals) {
     unknown:      'outcome-unknown',
   };
 
-  el.innerHTML = intervals.map(iv => {
+  el.innerHTML = [...intervals].reverse().map(iv => {
     const mc = iv.bodyComp.muscleChange;
     const fc = iv.bodyComp.fatChange;
     const wc = iv.bodyComp.weightChange;
