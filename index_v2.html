@@ -1597,7 +1597,7 @@ function mapV2ToDayData(v2, dateStr) {
       name:        f.name,
       displayName: f.display_name || f.name,
       timestamp:   f.timestamp,
-      qty:         1,
+      qty:         f.qty || 1,       // restored from D1 — shows correct ×N on button
       calories:    f.calories  || 0,
       protein:     f.protein_g || 0,
       carbs:       f.carbs_g   || 0,
@@ -2211,6 +2211,7 @@ function addFoodToLog(food, qty = 1) {
         fiber:          localEntry.fiber  || 0,
         serving:        food.serving || null,
         foodLibraryId:  food.foodLibraryId || null,
+        qty:            localEntry.qty || 1,
       }),
     }).then(res => {
       if (res.id) {

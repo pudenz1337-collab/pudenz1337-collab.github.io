@@ -2690,7 +2690,9 @@ async function generateInsights() {
   spinEl.style.display = 'block';
   if (emptyEl) emptyEl.style.display = 'none';
   try {
-    const ins = await wFetch('/api/insights', { method: 'POST', body: '{}' });
+    const now = new Date();
+    const localDate = [now.getFullYear(), String(now.getMonth()+1).padStart(2,'0'), String(now.getDate()).padStart(2,'0')].join('-');
+    const ins = await wFetch('/api/insights', { method: 'POST', body: JSON.stringify({ date: localDate }) });
     renderInsightsList(ins);
     toast('✅ Insights updated!');
   } catch (e) {
