@@ -2798,7 +2798,10 @@ function foodItemHTML(food, showCount = false) {
 }
 
 function quickAdd(foodId) {
-  const food = getAllFoods().find(f => f.id === foodId);
+  // getAllFoods() only has smart/recent foods — also check full library
+  const food = getAllFoods().find(f => f.id === foodId)
+             || v2LibraryFoods.find(f => f.id === foodId)
+             || v2LibraryFoods.find(f => String(f.id) === String(foodId));
   if (!food) { console.warn('[quickAdd] food not found:', foodId); return; }
   const eid = encodeURIComponent(foodId);
   const qtyEl = document.querySelector(`[data-qty-for="${eid}"]`);
@@ -2831,7 +2834,10 @@ function onSearchInput() {
   smartListEl.style.display = 'none';
   resultsEl.style.display = 'block';
   renderSmartList(q);  // renders into qa-smart-list filtered — show results instead
-  const local = getAllFoods().filter(f =>
+  // Search full library first, fall back to smart list
+  // getAllFoods() only has recently used foods — v2LibraryFoods has everything
+  const searchPool = v2LibraryFoods.length ? v2LibraryFoods : getAllFoods();
+  const local = searchPool.filter(f =>
     f.name.toLowerCase().includes(q.toLowerCase()) ||
     (f.brand || '').toLowerCase().includes(q.toLowerCase())
   );
