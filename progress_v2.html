@@ -444,6 +444,10 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
             <input class="setting-input" id="m-waist" type="number" step="0.25" placeholder="—">
           </div>
           <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Neck (in)</div>
+            <input class="setting-input" id="m-neck" type="number" step="0.25" placeholder="—">
+          </div>
+          <div>
             <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Hips (in)</div>
             <input class="setting-input" id="m-hips" type="number" step="0.25" placeholder="—">
           </div>
@@ -735,6 +739,16 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
     </div>
 
     <div class="card">
+      <div class="card-title">📐 Body Measurements Setup</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Height is used for the Navy Body Fat Formula. Stored locally.</div>
+      <div class="setting-row">
+        <div class="setting-label">Height (in)</div>
+        <input class="setting-input" id="s-height" type="number" step="0.5" placeholder="e.g. 65" style="width:90px" oninput="saveHeightSetting()">
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px" id="height-converted"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">🏁 Journey Start Date</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">When you started this body recomposition effort. The coach uses this to focus on relevant scan data and set appropriate timeline expectations. Saved to D1 — syncs across all devices.</div>
       <div class="setting-row">
@@ -877,7 +891,7 @@ function showPanel(id, btn) {
     document.getElementById('coach-badge').classList.remove('show');
   }
   if (id === 'upload')   { renderDataSummary(); initManualWorkoutDate(); }
-  if (id === 'settings')  { loadExerciseMap(); loadJourneyDate(); }
+  if (id === 'settings')  { loadExerciseMap(); loadJourneyDate(); loadHeightSetting(); }
 }
 
 // ══════════════════════════════════════════════
@@ -958,12 +972,14 @@ async function loadFromWorker() {
     data.measurements  = (measureRes.measurements || []).map(m => ({
       date:       m.date,
       waist:      m.waist_in      ?? m.waist      ?? null,
+      neck:       m.neck_in       ?? m.neck       ?? null,
       hips:       m.hips_in       ?? m.hips       ?? null,
       leftArm:    m.left_arm_in   ?? m.leftArm    ?? null,
       rightArm:   m.right_arm_in  ?? m.rightArm   ?? null,
       leftThigh:  m.left_thigh_in ?? m.leftThigh  ?? null,
       rightThigh: m.right_thigh_in?? m.rightThigh ?? null,
       notes:      m.note          ?? m.notes      ?? null,
+      navyBF:     m.navy_bf       ?? m.navyBF     ?? null,
     }));
 
     // Map profile goals
@@ -3066,6 +3082,31 @@ function updateJourneyWeeks(dateStr) {
   el.textContent = weeks >= 0 ? `${weeks} week${weeks !== 1 ? 's' : ''} ago` : '';
 }
 
+function loadHeightSetting() {
+  const settings = JSON.parse(localStorage.getItem('fs3-settings-v2') || '{}');
+  const el = document.getElementById('s-height');
+  if (el && settings.heightIn) {
+    el.value = settings.heightIn;
+    const ft = Math.floor(settings.heightIn / 12);
+    const inch = Math.round(settings.heightIn % 12);
+    const cvt = document.getElementById('height-converted');
+    if (cvt) cvt.textContent = `${ft}′${inch}″`;
+  }
+  // Also load into appSettings in memory
+  appSettings = JSON.parse(localStorage.getItem('fs3-settings-v2') || '{}');
+}
+
+function saveHeightSetting() {
+  const val = parseFloat(document.getElementById('s-height')?.value);
+  if (!val) return;
+  appSettings = JSON.parse(localStorage.getItem('fs3-settings-v2') || '{}');
+  appSettings.heightIn = val;
+  localStorage.setItem('fs3-settings-v2', JSON.stringify(appSettings));
+  const ft = Math.floor(val / 12);
+  const inch = Math.round(val % 12);
+  document.getElementById('height-converted').textContent = `${ft}′${inch}″`;
+}
+
 function loadJourneyDate() {
   if (!WORKER_URL || !FS_API_KEY) return;
   wFetch('/api/profile').then(p => {
@@ -3261,15 +3302,29 @@ async function saveMeasurement() {
   const date = document.getElementById('m-date').value;
   if (!date) { toast('Select a date', true); return; }
 
+  const waist  = parseFloat(document.getElementById('m-waist').value)  || null;
+  const neck   = parseFloat(document.getElementById('m-neck').value)   || null;
+  const hips   = parseFloat(document.getElementById('m-hips').value)   || null;
+  const heightIn = parseFloat(appSettings?.heightIn || 0) || null;
+
+  // Navy Body Fat Formula (women): 495 / (1.29579 - 0.35004×log10(waist+hip-neck) + 0.22100×log10(height)) - 450
+  let navyBF = null;
+  if (waist && hips && neck && heightIn) {
+    const val = 495 / (1.29579 - 0.35004 * Math.log10(waist + hips - neck) + 0.22100 * Math.log10(heightIn)) - 450;
+    navyBF = parseFloat(Math.max(5, Math.min(60, val)).toFixed(1));
+  }
+
   const payload = {
     date,
-    waist:     parseFloat(document.getElementById('m-waist').value)  || null,
-    hips:      parseFloat(document.getElementById('m-hips').value)   || null,
+    waist,
+    neck,
+    hips,
     leftArm:   parseFloat(document.getElementById('m-larm').value)   || null,
     rightArm:  parseFloat(document.getElementById('m-rarm').value)   || null,
     leftThigh: parseFloat(document.getElementById('m-lthigh').value) || null,
     rightThigh:parseFloat(document.getElementById('m-rthigh').value) || null,
     notes:     document.getElementById('m-notes').value.trim() || null,
+    navyBF,    // computed client-side from Navy formula
   };
 
   const hasData = Object.entries(payload)
@@ -3286,7 +3341,7 @@ async function saveMeasurement() {
     setTimeout(() => saved.style.display = 'none', 2500);
     toast('✓ Measurement saved');
     // Clear number fields, keep date
-    ['m-waist','m-hips','m-larm','m-rarm','m-lthigh','m-rthigh','m-notes']
+    ['m-waist','m-neck','m-hips','m-larm','m-rarm','m-lthigh','m-rthigh','m-notes']
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   } catch (e) {
     toast('Save failed: ' + e.message, true);
@@ -3319,6 +3374,7 @@ function renderMeasurements() {
 
     const fields = [
       ['waist',      'Waist'],
+      ['neck',       'Neck'],
       ['hips',       'Hips'],
       ['leftArm',    'L Arm'],
       ['rightArm',   'R Arm'],
@@ -3326,6 +3382,9 @@ function renderMeasurements() {
       ['rightThigh', 'R Thigh'],
     ];
 
+    const navyBFDisplay = m.navyBF
+      ? `<span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);background:rgba(0,229,160,.08);padding:2px 7px;border-radius:6px;margin-left:6px">⚖ ${m.navyBF}% BF (Navy)</span>`
+      : '';
     const cells = fields
       .map(([k, label]) => delta(k, label) ? `<div style="font-size:12px"><span style="color:var(--muted);font-size:10px">${label} </span>${delta(k, label)}</div>` : '')
       .filter(Boolean)
@@ -3333,7 +3392,10 @@ function renderMeasurements() {
 
     return `<div class="card" style="margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div style="font-weight:600;font-size:13px">${m.date}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-weight:600;font-size:13px">${m.date}</div>
+          ${navyBFDisplay}
+        </div>
         ${m.notes ? `<div style="font-size:11px;color:var(--muted)">${m.notes}</div>` : ''}
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
