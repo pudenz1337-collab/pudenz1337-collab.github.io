@@ -2869,6 +2869,11 @@ async function searchOFF(q) {
       source:   'library',
       foodLibraryId: f.id ? parseInt(f.id) : null,
     }));
+    // Merge search results into v2LibraryFoods cache so quickAdd/pin can find them
+    // even if the Foods tab has never been opened
+    localMatches.forEach(m => {
+      if (!v2LibraryFoods.find(f => f.id === m.id)) v2LibraryFoods.push(m);
+    });
 
     // Real OFF products
     const offProducts = res.products || [];
@@ -3514,8 +3519,14 @@ function togglePreferredFood(foodId) {
 }
 
 function togglePin(foodId) {
-  const food = getAllFoods().find(f => f.id === foodId);
+  const food = getAllFoods().find(f => f.id === foodId)
+             || v2LibraryFoods.find(f => f.id === foodId)
+             || v2LibraryFoods.find(f => String(f.id) === String(foodId));
   if (!food) return;
+  // Ensure food is reachable from smart list for UI update
+  if (!getAllFoods().find(f => f.id === food.id)) {
+    v2SmartFoods.recent.unshift(food);
+  }
   const pinCount = getAllFoods().filter(f => f.pinned).length;
   if (!food.pinned && pinCount >= MAX_PINNED) { toast(`Max ${MAX_PINNED} pinned`); return; }
   food.pinned = !food.pinned;
@@ -4540,6 +4551,7 @@ async function init() {
         loadRemoteProfile();
         loadMomentum();
         loadSmartFoods();
+        loadLibraryFoods();  // needed for quickAdd + pin on foods not in smart list
         loadWeeklyAvg();
       }
     });
