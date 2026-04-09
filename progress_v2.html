@@ -3307,10 +3307,14 @@ async function saveMeasurement() {
   const hips   = parseFloat(document.getElementById('m-hips').value)   || null;
   const heightIn = parseFloat(appSettings?.heightIn || 0) || null;
 
-  // Navy Body Fat Formula (women): 495 / (1.29579 - 0.35004×log10(waist+hip-neck) + 0.22100×log10(height)) - 450
+  // US Navy Body Fat Formula (women):
+  // 163.205 × log10(waist + hip - neck) - 97.684 × log10(height) - 78.387
+  // Source: Hodgdon & Beckett, Naval Health Research Center
   let navyBF = null;
   if (waist && hips && neck && heightIn) {
-    const val = 495 / (1.29579 - 0.35004 * Math.log10(waist + hips - neck) + 0.22100 * Math.log10(heightIn)) - 450;
+    const val = 163.205 * Math.log10(waist + hips - neck)
+              - 97.684 * Math.log10(heightIn)
+              - 78.387;
     navyBF = parseFloat(Math.max(5, Math.min(60, val)).toFixed(1));
   }
 
