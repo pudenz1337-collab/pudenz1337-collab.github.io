@@ -706,15 +706,16 @@ body{
   <div id="panel-today" class="panel active">
 
     <!-- Day Plan -->
-    <div class="plan-row" style="margin-bottom:10px">
-      <button class="plan-btn" id="btn-training" onclick="toggleFlag('trainingDay',this,'training')">
-        <span class="plan-icon">💪</span>Training
+    <div style="display:flex;gap:7px;margin-bottom:10px;align-items:center">
+      <button class="plan-btn" id="btn-training" onclick="toggleFlag('trainingDay',this,'training')" style="flex:2">
+        <span class="plan-icon">💪</span>Trained Today
       </button>
-      <button class="plan-btn" id="btn-recovery" onclick="toggleFlag('recoveryDay',this,'recovery')">
-        <span class="plan-icon">😴</span>Recovery
+      <button class="plan-btn" id="btn-recovery" onclick="toggleFlag('recoveryDay',this,'recovery')" style="flex:2">
+        <span class="plan-icon">😴</span>Not Training
       </button>
-      <button class="plan-btn" id="btn-injection" onclick="toggleFlag('injectionDay',this,'injection')">
-        <span class="plan-icon">💉</span>Injection
+      <button class="plan-btn" id="btn-injection" onclick="toggleFlag('injectionDay',this,'injection')"
+        style="flex:1;padding:7px 4px;font-size:10px">
+        <span class="plan-icon" style="font-size:15px">💉</span>Injection
       </button>
     </div>
 
@@ -900,34 +901,43 @@ body{
     </div>
 
     <!-- H-E-M -->
-    <div class="card">
-      <div class="card-title">Hunger · Energy · Mood</div>
-      <div class="hem-quick">
-        <div class="hem-quick-label">Hunger</div>
-        <div class="hem-btns">
-          <button class="hem-btn" id="h-1" onclick="setHEM('h',1)" title="Not hungry">😶</button>
-          <button class="hem-btn" id="h-2" onclick="setHEM('h',2)" title="A little">🙂</button>
-          <button class="hem-btn" id="h-3" onclick="setHEM('h',3)" title="Very hungry">😤</button>
+    <div class="card" id="hem-card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleHEMCard()">
+        <span>Hunger · Energy · Mood</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="hem-logged-badge" style="display:none;font-size:10px;color:var(--accent)">✓ logged</span>
+          <span id="hem-nudge-badge" style="display:none;font-size:10px;color:var(--yellow)">○ tap to log</span>
+          <span id="hem-chevron" style="font-size:12px;color:var(--muted)">▲</span>
         </div>
       </div>
-      <div class="hem-quick">
-        <div class="hem-quick-label">Energy</div>
-        <div class="hem-btns">
-          <button class="hem-btn" id="e-1" onclick="setHEM('e',1)" title="Low">🪫</button>
-          <button class="hem-btn" id="e-2" onclick="setHEM('e',2)" title="Medium">⚡</button>
-          <button class="hem-btn" id="e-3" onclick="setHEM('e',3)" title="High">🔥</button>
+      <div id="hem-body">
+        <div class="hem-quick" style="margin-top:10px">
+          <div class="hem-quick-label">Hunger</div>
+          <div class="hem-btns">
+            <button class="hem-btn" id="h-1" onclick="setHEM('h',1)" title="Not hungry">😶</button>
+            <button class="hem-btn" id="h-2" onclick="setHEM('h',2)" title="A little">🙂</button>
+            <button class="hem-btn" id="h-3" onclick="setHEM('h',3)" title="Very hungry">😤</button>
+          </div>
         </div>
-      </div>
-      <div class="hem-quick">
-        <div class="hem-quick-label">Mood</div>
-        <div class="hem-btns">
-          <button class="hem-btn" id="m-1" onclick="setHEM('m',1)" title="Low">😞</button>
-          <button class="hem-btn" id="m-2" onclick="setHEM('m',2)" title="OK">😐</button>
-          <button class="hem-btn" id="m-3" onclick="setHEM('m',3)" title="Good">😊</button>
+        <div class="hem-quick">
+          <div class="hem-quick-label">Energy</div>
+          <div class="hem-btns">
+            <button class="hem-btn" id="e-1" onclick="setHEM('e',1)" title="Low">🪫</button>
+            <button class="hem-btn" id="e-2" onclick="setHEM('e',2)" title="Medium">⚡</button>
+            <button class="hem-btn" id="e-3" onclick="setHEM('e',3)" title="High">🔥</button>
+          </div>
         </div>
+        <div class="hem-quick">
+          <div class="hem-quick-label">Mood</div>
+          <div class="hem-btns">
+            <button class="hem-btn" id="m-1" onclick="setHEM('m',1)" title="Low">😞</button>
+            <button class="hem-btn" id="m-2" onclick="setHEM('m',2)" title="OK">😐</button>
+            <button class="hem-btn" id="m-3" onclick="setHEM('m',3)" title="Good">😊</button>
+          </div>
+        </div>
+        <input id="hem-note" class="field-input" placeholder="Optional note…" style="width:100%;margin-top:8px">
+        <div class="hem-timeline-list" id="hem-timeline"></div>
       </div>
-      <input id="hem-note" class="field-input" placeholder="Optional note…" style="width:100%;margin-top:8px">
-      <div class="hem-timeline-list" id="hem-timeline"></div>
     </div>
 
     <!-- Food Log -->
@@ -2068,8 +2078,8 @@ function restoreFlags() {
 function renderHeroFlags() {
   const el = document.getElementById('hero-flags');
   const parts = [];
-  if (dayData.flags.trainingDay) parts.push('<span class="flag-pill training">💪 Training</span>');
-  if (dayData.flags.recoveryDay) parts.push('<span class="flag-pill recovery">😴 Recovery</span>');
+  if (dayData.flags.trainingDay)  parts.push('<span class="flag-pill training">💪 Trained</span>');
+  if (dayData.flags.recoveryDay)  parts.push('<span class="flag-pill recovery">😴 Not Training</span>');
   if (dayData.flags.injectionDay) parts.push('<span class="flag-pill injection">💉 Injection</span>');
   el.innerHTML = parts.join('');
 }
@@ -2233,6 +2243,7 @@ function logHEM() {
   _pendingHEM = { h: null, e: null, m: null };
   document.getElementById('hem-note').value = '';
   renderHEMTimeline();
+  updateHEMBadge();
   renderInsights();
   saveDayDebounced();
   markCoachBadge();
@@ -2248,6 +2259,34 @@ function logHEM() {
         note:      entry.note,
       }),
     }).catch(() => {});
+  }
+}
+
+function toggleHEMCard() {
+  const body    = document.getElementById('hem-body');
+  const chevron = document.getElementById('hem-chevron');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display       = isOpen ? 'none' : 'block';
+  body.dataset.userOpened  = isOpen ? '' : '1';
+  if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
+}
+
+function updateHEMBadge() {
+  const loggedEl = document.getElementById('hem-logged-badge');
+  const nudgeEl  = document.getElementById('hem-nudge-badge');
+  if (!loggedEl || !nudgeEl) return;
+  const hasLogged = (dayData.hem || []).length > 0;
+  const hour      = new Date().getHours();
+  const showNudge = !hasLogged && hour >= 18;
+  loggedEl.style.display = hasLogged  ? 'inline' : 'none';
+  nudgeEl.style.display  = showNudge  ? 'inline' : 'none';
+  // Auto-collapse after logging if user hasn't manually expanded
+  const body    = document.getElementById('hem-body');
+  const chevron = document.getElementById('hem-chevron');
+  if (hasLogged && body && !body.dataset.userOpened) {
+    body.style.display = 'none';
+    if (chevron) chevron.textContent = '▼';
   }
 }
 
@@ -4630,6 +4669,7 @@ function renderAll() {
   // Bad day bar visibility
   const bar = document.getElementById('bad-day-bar');
   if (bar) bar.style.display = dayData.flags.badDay ? 'flex' : 'none';
+  updateHEMBadge();
   renderRings();
   renderFoodTimeline();
   renderWater();
@@ -5024,6 +5064,7 @@ async function init() {
   };
   updateCloseSec();
   setInterval(updateCloseSec, 300000);
+  setInterval(updateHEMBadge, 3600000); // re-check HEM nudge every hour
 }
 
 // Wait for all external scripts (coach-utils.js, ZXing, etc.) to finish loading
