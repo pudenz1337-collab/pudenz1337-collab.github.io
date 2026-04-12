@@ -1547,6 +1547,7 @@ function showPanel(id, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-' + id).classList.add('active');
   btn.classList.add('active');
+  if (id === 'today')   { loadCreatineStreak(); }
   if (id === 'foods')   { loadLibraryFoods(); }
   if (id === 'history') { renderHistory(); }
   if (id === 'coach')   {
@@ -2989,19 +2990,16 @@ async function searchOFF(q) {
     const el = document.getElementById('qa-results');
     let html = '';
 
-    // Show local matches first if any
+    // Always show library matches first — no dedup filter, these are authoritative
     if (localMatches.length) {
-      const localIds = new Set(getAllFoods().map(f => f.id));
-      const newLocal = localMatches.filter(f => !localIds.has(f.id));
-      if (newLocal.length) {
-        html += newLocal.map(f => foodItemHTML(f)).join('');
-      }
+      html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:4px 2px 6px">My Library</div>`;
+      html += localMatches.map(f => foodItemHTML(f)).join('');
     }
 
-    // Then OFF results
+    // Then USDA results — dedupe by name against library matches
     if (offProducts.length) {
-      const existingNames = new Set(getAllFoods().map(f => f.name.toLowerCase()));
-      const fresh = offProducts.filter(p => !existingNames.has(p.name.toLowerCase()));
+      const libraryNames = new Set(localMatches.map(f => f.name.toLowerCase()));
+      const fresh = offProducts.filter(p => !libraryNames.has(p.name.toLowerCase()));
       if (fresh.length) {
         html += `<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 2px 4px">USDA FoodData</div>`;
         html += fresh.map(f => offItemHTML(f)).join('');
@@ -3907,8 +3905,14 @@ async function loadCreatineStreak() {
     const streak = res.creatineStreak || 0;
     const el = document.getElementById('creatine-streak');
     const badge = document.getElementById('supp-streak-badge');
-    if (el) el.textContent = streak >= 3 ? `🔥 ${streak}d streak` : streak > 0 ? `${streak}d` : '';
-    if (badge) badge.textContent = streak >= 7 ? `Creatine 🔥${streak}d` : '';
+    if (el) {
+      if (streak >= 7)      el.textContent = `🔥 ${streak}d streak`;
+      else if (streak >= 3) el.textContent = `✓ ${streak}d streak`;
+      else if (streak === 1) el.textContent = `Day 1 ✓`;
+      else if (streak === 2) el.textContent = `2d ✓`;
+      else                   el.textContent = '';
+    }
+    if (badge) badge.textContent = streak >= 7 ? `🔥 ${streak}d` : streak >= 3 ? `${streak}d` : '';
   } catch {}
 }
 
