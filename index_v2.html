@@ -718,6 +718,18 @@ body{
       </button>
     </div>
 
+    <!-- Yesterday prompt — shown when previous day was sparse -->
+    <div id="yesterday-prompt" style="display:none;margin-bottom:10px;padding:11px 13px;background:rgba(255,193,7,.07);border:1px solid rgba(255,193,7,.2);border-radius:12px">
+      <div style="font-size:12px;font-weight:600;color:var(--yellow);margin-bottom:8px">📋 Yesterday looks incomplete</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px" id="yesterday-prompt-date"></div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        <button class="btn btn-sm" style="background:rgba(0,229,160,.12);border:1px solid rgba(0,229,160,.2);color:var(--accent);font-size:11px" onclick="handleYesterday('log')">📝 Log what I remember</button>
+        <button class="btn btn-sm" style="background:var(--card2);border:1px solid var(--border2);color:var(--muted);font-size:11px" onclick="handleYesterday('untracked')">✓ Mark as untracked</button>
+        <button class="btn btn-sm" style="background:rgba(255,107,53,.08);border:1px solid rgba(255,107,53,.2);color:var(--orange);font-size:11px" onclick="handleYesterday('rough')">😮‍💨 It was a rough day</button>
+        <button class="btn btn-sm" style="background:none;border:none;color:var(--muted2);font-size:11px;padding:5px 6px" onclick="dismissYesterdayPrompt()">dismiss</button>
+      </div>
+    </div>
+
     <!-- Day Score Hero -->
     <div class="day-hero">
       <div class="hero-top">
@@ -880,7 +892,7 @@ body{
       <div class="water-drops" id="water-drops"></div>
       <div id="water-count" style="font-size:11px;color:var(--muted);margin-bottom:9px"></div>
       <div class="water-btns">
-        <button class="btn btn-p btn-sm" onclick="addWater(20)">+20oz</button>
+        <button class="btn btn-p btn-sm" onclick="addWater(24)">+24oz</button>
         <button class="btn btn-g btn-sm" onclick="addWater(16)">+16oz</button>
         <button class="btn btn-g btn-sm" onclick="addWater(8)">+8oz</button>
         <button class="btn btn-g btn-sm" onclick="addWater(-8)">−8oz</button>
@@ -1611,7 +1623,7 @@ function updateDateUI() {
   const now = new Date();
   const closeSec = document.getElementById('close-day-section');
   if (closeSec) {
-    closeSec.style.display = (isToday(viewDate) && now.getHours() >= 18) ? 'block' : 'none';
+    closeSec.style.display = (isToday(viewDate) && now.getHours() >= 15) ? 'block' : 'none';
   }
 
   // FAB only on today
@@ -1730,10 +1742,11 @@ function mapV2ToDayData(v2, dateStr) {
       notes:           w.notes || null,
     })),
     flags: {
-      trainingDay:  !!log.training_day,
-      recoveryDay:  !!log.recovery_day,
-      injectionDay: !!log.injection_day,
-      badDay:       !!log.bad_day,
+      trainingDay:   !!log.training_day,
+      recoveryDay:   !!log.recovery_day,
+      injectionDay:  !!log.injection_day,
+      badDay:        !!log.bad_day,
+      untrackedDay:  !!log.untracked_day,
     },
     status: 'open',
   };
@@ -1863,7 +1876,7 @@ async function fetchDayData(dateStr) {
     waterLog: [],
     hem:      [],
     workouts: [],
-    flags:    { trainingDay: false, recoveryDay: false, injectionDay: false, badDay: false },
+    flags:    { trainingDay: false, recoveryDay: false, injectionDay: false, badDay: false, untrackedDay: false },
     status:   'open',
   };
 
@@ -3917,6 +3930,79 @@ async function loadCreatineStreak() {
 }
 
 // ══════════════════════════════════════════════════
+// YESTERDAY INCOMPLETE PROMPT
+// ══════════════════════════════════════════════════
+
+function checkYesterdayPrompt() {
+  const today     = todayISO();
+  const yesterday = daysAgoStr(1, today);
+  // Don't show if already dismissed today
+  const dismissed = localStorage.getItem('fs3-yday-dismissed');
+  if (dismissed === today) return;
+  // Check if yesterday had sparse logs (< 2 food entries)
+  const cached = loadDayFromCache(yesterday);
+  const foodCount = cached?.foodLog?.length || 0;
+  const isUntracked = cached?.flags?.untrackedDay;
+  const isComplete  = cached?.status === 'complete';
+  // Only prompt if: had some activity but few food entries, and not already handled
+  if (!isComplete && !isUntracked && foodCount < 2 && (cached?.waterLog?.length || cached?.workouts?.length || foodCount > 0)) {
+    const el = document.getElementById('yesterday-prompt');
+    const dateEl = document.getElementById('yesterday-prompt-date');
+    if (el) {
+      const display = new Date(yesterday + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+      if (dateEl) dateEl.textContent = `${display} · ${foodCount} food entr${foodCount === 1 ? 'y' : 'ies'} logged`;
+      el.style.display = 'block';
+    }
+  }
+}
+
+function dismissYesterdayPrompt() {
+  localStorage.setItem('fs3-yday-dismissed', todayISO());
+  const el = document.getElementById('yesterday-prompt');
+  if (el) el.style.display = 'none';
+}
+
+async function handleYesterday(action) {
+  const yesterday = daysAgoStr(1, todayISO());
+  dismissYesterdayPrompt();
+
+  if (action === 'log') {
+    // Navigate to yesterday so user can add entries
+    viewDate = yesterday;
+    await fetchDayData(viewDate);
+    renderAll();
+    updateDateDisplay();
+    openQuickAdd();
+    toast('📝 Add what you remember — no pressure for perfection');
+    return;
+  }
+
+  // Mark as untracked or rough day in D1
+  const isRough = action === 'rough';
+  const payload = {
+    trainingDay:  0,
+    recoveryDay:  isRough ? 1 : 0,
+    injectionDay: 0,
+    badDay:       isRough ? 1 : 0,
+    untrackedDay: 1,
+  };
+  // Update local cache
+  const cached = loadDayFromCache(yesterday) || { date: yesterday, foodLog: [], waterLog: [], workouts: [], hem: [], flags: {} };
+  cached.flags = { ...cached.flags, untrackedDay: true, badDay: isRough, recoveryDay: isRough };
+  cached.status = 'complete';
+  saveDayToCache(yesterday, cached);
+
+  // Persist to D1
+  if (WORKER_URL && FS_API_KEY) {
+    wFetch(`/api/flags?date=${yesterday}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  }
+  toast(isRough ? '😮‍💨 Rough day noted — today is a fresh start' : '✓ Yesterday marked as untracked');
+}
+
+// ══════════════════════════════════════════════════
 // BAD DAY RESET
 // ══════════════════════════════════════════════════
 
@@ -3929,10 +4015,11 @@ async function triggerBadDay() {
     wFetch(`/api/flags?date=${viewDate}`, {
       method: 'PUT',
       body: JSON.stringify({
-        trainingDay:  dayData.flags.trainingDay  ? 1 : 0,
-        recoveryDay:  dayData.flags.recoveryDay  ? 1 : 0,
-        injectionDay: dayData.flags.injectionDay ? 1 : 0,
-        badDay:       1,
+        trainingDay:   dayData.flags.trainingDay   ? 1 : 0,
+        recoveryDay:   dayData.flags.recoveryDay   ? 1 : 0,
+        injectionDay:  dayData.flags.injectionDay  ? 1 : 0,
+        badDay:        1,
+        untrackedDay:  dayData.flags.untrackedDay  ? 1 : 0,
       }),
     }).catch(() => {});
   }
@@ -4425,8 +4512,10 @@ function renderHistory() {
         <div class="hist-stat" style="color:${calOk ? 'inherit' : 'var(--yellow)'}">Cal: <strong>${cal || '—'}</strong></div>
         <div class="hist-stat">Water: <strong>${e.water}oz</strong></div>
         ${e.fiber ? `<div class="hist-stat">Fiber: <strong>${e.fiber}g</strong></div>` : ''}
-        ${e.flags?.trainingDay ? '<div class="hist-stat">💪</div>' : ''}
+        ${e.flags?.trainingDay  ? '<div class="hist-stat">💪</div>' : ''}
         ${e.flags?.injectionDay ? '<div class="hist-stat">💉</div>' : ''}
+        ${e.flags?.untrackedDay ? '<div class="hist-stat" style="color:var(--muted2)" title="Not fully tracked">📋</div>' : ''}
+        ${e.flags?.badDay       ? '<div class="hist-stat" style="color:var(--orange)" title="Rough day">😮‍💨</div>' : ''}
       </div>
     </div>`;
   }).join('');
@@ -4858,6 +4947,7 @@ async function init() {
   // Load today's data
   await fetchDayData(viewDate);
   renderAll();
+  checkYesterdayPrompt();
   restoreThread();
 
   // Background loads
@@ -4870,6 +4960,15 @@ async function init() {
         loadLibraryFoods();  // needed for quickAdd + pin on foods not in smart list
         loadWeeklyAvg();
         loadCreatineStreak();
+        // Auto check-in on first open of a new day (once per day, only if coach thread is empty)
+        const lastAutoCheckin = localStorage.getItem('fs3-auto-checkin-date');
+        if (lastAutoCheckin !== todayISO() && !coachThread.length) {
+          localStorage.setItem('fs3-auto-checkin-date', todayISO());
+          setTimeout(() => {
+            // Only auto-fire if user hasn't manually triggered one yet
+            if (!coachThread.length && !coachInFlight) triggerCoaching('checkin');
+          }, 3000); // 3s delay so page is fully loaded
+        }
       }
     });
   }
@@ -4921,7 +5020,7 @@ async function init() {
   // Close day button visibility
   const closeSec = document.getElementById('close-day-section');
   const updateCloseSec = () => {
-    if (closeSec) closeSec.style.display = (isToday(viewDate) && new Date().getHours() >= 18) ? 'block' : 'none';
+    if (closeSec) closeSec.style.display = (isToday(viewDate) && new Date().getHours() >= 15) ? 'block' : 'none';
   };
   updateCloseSec();
   setInterval(updateCloseSec, 300000);

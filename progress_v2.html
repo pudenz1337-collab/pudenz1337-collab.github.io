@@ -355,6 +355,9 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
     <!-- Quick stats row -->
     <div id="overview-stats" class="stat-row" style="display:none"></div>
 
+    <!-- Goal Projection Card -->
+    <div id="goal-projection-wrap"></div>
+
     <!-- Body comp chart -->
     <div class="card" id="body-comp-card" style="display:none">
       <div class="card-title">Body Composition Trends</div>
@@ -746,6 +749,29 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
         <input class="setting-input" id="s-height" type="number" step="0.5" placeholder="e.g. 65" style="width:90px" oninput="saveHeightSetting()">
       </div>
       <div style="font-size:10px;color:var(--muted);margin-top:6px" id="height-converted"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🎯 Goal Date & Targets</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Set a target date and optional body composition goals for trajectory projections on the Overview.</div>
+      <div class="setting-row" style="margin-bottom:8px">
+        <div class="setting-label">Goal Date</div>
+        <input class="setting-input" id="s-goal-date" type="date">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Goal Weight (lbs)</div>
+          <input class="setting-input" id="s-goal-weight" type="number" step="0.5" placeholder="optional">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Goal Body Fat %</div>
+          <input class="setting-input" id="s-goal-bf" type="number" step="0.5" placeholder="optional">
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="btn btn-p btn-sm" onclick="saveGoalDate()">Save</button>
+        <span id="goal-date-saved" style="font-size:12px;color:var(--accent);display:none">✓ Saved to D1</span>
+      </div>
     </div>
 
     <div class="card">
@@ -1880,6 +1906,7 @@ function renderOverview() {
   }
 
   renderScanHero();
+  renderGoalProjection();
   if (hasEvolt) renderCompCharts();
 }
 
@@ -3113,7 +3140,109 @@ function loadJourneyDate() {
     const jsd = p.goals?.journey_start_date;
     const el  = document.getElementById('s-journey-start');
     if (el && jsd) { el.value = jsd; updateJourneyWeeks(jsd); }
+    // Load goal date settings too
+    const gd  = p.goals?.goal_date;
+    const gw  = p.goals?.goal_weight_lbs;
+    const gbf = p.goals?.goal_bf_pct;
+    if (document.getElementById('s-goal-date') && gd)  document.getElementById('s-goal-date').value  = gd;
+    if (document.getElementById('s-goal-weight') && gw) document.getElementById('s-goal-weight').value = gw;
+    if (document.getElementById('s-goal-bf') && gbf)    document.getElementById('s-goal-bf').value    = gbf;
+    renderGoalProjection();
   }).catch(() => {});
+}
+
+async function saveGoalDate() {
+  const date  = document.getElementById('s-goal-date')?.value;
+  const wtLbs = parseFloat(document.getElementById('s-goal-weight')?.value) || null;
+  const bf    = parseFloat(document.getElementById('s-goal-bf')?.value)     || null;
+  if (!date) { toast('Select a goal date', true); return; }
+  if (!WORKER_URL || !FS_API_KEY) { toast('Connect Worker first', true); return; }
+  try {
+    await wFetch('/api/goals', {
+      method: 'POST',
+      body:   JSON.stringify({ goalDate: date, goalWeightLbs: wtLbs, goalBfPct: bf, source: 'manual' }),
+    });
+    const savedEl = document.getElementById('goal-date-saved');
+    if (savedEl) { savedEl.style.display = 'inline'; setTimeout(() => savedEl.style.display = 'none', 3000); }
+    renderGoalProjection();
+    toast('✓ Goal date saved');
+  } catch (e) {
+    toast('Save failed: ' + e.message, true);
+  }
+}
+
+function renderGoalProjection() {
+  const el = document.getElementById('goal-projection-wrap');
+  if (!el) return;
+
+  const goalDate   = document.getElementById('s-goal-date')?.value;
+  const goalWeight = parseFloat(document.getElementById('s-goal-weight')?.value) || null;
+  const goalBF     = parseFloat(document.getElementById('s-goal-bf')?.value)     || null;
+  const scans      = data.evolt;
+
+  if (!goalDate || scans.length < 2) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const today    = new Date();
+  const target   = new Date(goalDate + 'T12:00:00');
+  const daysLeft = Math.round((target - today) / 86400000);
+  if (daysLeft < 0) { el.innerHTML = ''; return; }
+
+  const weeksLeft = (daysLeft / 7).toFixed(1);
+
+  // Compute rate of change from last two scans
+  const last  = scans[scans.length - 1];
+  const prev  = scans[scans.length - 2];
+  const scanSpanDays = Math.round((new Date(last.date) - new Date(prev.date)) / 86400000);
+  const scanSpanWeeks = scanSpanDays / 7;
+
+  const weightPerWeek  = last.weight != null && prev.weight != null
+    ? parseFloat(((last.weight - prev.weight) / scanSpanWeeks).toFixed(2)) : null;
+  const musclePerWeek  = last.skeletalMuscleMass != null && prev.skeletalMuscleMass != null
+    ? parseFloat(((last.skeletalMuscleMass - prev.skeletalMuscleMass) / scanSpanWeeks).toFixed(2)) : null;
+  const bfPerWeek      = last.bodyFatPct != null && prev.bodyFatPct != null
+    ? parseFloat(((last.bodyFatPct - prev.bodyFatPct) / scanSpanWeeks).toFixed(2)) : null;
+
+  // Project current trajectory to goal date
+  const projWeight = (last.weight != null && weightPerWeek !== null)
+    ? parseFloat((last.weight + weightPerWeek * parseFloat(weeksLeft)).toFixed(1)) : null;
+  const projBF     = (last.bodyFatPct != null && bfPerWeek !== null)
+    ? parseFloat((last.bodyFatPct + bfPerWeek * parseFloat(weeksLeft)).toFixed(1)) : null;
+  const projMuscle = (last.skeletalMuscleMass != null && musclePerWeek !== null)
+    ? parseFloat((last.skeletalMuscleMass + musclePerWeek * parseFloat(weeksLeft)).toFixed(1)) : null;
+
+  // On-track assessment
+  const weightOnTrack = goalWeight ? (weightPerWeek !== null && weightPerWeek < 0 && projWeight <= goalWeight + 1) : null;
+  const bfOnTrack     = goalBF     ? (bfPerWeek !== null && bfPerWeek < 0 && projBF <= goalBF + 0.5)             : null;
+  const onTrack = (weightOnTrack !== false && bfOnTrack !== false);
+
+  const trackColor = onTrack ? 'var(--accent)' : 'var(--orange)';
+  const trackLabel = onTrack ? '✓ On track' : '⚠ Pace adjustment needed';
+
+  const fmt = (v, unit, sign = true) => v == null ? '—' : `${sign && v > 0 ? '+' : ''}${v}${unit}`;
+
+  el.innerHTML = `<div class="card" style="margin-bottom:10px;border-left:3px solid ${trackColor}">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">📍 Goal Projection</div>
+      <div style="font-size:11px;color:${trackColor};font-weight:600">${trackLabel}</div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${goalDate} · <strong style="color:var(--text)">${daysLeft} days</strong> (${weeksLeft} weeks) away</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      ${[
+        { label: 'Current Weight', val: last.weight != null ? parseFloat(last.weight).toFixed(1) + ' lbs' : '—', sub: goalWeight ? `Goal: ${goalWeight} lbs` : null },
+        { label: 'Projected Weight', val: projWeight != null ? projWeight + ' lbs' : '—', sub: weightPerWeek !== null ? `${fmt(weightPerWeek,'lbs/wk')} pace` : null },
+        { label: 'Current Body Fat', val: last.bodyFatPct != null ? parseFloat(last.bodyFatPct).toFixed(1) + '%' : '—', sub: goalBF ? `Goal: ${goalBF}%` : null },
+        { label: 'Projected BF%', val: projBF != null ? projBF + '%' : '—', sub: bfPerWeek !== null ? `${fmt(bfPerWeek,'%/wk')} pace` : null },
+      ].map(c => `<div style="padding:8px;background:var(--card2);border-radius:8px">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px">${c.label}</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--text)">${c.val}</div>
+        ${c.sub ? `<div style="font-size:10px;color:var(--muted)">${c.sub}</div>` : ''}
+      </div>`).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--muted2)">Projection based on rate between your last 2 scans. Actual results depend on consistency. Set goal date in Settings → Goal Date.</div>
+  </div>`;
 }
 
 async function loadExerciseMap() {
