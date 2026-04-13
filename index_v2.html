@@ -3077,17 +3077,42 @@ async function searchOFF(q) {
 }
 
 function offItemHTML(food) {
+  const safeFood = JSON.stringify(food).replace(/"/g,'&quot;');
+  const detailId = 'off-detail-' + food.id;
   return `<div class="qa-item">
-    <div class="qa-item-info">
-      <div class="qa-item-name">${food.name}${food.brand ? ' <span style="color:var(--muted);font-weight:400;font-size:11px">· ' + food.brand + '</span>' : ''}</div>
+    <div class="qa-item-info" onclick="toggleOFFDetail('${detailId}')" style="cursor:pointer">
+      <div class="qa-item-name" style="display:flex;justify-content:space-between;align-items:center">
+        <span>${food.name}${food.brand ? ' <span style="color:var(--muted);font-weight:400;font-size:11px">· ' + food.brand + '</span>' : ''}</span>
+        <span style="font-size:11px;color:var(--muted);flex-shrink:0;margin-left:6px" id="${detailId}-chevron">▼</span>
+      </div>
       <div class="qa-item-meta">${food.calories} kcal · ${food.protein}g P${food.serving ? ' · ' + food.serving : ''}</div>
       <div class="qa-item-badges"><span class="qa-badge" style="background:var(--blue-dim);color:var(--blue)">USDA</span></div>
+      <!-- Expandable macro detail -->
+      <div id="${detailId}" style="display:none;margin-top:8px;padding:8px;background:var(--bg);border-radius:8px;font-size:11px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;text-align:center">
+          <div><div style="font-weight:600;color:var(--yellow)">${food.calories}</div><div style="color:var(--muted)">kcal</div></div>
+          <div><div style="font-weight:600;color:var(--blue)">${food.protein}g</div><div style="color:var(--muted)">protein</div></div>
+          <div><div style="font-weight:600;color:var(--text)">${food.carbs || 0}g</div><div style="color:var(--muted)">carbs</div></div>
+          <div><div style="font-weight:600;color:var(--text)">${food.fat || 0}g</div><div style="color:var(--muted)">fat</div></div>
+        </div>
+        ${food.fiber ? `<div style="margin-top:5px;color:var(--muted);text-align:center">${food.fiber}g fiber</div>` : ''}
+        ${food.serving ? `<div style="margin-top:4px;color:var(--muted);text-align:center">per ${food.serving}</div>` : ''}
+      </div>
     </div>
     <div class="qty-row">
       <input class="qty-input" id="off-${food.id}" type="number" value="1" min="0.5" step="0.5">
-      <button class="qa-add-btn" style="background:var(--blue)" onclick="addOFFFood(${JSON.stringify(food).replace(/"/g,'&quot;')}, 'off-${food.id}')">Add</button>
+      <button class="qa-add-btn" style="background:var(--blue)" onclick="addOFFFood(${safeFood}, 'off-${food.id}')">Add</button>
     </div>
   </div>`;
+}
+
+function toggleOFFDetail(id) {
+  const el      = document.getElementById(id);
+  const chevron = document.getElementById(id + '-chevron');
+  if (!el) return;
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+  if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
 }
 
 function addOFFFood(food, qtyId) {
