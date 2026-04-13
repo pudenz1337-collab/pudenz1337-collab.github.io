@@ -3081,9 +3081,9 @@ function offItemHTML(food) {
   const detailId = 'off-detail-' + food.id;
   return `<div class="qa-item">
     <div class="qa-item-info" onclick="toggleOFFDetail('${detailId}')" style="cursor:pointer">
-      <div class="qa-item-name" style="display:flex;justify-content:space-between;align-items:center">
-        <span>${food.name}${food.brand ? ' <span style="color:var(--muted);font-weight:400;font-size:11px">· ' + food.brand + '</span>' : ''}</span>
-        <span style="font-size:11px;color:var(--muted);flex-shrink:0;margin-left:6px" id="${detailId}-chevron">▼</span>
+      <div class="qa-item-name" style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
+        <span style="white-space:normal;word-break:break-word;flex:1">${food.name}${food.brand ? ' <span style="color:var(--muted);font-weight:400;font-size:11px">· ' + food.brand + '</span>' : ''}</span>
+        <span style="font-size:11px;color:var(--muted);flex-shrink:0;margin-top:2px" id="${detailId}-chevron">▼</span>
       </div>
       <div class="qa-item-meta">${food.calories} kcal · ${food.protein}g P${food.serving ? ' · ' + food.serving : ''}</div>
       <div class="qa-item-badges"><span class="qa-badge" style="background:var(--blue-dim);color:var(--blue)">USDA</span></div>
