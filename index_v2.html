@@ -1895,6 +1895,10 @@ async function fetchDayData(dateStr) {
       const remote = await wFetch(`/api/today?date=${dateStr}`);
       dayData = mapV2ToDayData(remote, dateStr);
       saveDayToCache(dateStr, dayData);
+      // Sync supplement and activity state immediately so Today tab shows correct state
+      daySupplements    = remote.supplements || [];
+      dayActivities     = remote.activities  || [];
+      activityBurnToday = dayActivities.reduce((a, act) => a + (act.calories || 0), 0);
       return;
     } catch (e) {
       console.log('[Sync] Worker unavailable, falling back to cache:', e.message);
@@ -4695,6 +4699,8 @@ function renderAll() {
   const bar = document.getElementById('bad-day-bar');
   if (bar) bar.style.display = dayData.flags.badDay ? 'flex' : 'none';
   updateHEMBadge();
+  renderSupplements();
+  renderActivities();
   renderRings();
   renderFoodTimeline();
   renderWater();
