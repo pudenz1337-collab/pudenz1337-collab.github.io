@@ -884,6 +884,13 @@ body{
             <div class="supp-meta" id="pre-meta">1 serving · 30–45 min before training</div>
           </div>
         </div>
+        <div class="supp-row">
+          <button class="supp-check" id="supp-liquid_iv" onclick="toggleSupplement('liquid_iv',this)"></button>
+          <div class="supp-info">
+            <div class="supp-name">Liquid IV</div>
+            <div class="supp-meta">1 packet · electrolytes + hydration · counts toward water goal</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -952,6 +959,7 @@ body{
           <div><div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--yellow)" id="ft-c">0</div><div style="font-size:10px;color:var(--muted)">Calories</div></div>
           <div><div style="font-family:'Bebas Neue',sans-serif;font-size:20px;color:var(--accent)" id="ft-f">0g</div><div style="font-size:10px;color:var(--muted)">Fiber</div></div>
         </div>
+        <div id="ft-supp-line" style="display:none;font-size:10px;color:var(--muted);text-align:center;margin-top:4px"></div>
       </div>
     </div>
 
@@ -1198,6 +1206,99 @@ body{
       </div>
       <button class="btn btn-p btn-sm" onclick="saveTirz()">Save</button>
       <span id="tirz-saved" style="font-size:12px;color:var(--accent);display:none;margin-left:8px">✓ Saved</span>
+    </div>
+
+    <div class="card">
+      <div class="card-title">💊 Supplement Details</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Enter each supplement's nutritional info once. Calories, protein, and carbs are added to your daily totals automatically when you check the supplement on the Today tab.</div>
+      <div id="supp-settings-list">
+        <!-- Creatine -->
+        <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border2);">
+          <div style="font-size:12px;font-weight:600;margin-bottom:8px">Creatine</div>
+          <div style="margin-bottom:5px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:2px">Description / Brand</div>
+            <input class="setting-input" id="sdet-creatine-description" placeholder="Creatine Monohydrate" style="padding:5px 8px;width:100%">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Dose / Serving</div><input class="setting-input" id="sdet-creatine-dose" placeholder="5g" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Calories</div><input class="setting-input" id="sdet-creatine-calories" type="number" placeholder="0" style="padding:5px 8px"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Protein (g)</div><input class="setting-input" id="sdet-creatine-protein" type="number" placeholder="0" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Carbs (g)</div><input class="setting-input" id="sdet-creatine-carbs" type="number" placeholder="0" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Caffeine (mg)</div><input class="setting-input" id="sdet-creatine-caffeine" type="number" placeholder="0" style="padding:5px 8px"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Sodium (mg)</div><input class="setting-input" id="sdet-creatine-sodium" type="number" placeholder="0" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Potassium (mg)</div><input class="setting-input" id="sdet-creatine-potassium" type="number" placeholder="0" style="padding:5px 8px"></div>
+          </div>
+        </div>
+        <!-- Magnesium -->
+        <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border2);">
+          <div style="font-size:12px;font-weight:600;margin-bottom:8px">Magnesium</div>
+          <div style="margin-bottom:5px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:2px">Description / Brand</div>
+            <input class="setting-input" id="sdet-magnesium-description" placeholder="Magnesium Glycinate" style="padding:5px 8px;width:100%">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Dose / Serving</div><input class="setting-input" id="sdet-magnesium-dose" placeholder="400mg" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Calories</div><input class="setting-input" id="sdet-magnesium-calories" type="number" placeholder="0" style="padding:5px 8px"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Protein (g)</div><input class="setting-input" id="sdet-magnesium-protein" type="number" placeholder="0" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Carbs (g)</div><input class="setting-input" id="sdet-magnesium-carbs" type="number" placeholder="0" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Caffeine (mg)</div><input class="setting-input" id="sdet-magnesium-caffeine" type="number" placeholder="0" style="padding:5px 8px"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Sodium (mg)</div><input class="setting-input" id="sdet-magnesium-sodium" type="number" placeholder="0" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Potassium (mg)</div><input class="setting-input" id="sdet-magnesium-potassium" type="number" placeholder="0" style="padding:5px 8px"></div>
+          </div>
+        </div>
+        <!-- Pre-workout -->
+        <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border2);">
+          <div style="font-size:12px;font-weight:600;margin-bottom:8px">Pre-workout</div>
+          <div style="margin-bottom:5px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:2px">Description / Brand</div>
+            <input class="setting-input" id="sdet-preworkout-description" placeholder="Babe Pre-Workout Peach Mango" style="padding:5px 8px;width:100%">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Dose / Serving</div><input class="setting-input" id="sdet-preworkout-dose" placeholder="1 scoop (12.7g)" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Calories</div><input class="setting-input" id="sdet-preworkout-calories" type="number" placeholder="5" style="padding:5px 8px"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Protein (g)</div><input class="setting-input" id="sdet-preworkout-protein" type="number" placeholder="0" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Carbs (g)</div><input class="setting-input" id="sdet-preworkout-carbs" type="number" placeholder="2" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Caffeine (mg)</div><input class="setting-input" id="sdet-preworkout-caffeine" type="number" placeholder="150" style="padding:5px 8px"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Sodium (mg)</div><input class="setting-input" id="sdet-preworkout-sodium" type="number" placeholder="45" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Potassium (mg)</div><input class="setting-input" id="sdet-preworkout-potassium" type="number" placeholder="0" style="padding:5px 8px"></div>
+          </div>
+        </div>
+        <!-- Liquid IV -->
+        <div style="">
+          <div style="font-size:12px;font-weight:600;margin-bottom:8px">Liquid IV</div>
+          <div style="margin-bottom:5px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:2px">Description / Brand</div>
+            <input class="setting-input" id="sdet-liquid_iv-description" placeholder="Liquid IV Hydration Multiplier" style="padding:5px 8px;width:100%">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Dose / Serving</div><input class="setting-input" id="sdet-liquid_iv-dose" placeholder="1 packet" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Calories</div><input class="setting-input" id="sdet-liquid_iv-calories" type="number" placeholder="45" style="padding:5px 8px"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Protein (g)</div><input class="setting-input" id="sdet-liquid_iv-protein" type="number" placeholder="0" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Carbs (g)</div><input class="setting-input" id="sdet-liquid_iv-carbs" type="number" placeholder="11" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Caffeine (mg)</div><input class="setting-input" id="sdet-liquid_iv-caffeine" type="number" placeholder="0" style="padding:5px 8px"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Sodium (mg)</div><input class="setting-input" id="sdet-liquid_iv-sodium" type="number" placeholder="500" style="padding:5px 8px"></div>
+            <div><div style="font-size:10px;color:var(--muted);margin-bottom:2px">Potassium (mg)</div><input class="setting-input" id="sdet-liquid_iv-potassium" type="number" placeholder="370" style="padding:5px 8px"></div>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-p btn-sm" style="margin-top:12px" onclick="saveSupplementSettings()">Save Details</button>
+      <span id="supp-settings-saved" style="font-size:12px;color:var(--accent);display:none;margin-left:8px">✓ Saved</span>
     </div>
 
     <div class="card">
@@ -1569,7 +1670,8 @@ function showPanel(id, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('panel-' + id).classList.add('active');
   btn.classList.add('active');
-  if (id === 'today')   { loadCreatineStreak(); }
+  if (id === 'today')    { loadCreatineStreak(); }
+  if (id === 'settings') { loadSupplementSettings(); }
   if (id === 'foods')   { loadLibraryFoods(); }
   if (id === 'history') { renderHistory(); }
   if (id === 'coach')   {
@@ -2096,11 +2198,16 @@ function getTotals() {
   const c = dayData.foodLog.reduce((a, i) => a + (i.calories || 0), 0);
   const f = dayData.foodLog.reduce((a, i) => a + (i.fiber || 0), 0);
   const w = dayData.waterLog.reduce((a, i) => a + (i.oz || 0), 0);
+  // Add supplement calories + protein for checked supplements
+  const suppCal  = getSupplementCalories();
+  const suppProt = getSupplementProtein();
   return {
-    protein:  Math.round(p * 10) / 10,
-    calories: Math.round(c),
+    protein:  Math.round((p + suppProt) * 10) / 10,
+    calories: Math.round(c + suppCal),
     fiber:    Math.round(f * 10) / 10,
     water:    Math.round(w),
+    suppCal:  Math.round(suppCal),
+    suppProt: Math.round(suppProt * 10) / 10,
   };
 }
 
@@ -2494,6 +2601,16 @@ function renderFoodTimeline() {
   document.getElementById('ft-p').textContent = t.protein + 'g';
   document.getElementById('ft-c').textContent = t.calories;
   document.getElementById('ft-f').textContent = t.fiber + 'g';
+  // Show supplement calorie contribution if any
+  const suppLineEl = document.getElementById('ft-supp-line');
+  const suppHasData = t.suppCal > 0 || t.suppProt > 0;
+  if (suppLineEl) suppLineEl.style.display = suppHasData ? 'block' : 'none';
+  if (suppLineEl && suppHasData) {
+    const parts = [];
+    if (t.suppCal  > 0) parts.push(`${t.suppCal} kcal`);
+    if (t.suppProt > 0) parts.push(`${t.suppProt}g protein`);
+    suppLineEl.textContent = `💊 Supplements: +${parts.join(', ')}`;
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -3957,7 +4074,7 @@ async function toggleSupplement(name, btnEl) {
 }
 
 function renderSupplements() {
-  const supps = ['creatine','magnesium','preworkout'];
+  const supps = ['creatine','magnesium','preworkout','liquid_iv'];
   supps.forEach(name => {
     const btn = document.getElementById('supp-' + name);
     if (!btn) return;
@@ -4149,6 +4266,8 @@ function buildCoachPayload(question = null, mode = 'checkin') {
     question:         question || null,
     activityBurn:     activityBurnToday,
     supplements:      daySupplements.map(s => ({ supplement: s.supplement, taken_at: s.taken_at })),
+    supplementDetails: getSupplementCoachContext(),
+    supplementCalories: getSupplementCalories(),
   };
 }
 
@@ -4860,6 +4979,79 @@ function saveTrainingDays() {
   localStorage.setItem('fs3-settings-v2', JSON.stringify(appSettings));
   const saved = document.getElementById('training-days-saved');
   if (saved) { saved.style.display = 'block'; setTimeout(() => saved.style.display = 'none', 2000); }
+}
+
+// ══════════════════════════════════════════════════
+// SUPPLEMENT SETTINGS
+// ══════════════════════════════════════════════════
+
+function saveSupplementSettings() {
+  const suppKeys = ['creatine','magnesium','preworkout','liquid_iv'];
+  const numFields = ['calories','protein','carbs','sodium','potassium','caffeine'];
+  const settings = appSettings.supplements || {};
+  suppKeys.forEach(name => {
+    const s = {};
+    s.description = document.getElementById(`sdet-${name}-description`)?.value?.trim() || '';
+    s.dose        = document.getElementById(`sdet-${name}-dose`)?.value?.trim()        || '';
+    numFields.forEach(f => {
+      const el = document.getElementById(`sdet-${name}-${f}`);
+      s[f] = el?.value !== '' && el?.value != null ? parseFloat(el.value) || 0 : 0;
+    });
+    settings[name] = s;
+  });
+  appSettings.supplements = settings;
+  localStorage.setItem('fs3-settings-v2', JSON.stringify(appSettings));
+  const savedEl = document.getElementById('supp-settings-saved');
+  if (savedEl) { savedEl.style.display = 'inline'; setTimeout(() => savedEl.style.display = 'none', 2000); }
+}
+
+function loadSupplementSettings() {
+  const suppKeys = ['creatine','magnesium','preworkout','liquid_iv'];
+  const allFields = ['description','dose','calories','protein','carbs','sodium','potassium','caffeine'];
+  const settings = appSettings.supplements || {};
+  suppKeys.forEach(name => {
+    const s = settings[name] || {};
+    allFields.forEach(f => {
+      const el = document.getElementById(`sdet-${name}-${f}`);
+      if (el && s[f] !== undefined && s[f] !== '') el.value = s[f];
+    });
+  });
+}
+
+// Returns total calories from checked supplements today
+function getSupplementCalories() {
+  const settings = appSettings.supplements || {};
+  return daySupplements.reduce((total, s) => {
+    const det = settings[s.supplement];
+    return total + (parseFloat(det?.calories) || 0);
+  }, 0);
+}
+
+function getSupplementProtein() {
+  const settings = appSettings.supplements || {};
+  return daySupplements.reduce((total, s) => {
+    const det = settings[s.supplement];
+    return total + (parseFloat(det?.protein) || 0);
+  }, 0);
+}
+
+// Returns supplement details for coaching context
+function getSupplementCoachContext() {
+  const settings = appSettings.supplements || {};
+  return daySupplements.map(s => {
+    const det = settings[s.supplement];
+    const label = det?.description || s.supplement;
+    if (!det) return label;
+    const parts = [label];
+    if (det.dose)      parts.push(det.dose);
+    if (det.calories)  parts.push(`${det.calories} kcal`);
+    if (det.protein)   parts.push(`${det.protein}g protein`);
+    if (det.carbs)     parts.push(`${det.carbs}g carbs`);
+    if (det.sodium)    parts.push(`${det.sodium}mg sodium`);
+    if (det.potassium) parts.push(`${det.potassium}mg potassium`);
+    if (det.caffeine)  parts.push(`${det.caffeine}mg caffeine`);
+    return parts.join(' · ');
+  }).join(' | ');
 }
 
 async function saveJourneyStart() {
