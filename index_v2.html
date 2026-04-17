@@ -2116,9 +2116,10 @@ function pushProfile() {
   setTimeout(async () => {
     try {
       await wFetch('/api/goals', { method: 'POST', body: JSON.stringify({
+        date:         todayISO(),   // local date — avoids UTC midnight shifting effective_date
         protein:      goals.protein || null,
         protein_g:    goals.protein || null,
-        caloriesLow:  goals.calLow  || null,   // null = not set, don't fallback to ceiling
+        caloriesLow:  goals.calLow  || null,
         caloriesHigh: goals.cal     || null,
         water:        goals.water   || 80,
         source:       'manual',
