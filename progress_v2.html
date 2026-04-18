@@ -89,6 +89,21 @@ body{
 .delta-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
 .delta-change{font-size:11px;font-family:'DM Mono',monospace;margin-top:2px}
 .tee-bar{margin-top:8px;padding:8px 10px;background:rgba(0,229,160,.06);border:1px solid rgba(0,229,160,.12);border-radius:8px;font-size:11px;color:var(--muted);line-height:1.8}
+/* ── COACH ACCORDION ── */
+.coach-acc-item{margin-bottom:8px;border:1px solid var(--border2);border-radius:10px;overflow:hidden}
+.coach-acc-header{padding:10px 12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--card2);user-select:none}
+.coach-acc-header:active{opacity:.8}
+.coach-acc-preview{font-size:11px;color:var(--muted);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.coach-acc-chevron{font-size:11px;color:var(--muted);flex-shrink:0;transition:transform .2s}
+.coach-acc-body{padding:12px;background:var(--card)}
+.coach-acc-time{font-size:10px;color:var(--muted2);margin-bottom:6px;font-family:'DM Mono',monospace}
+/* ── INSIGHT ACCORDION ── */
+.insight-acc-item{margin-bottom:6px;border:1px solid var(--border2);border-radius:10px;overflow:hidden}
+.insight-acc-header{padding:10px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;background:var(--card2)}
+.insight-acc-icon{font-size:16px;flex-shrink:0}
+.insight-acc-title{font-size:12px;font-weight:600;flex:1}
+.insight-acc-chevron{font-size:11px;color:var(--muted);flex-shrink:0}
+.insight-acc-body{padding:10px 12px;background:var(--card);font-size:12px;color:var(--muted);line-height:1.6;display:none}
 .pos{color:var(--accent)}.neg{color:var(--danger)}.neu{color:var(--muted)}
 
 /* ── STAT ROWS ── */
@@ -499,35 +514,18 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
       <!-- Consistency stats -->
       <div class="stat-row" id="training-stats-row"></div>
 
-      <!-- Muscle Group Frequency -->
+      <!-- PRs — now first, most motivating metric -->
       <div class="card">
-        <div class="card-title">⏱ Muscle Group Frequency</div>
-        <div id="mg-frequency" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:6px"></div>
-      </div>
-
-      <!-- Volume chart — collapsible -->
-      <div class="card">
-        <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-volume','chv-volume')">
-          <span>📊 Weekly Training Volume</span>
-          <span id="chv-volume" style="color:var(--muted)">▼</span>
+        <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-prs','chv-prs')">
+          <span>🏆 Personal Records</span>
+          <span id="chv-prs" style="color:var(--muted)">▼</span>
         </div>
-        <div id="sec-volume">
-          <div class="chart-wrap"><canvas id="chart-volume"></canvas><div class="chart-nodata" id="chart-volume-nodata"></div></div>
+        <div id="sec-prs">
+          <div class="pr-list" id="pr-list"></div>
         </div>
       </div>
 
-      <!-- Muscle group volume by week — collapsible -->
-      <div class="card">
-        <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-mgvol','chv-mgvol')">
-          <span>💪 Muscle Group Volume (30d)</span>
-          <span id="chv-mgvol" style="color:var(--muted)">▼</span>
-        </div>
-        <div id="sec-mgvol">
-          <div class="mg-list" id="mg-bars"></div>
-        </div>
-      </div>
-
-      <!-- Progressive Overload — collapsible -->
+      <!-- Progressive Overload — second -->
       <div class="card">
         <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-overload','chv-overload')">
           <span>📈 Progressive Overload</span>
@@ -547,14 +545,31 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
         </div>
       </div>
 
-      <!-- PRs — collapsible -->
+      <!-- Muscle Group Frequency — third -->
       <div class="card">
-        <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-prs','chv-prs')">
-          <span>🏆 Personal Records</span>
-          <span id="chv-prs" style="color:var(--muted)">▼</span>
+        <div class="card-title">⏱ Muscle Group Frequency</div>
+        <div id="mg-frequency" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:6px"></div>
+      </div>
+
+      <!-- Volume chart — fourth -->
+      <div class="card">
+        <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-volume','chv-volume')">
+          <span>📊 Weekly Training Volume</span>
+          <span id="chv-volume" style="color:var(--muted)">▼</span>
         </div>
-        <div id="sec-prs">
-          <div class="pr-list" id="pr-list"></div>
+        <div id="sec-volume">
+          <div class="chart-wrap"><canvas id="chart-volume"></canvas><div class="chart-nodata" id="chart-volume-nodata"></div></div>
+        </div>
+      </div>
+
+      <!-- Muscle group volume — fifth -->
+      <div class="card">
+        <div class="card-title" style="cursor:pointer;display:flex;justify-content:space-between" onclick="toggleSection('sec-mgvol','chv-mgvol')">
+          <span>💪 Muscle Group Volume (30d)</span>
+          <span id="chv-mgvol" style="color:var(--muted)">▼</span>
+        </div>
+        <div id="sec-mgvol">
+          <div class="mg-list" id="mg-bars"></div>
         </div>
       </div>
 
@@ -1841,7 +1856,17 @@ function renderScanIntervals(intervals) {
       ? `${iv.training.totalWorkouts} workouts · ${iv.training.weeklyFreq}/week · Top: ${iv.training.topMuscleGroups.join(', ') || '—'}`
       : 'Training not logged during this interval';
 
-    return `<div class="interval-card">
+    const borderColors = {
+      recomp:      'var(--accent)',
+      building:    'var(--blue)',
+      cutting:     'var(--purple)',
+      maintaining: 'var(--muted)',
+      muscle_loss: 'var(--danger)',
+      unknown:     'var(--border2)',
+    };
+    const borderColor = borderColors[iv.outcome] || 'var(--border2)';
+
+    return `<div class="interval-card" style="border-left:3px solid ${borderColor}">
       <div class="interval-header">
         <span class="interval-dates">${iv.startDate} → ${iv.endDate} · ${iv.days}d</span>
         <span class="interval-outcome ${outcomeClass[iv.outcome] || 'outcome-unknown'}">${iv.outcomeLabel || iv.outcome}</span>
@@ -2643,6 +2668,15 @@ function buildPRs(sessions) {
 // ══════════════════════════════════════════════
 // INSIGHTS
 // ══════════════════════════════════════════════
+function toggleInsightAcc(bodyId, headerEl) {
+  const body    = document.getElementById(bodyId);
+  const chevron = headerEl.querySelector('.insight-acc-chevron');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
+}
+
 async function loadInsights() {
   if (!WORKER_URL) {
     document.getElementById('insights-empty').style.display = 'block';
@@ -2669,12 +2703,25 @@ async function loadInsights() {
 function checkInsightsFreshness() {
   if (!WORKER_URL) return;
   wFetch('/api/insights').then(ins => {
-    if (!ins.generatedAt) return;
-    const age = (Date.now() - new Date(ins.generatedAt)) / 3600000;
-    if (age > 24 || ins.insufficient_data) {
+    if (!ins.generatedAt) {
+      // Never generated — auto-trigger if we have data
+      if (data.evolt.length || data.fitbod.length) {
+        document.getElementById('ins-badge').classList.add('show');
+        generateInsights(); // auto-run first time
+      }
+      return;
+    }
+    const ageDays = (Date.now() - new Date(ins.generatedAt)) / 86400000;
+    if (ageDays > 7) {
+      // Stale — auto-regenerate silently
+      generateInsights();
+    } else if (ageDays > 1) {
+      // Between 1-7 days — show badge nudge
       document.getElementById('ins-badge').classList.add('show');
-    } else if (ins.insights && ins.insights.length) {
-      renderInsightsList(ins);
+      if (ins.insights && ins.insights.length) renderInsightsList(ins);
+    } else {
+      // Fresh — just render
+      if (ins.insights && ins.insights.length) renderInsightsList(ins);
     }
   }).catch(() => {});
 }
@@ -2717,12 +2764,18 @@ function renderInsightsList(data) {
     const style = typeStyles[ins.type] || typeStyles.default;
     const confColor = ins.confidence === 'high' ? 'var(--accent)' : ins.confidence === 'medium' ? 'var(--yellow)' : 'var(--muted)';
     const isHigh = ins.priority === 'high';
-    return `<div class="insight" style="animation-delay:${i*0.07}s${isHigh ? ';border-left:3px solid var(--accent)' : ''}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-        <div class="insight-title" style="color:${style.color};flex:1">${style.icon} ${ins.observation}</div>
-        <span style="font-size:10px;color:${confColor};flex-shrink:0;margin-top:2px">${ins.confidence||''}</span>
+    const accId  = 'ins-acc-' + i;
+    const borderStyle = isHigh ? 'border-left:3px solid var(--accent)' : '';
+    return `<div class="insight-acc-item" style="${borderStyle}">
+      <div class="insight-acc-header" onclick="toggleInsightAcc('${accId}', this)">
+        <span class="insight-acc-icon">${style.icon}</span>
+        <span class="insight-acc-title" style="color:${style.color}">${ins.observation}</span>
+        <span style="font-size:10px;color:${confColor};margin-right:4px">${ins.confidence||''}</span>
+        <span class="insight-acc-chevron">▼</span>
       </div>
-      ${ins.recommendation ? `<div class="insight-rec" style="margin-top:5px">→ ${ins.recommendation}</div>` : ''}
+      <div class="insight-acc-body" id="${accId}">
+        ${ins.recommendation ? `<strong style="color:var(--accent)">→</strong> ${ins.recommendation}` : 'No specific action — keep monitoring.'}
+      </div>
     </div>`;
   }).join('');
 
@@ -3023,28 +3076,77 @@ function appendMsg(role, text, time) {
   const emptyEl = document.getElementById('coach-empty');
   if (!thread) return;
 
-  // Dedup: skip if identical to last coach/assistant message
   if (role === 'coach' || role === 'assistant') {
     const lastCoach = coachThread.slice().reverse().find(m => m.role === 'coach' || m.role === 'assistant');
-    if (lastCoach && lastCoach.content === text) {
-      console.log('[Coach/Progress] Duplicate message suppressed');
-      return;
-    }
+    if (lastCoach && lastCoach.content === text) return;
   }
 
   if (emptyEl) emptyEl.style.display = 'none';
   coachThread.push({ role, content: text, time });
   localStorage.setItem('fsp-coach', JSON.stringify(coachThread));
+  renderCoachThreadAccordion();
+}
 
-  const div = document.createElement('div');
-  div.className = 'chat-msg';
-  if (role === 'user') {
-    div.innerHTML = `<div class="chat-bubble-user">${escHtml(text)}</div>`;
-  } else {
-    div.innerHTML = `<div class="chat-time">${time}</div><div class="chat-bubble-coach">${mdToHtml(text)}</div>`;
+function renderCoachThreadAccordion() {
+  const thread  = document.getElementById('coach-thread');
+  const emptyEl = document.getElementById('coach-empty');
+  if (!thread) return;
+
+  // Remove all but empty state
+  Array.from(thread.children).forEach(c => { if (c !== emptyEl) c.remove(); });
+
+  if (!coachThread.length) {
+    if (emptyEl) emptyEl.style.display = 'block';
+    return;
   }
-  thread.appendChild(div);
-  div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  // Find last coach message index — it starts expanded
+  let lastCoachIdx = -1;
+  coachThread.forEach((m, i) => { if (m.role === 'coach' || m.role === 'assistant') lastCoachIdx = i; });
+
+  coachThread.forEach((msg, idx) => {
+    const div = document.createElement('div');
+    if (msg.role === 'user') {
+      div.innerHTML = `<div class="chat-bubble-user" style="margin-bottom:6px">${escHtml(msg.content)}</div>`;
+    } else {
+      const isLatest  = idx === lastCoachIdx;
+      const bodyId    = 'cacc-body-' + idx;
+      const headId    = 'cacc-head-' + idx;
+      const preview   = msg.content.replace(/<[^>]+>/g, '').replace(/\*\*/g,'').slice(0, 80) + (msg.content.length > 80 ? '…' : '');
+      div.className   = 'coach-acc-item';
+      div.innerHTML   = `
+        <div class="coach-acc-header" id="${headId}" onclick="toggleCoachAcc('${bodyId}','${headId}')">
+          <span class="coach-acc-preview" id="prev-${idx}">${isLatest ? (msg.time || '') : preview}</span>
+          <span class="coach-acc-chevron" id="chv-${idx}">${isLatest ? '▲' : '▼'}</span>
+        </div>
+        <div class="coach-acc-body" id="${bodyId}" style="display:${isLatest ? 'block' : 'none'}">
+          ${msg.time ? `<div class="coach-acc-time">${msg.time}</div>` : ''}
+          <div class="chat-bubble-coach" style="border:none;background:none;padding:0">${mdToHtml(msg.content)}</div>
+        </div>`;
+    }
+    thread.appendChild(div);
+  });
+  // Scroll to latest
+  thread.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function toggleCoachAcc(bodyId, headId) {
+  const body    = document.getElementById(bodyId);
+  const idx     = bodyId.replace('cacc-body-','');
+  const chevron = document.getElementById('chv-' + idx);
+  const preview = document.getElementById('prev-' + idx);
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
+  // Show time in header when collapsed, show preview when collapsed
+  if (preview) {
+    const msg = coachThread[parseInt(idx)];
+    preview.textContent = isOpen
+      ? (msg.content.replace(/<[^>]+>/g,'').replace(/\*\*/g,'').slice(0,80) + (msg.content.length > 80 ? '…' : ''))
+      : (msg.time || '');
+  }
 }
 
 function clearCoach() {
@@ -3059,20 +3161,7 @@ function clearCoach() {
 
 function restoreCoachThread() {
   if (!coachThread.length) return;
-  const thread  = document.getElementById('coach-thread');
-  const emptyEl = document.getElementById('coach-empty');
-  if (!thread) return;
-  if (emptyEl) emptyEl.style.display = 'none';
-  coachThread.forEach(msg => {
-    const div = document.createElement('div');
-    div.className = 'chat-msg';
-    if (msg.role === 'user') {
-      div.innerHTML = `<div class="chat-bubble-user">${escHtml(msg.content)}</div>`;
-    } else {
-      div.innerHTML = `<div class="chat-time">${msg.time || ''}</div><div class="chat-bubble-coach">${mdToHtml(msg.content)}</div>`;
-    }
-    thread.appendChild(div);
-  });
+  renderCoachThreadAccordion();
 }
 
 // ══════════════════════════════════════════════
@@ -3241,7 +3330,27 @@ function renderGoalProjection() {
         ${c.sub ? `<div style="font-size:10px;color:var(--muted)">${c.sub}</div>` : ''}
       </div>`).join('')}
     </div>
-    <div style="font-size:10px;color:var(--muted2)">Projection based on rate between your last 2 scans. Actual results depend on consistency. Set goal date in Settings → Goal Date.</div>
+    ${(() => {
+      const gaps = [];
+      if (goalWeight && projWeight != null && projWeight > goalWeight + 0.5) {
+        const needed  = parseFloat(((goalWeight - last.weight) / parseFloat(weeksLeft)).toFixed(2));
+        const gapVal  = parseFloat((needed - weightPerWeek).toFixed(2));
+        gaps.push('<div style="margin-bottom:4px">⚖ <strong>Weight:</strong> Need ' + needed + ' lbs/wk, currently ' + (weightPerWeek > 0 ? '+' : '') + weightPerWeek + ' lbs/wk</div>');
+      }
+      if (goalBF && projBF != null && projBF > goalBF + 0.3) {
+        const needed = parseFloat(((goalBF - last.bodyFatPct) / parseFloat(weeksLeft)).toFixed(2));
+        gaps.push('<div style="margin-bottom:4px">📉 <strong>Body Fat:</strong> Need ' + needed + '%/wk, currently ' + (bfPerWeek > 0 ? '+' : '') + bfPerWeek + '%/wk</div>');
+      }
+      const confLabel = scanSpanDays >= 28 ? 'Moderate confidence' : scanSpanDays >= 14 ? 'Low confidence — scans close together' : 'Very low confidence — need more scan data';
+      const confColor = scanSpanDays >= 28 ? 'var(--muted)' : 'var(--orange)';
+      const gapBlock = gaps.length
+        ? '<div style="margin-top:10px;padding:8px 10px;background:rgba(255,193,7,.06);border:1px solid rgba(255,193,7,.15);border-radius:8px;font-size:11px">' +
+          '<div style="font-size:10px;font-weight:600;color:var(--yellow);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">What Needs to Change</div>' +
+          gaps.join('') + '</div>'
+        : (onTrack ? '<div style="margin-top:8px;font-size:11px;color:var(--accent)">✓ Keep your current pace.</div>' : '');
+      return gapBlock +
+        '<div style="margin-top:8px;font-size:10px;color:' + confColor + '">📊 ' + confLabel + ' · based on ' + scanSpanDays + 'd between last 2 scans</div>';
+    })()}
   </div>`;
 }
 
