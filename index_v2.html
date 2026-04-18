@@ -1845,14 +1845,20 @@ function mapV2ToDayData(v2, dateStr) {
       m:         h.mood,
       note:      h.note,
     })),
-    workouts: (v2.workouts || []).map(w => ({
-      id:              String(w.id),
-      startTime:       w.session_date + 'T09:00:00.000Z',
-      endTime:         null,
-      durationMinutes: w.duration_mins || null,
-      rpe:             w.rpe || null,
-      notes:           w.notes || null,
-    })),
+    workouts: (v2.workouts || []).map(w => {
+      // Use stored start/end times if available, otherwise show no time (don't fake 9am UTC)
+      const startISO = w.start_time || w.startTime || null;
+      const endISO   = w.end_time   || w.endTime   || null;
+      return {
+        id:              String(w.id),
+        d1Id:            w.id,           // store numeric D1 id for DELETE
+        startTime:       startISO,
+        endTime:         endISO,
+        durationMinutes: w.duration_mins || null,
+        rpe:             w.rpe || null,
+        notes:           w.notes || null,
+      };
+    }),
     flags: {
       trainingDay:   !!log.training_day,
       recoveryDay:   !!log.recovery_day,
@@ -2662,14 +2668,17 @@ function saveWorkout() {
 
   if (end && dur <= 0) { toast('End time must be after start', true); return; }
 
-  dayData.workouts.push({
-    id:              uid(),
+  const localId = uid();
+  const newWo = {
+    id:              localId,
+    d1Id:            null,       // filled after API responds
     startTime:       start.toISOString(),
     endTime:         end ? end.toISOString() : null,
     durationMinutes: dur,
     rpe:             rpe ? parseInt(rpe) : null,
     notes:           notes || null,
-  });
+  };
+  dayData.workouts.push(newWo);
 
   closeWorkoutSheet();
   renderWorkouts();
@@ -2678,24 +2687,40 @@ function saveWorkout() {
   markCoachBadge();
   toast('💪 Workout saved!');
   if (WORKER_URL && FS_API_KEY) {
-    const lastWo = dayData.workouts[dayData.workouts.length - 1];
     wFetch('/api/workouts', {
       method: 'POST',
       body: JSON.stringify({
         date:        viewDate,
         sessionType: 'strength',
-        duration:    lastWo.durationMinutes,
-        rpe:         lastWo.rpe,
-        notes:       lastWo.notes,
+        duration:    newWo.durationMinutes,
+        rpe:         newWo.rpe,
+        notes:       newWo.notes,
+        startTime:   newWo.startTime,
+        endTime:     newWo.endTime,
       }),
+    }).then(res => {
+      // Store the D1 id so delete can target it
+      const wo = dayData.workouts.find(w => w.id === localId);
+      if (wo && res.sessionId) {
+        wo.d1Id = res.sessionId;
+        saveDayDebounced();
+      }
     }).catch(() => {});
   }
 }
 
 function removeWorkout(id) {
+  const wo = dayData.workouts.find(w => w.id === id);
   dayData.workouts = dayData.workouts.filter(w => w.id !== id);
   renderWorkouts();
   saveDayDebounced();
+  // Delete from D1 using the numeric d1Id if available
+  if (WORKER_URL && FS_API_KEY && wo) {
+    const d1Id = wo.d1Id || (isNaN(id) ? null : id);
+    if (d1Id) {
+      wFetch(`/api/workouts/${d1Id}`, { method: 'DELETE' }).catch(() => {});
+    }
+  }
 }
 
 function renderWorkouts() {
