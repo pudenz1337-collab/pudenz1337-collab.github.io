@@ -867,6 +867,7 @@ body{
           <div class="supp-info">
             <div class="supp-name">Creatine</div>
             <div class="supp-meta">5g · anytime · take daily for full effect</div>
+            <div id="supp-meta-creatine" style="font-size:10px;margin-top:2px"></div>
           </div>
           <div class="supp-streak" id="creatine-streak"></div>
         </div>
@@ -875,6 +876,7 @@ body{
           <div class="supp-info">
             <div class="supp-name">Magnesium</div>
             <div class="supp-meta" id="mag-meta">200–400mg · 1–2 hrs before bed</div>
+            <div id="supp-meta-magnesium" style="font-size:10px;margin-top:2px"></div>
           </div>
         </div>
         <div class="supp-row">
@@ -882,6 +884,7 @@ body{
           <div class="supp-info">
             <div class="supp-name">Pre-workout</div>
             <div class="supp-meta" id="pre-meta">1 serving · 30–45 min before training</div>
+            <div id="supp-meta-preworkout" style="font-size:10px;margin-top:2px"></div>
           </div>
         </div>
         <div class="supp-row">
@@ -889,6 +892,7 @@ body{
           <div class="supp-info">
             <div class="supp-name">Liquid IV</div>
             <div class="supp-meta">1 packet · electrolytes + hydration · counts toward water goal</div>
+            <div id="supp-meta-liquid_iv" style="font-size:10px;margin-top:2px"></div>
           </div>
         </div>
       </div>
@@ -4102,24 +4106,58 @@ async function toggleSupplement(name, btnEl) {
 function renderSupplements() {
   const supps = ['creatine','magnesium','preworkout','liquid_iv'];
   supps.forEach(name => {
-    const btn = document.getElementById('supp-' + name);
+    const btn     = document.getElementById('supp-' + name);
+    const metaEl  = document.getElementById('supp-meta-' + name);
     if (!btn) return;
     const logged = daySupplements.find(s => s.supplement === name);
     if (logged) {
       btn.classList.add('done');
       btn.textContent = '✓';
-      if (name === 'preworkout') {
-        const meta = document.getElementById('pre-meta');
-        if (meta) {
-          const t = new Date(logged.taken_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-          meta.textContent = `Logged at ${t}`;
-        }
+      if (metaEl) {
+        const tzOffset = new Date().getTimezoneOffset();
+        const localMs  = new Date(logged.taken_at).getTime() - (tzOffset * 60000);
+        const t = new Date(localMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
+        metaEl.innerHTML = `<span style="color:var(--muted)">${t}</span>
+          <button onclick="editSuppTime('${name}','${logged.id}','${logged.taken_at}')"
+            style="background:none;border:none;color:var(--muted2);font-size:10px;padding:0 4px;cursor:pointer;text-decoration:underline">edit</button>`;
       }
     } else {
       btn.classList.remove('done');
       btn.textContent = '';
+      if (metaEl) metaEl.innerHTML = '';
     }
   });
+}
+
+async function editSuppTime(name, id, currentTakenAt) {
+  // Convert current taken_at to local HH:MM for the prompt default
+  const tzOffset = new Date().getTimezoneOffset();
+  const localMs  = new Date(currentTakenAt).getTime() - (tzOffset * 60000);
+  const localDate = new Date(localMs);
+  const hh   = String(localDate.getUTCHours()).padStart(2,'0');
+  const mm   = String(localDate.getUTCMinutes()).padStart(2,'0');
+  const current = `${hh}:${mm}`;
+
+  const newTime = prompt(`When did you take ${name}? (current: ${hh}:${mm})`, current);
+  if (!newTime || !/^\d{1,2}:\d{2}$/.test(newTime)) return;
+
+  // Build new ISO from viewDate + entered time, in local timezone
+  const newISO = new Date(`${viewDate}T${newTime}:00`).toISOString();
+
+  // Update local state
+  const s = daySupplements.find(s => s.supplement === name);
+  if (s) s.taken_at = newISO;
+  renderSupplements();
+
+  // Persist to D1
+  if (WORKER_URL && FS_API_KEY) {
+    wFetch(`/api/supplements/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ takenAt: newISO }),
+    }).catch(() => {});
+  }
+  markCoachBadge();
+  toast(`✓ ${name} time updated to ${newTime}`);
 }
 
 async function loadCreatineStreak() {
