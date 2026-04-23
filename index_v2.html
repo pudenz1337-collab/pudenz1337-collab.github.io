@@ -481,6 +481,15 @@ body{
   background:var(--card);border:1px solid var(--border);color:var(--muted);
 }
 
+/* ── RECOVERY EVENTS ── */
+.rec-type-btn{display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border:1px solid var(--border2);border-radius:20px;background:var(--card2);font-size:11px;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap}
+.rec-type-btn.sel{border-color:var(--accent);background:rgba(0,229,160,.1);color:var(--accent)}
+.rec-area-chip{display:inline-flex;align-items:center;padding:5px 9px;border:1px solid var(--border2);border-radius:14px;background:var(--card2);font-size:11px;color:var(--muted);cursor:pointer;transition:all .15s;margin:3px 3px 0 0}
+.rec-area-chip.sel{border-color:var(--blue);background:rgba(77,168,255,.1);color:var(--blue)}
+.rec-feel-btn{flex:1;padding:8px 4px;border:1px solid var(--border2);border-radius:8px;background:var(--card2);font-size:10px;color:var(--muted);cursor:pointer;text-align:center;transition:all .15s;line-height:1.3}
+.rec-feel-btn.sel{border-color:var(--accent);background:rgba(0,229,160,.1);color:var(--accent)}
+.rec-history-item{padding:8px 0;border-bottom:1px solid var(--border2);font-size:11px}
+.rec-history-item:last-child{border-bottom:none}
 /* ── ACTIVITY BUTTONS ── */
 .activity-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
 .activity-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:12px 8px;background:var(--card2);border:1px solid var(--border2);border-radius:10px;cursor:pointer;transition:all .2s;font-size:11px;color:var(--muted);text-align:center}
@@ -853,6 +862,85 @@ body{
         </button>
       </div>
       <div id="activity-log-list" style="margin-top:8px;font-size:11px;color:var(--muted)"></div>
+    </div>
+
+    <!-- Recovery Events -->
+    <div class="card" id="recovery-card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleRecoveryCard()">
+        <span>🛁 Recovery</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="rec-logged-badge" style="display:none;font-size:10px;color:var(--accent)">✓ logged</span>
+          <span id="rec-card-chevron" style="font-size:12px;color:var(--muted)">▼</span>
+        </div>
+      </div>
+      <div id="rec-card-body" style="display:none;margin-top:12px">
+
+        <!-- Follow-up feel prompt (shown next day if feel not logged) -->
+        <div id="rec-followup-prompt" style="display:none;margin-bottom:12px;padding:10px 12px;background:rgba(77,168,255,.07);border:1px solid rgba(77,168,255,.2);border-radius:10px">
+          <div style="font-size:12px;font-weight:600;color:var(--blue);margin-bottom:6px">How did you feel after yesterday's recovery session?</div>
+          <div id="rec-followup-info" style="font-size:11px;color:var(--muted);margin-bottom:8px"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap" id="rec-followup-feel-btns"></div>
+          <button onclick="dismissRecoveryFollowup()" style="margin-top:8px;background:none;border:none;color:var(--muted2);font-size:10px;cursor:pointer;text-decoration:underline">skip</button>
+        </div>
+
+        <!-- Log new recovery event -->
+        <div id="rec-log-form">
+          <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Log Recovery</div>
+
+          <!-- Type -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Type</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px" id="rec-type-btns"></div>
+            <div id="rec-custom-wrap" style="display:none;margin-top:8px">
+              <input class="field-input" id="rec-custom-input" placeholder="Custom recovery type..." style="width:100%">
+            </div>
+          </div>
+
+          <!-- Duration -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Duration</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <button class="rec-type-btn" onclick="setRecDuration(30,this)">30 min</button>
+              <button class="rec-type-btn" onclick="setRecDuration(60,this)">60 min</button>
+              <button class="rec-type-btn" onclick="setRecDuration(90,this)">90 min</button>
+              <input type="number" id="rec-duration-input" class="field-input" placeholder="min" min="5" max="240"
+                style="width:65px;padding:6px 8px" oninput="clearRecDurationBtns()">
+            </div>
+          </div>
+
+          <!-- Body Area chips -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:4px">Body Area <span style="font-size:10px;color:var(--muted2)">(select all that apply)</span></div>
+            <div id="rec-area-chips"></div>
+          </div>
+
+          <!-- How did you feel after (optional) -->
+          <div style="margin-bottom:12px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">How did you feel after? <span style="font-size:10px;color:var(--muted2)">(optional — can add tomorrow)</span></div>
+            <div style="display:flex;gap:5px" id="rec-feel-btns">
+              <button class="rec-feel-btn" data-feel="energetic" onclick="selectRecFeel('energetic',this)">💪<br>Energetic</button>
+              <button class="rec-feel-btn" data-feel="neutral"   onclick="selectRecFeel('neutral',this)">😐<br>Neutral</button>
+              <button class="rec-feel-btn" data-feel="tired"     onclick="selectRecFeel('tired',this)">😴<br>Tired</button>
+              <button class="rec-feel-btn" data-feel="sore"      onclick="selectRecFeel('sore',this)">😣<br>Sore</button>
+              <button class="rec-feel-btn" data-feel="worked"    onclick="selectRecFeel('worked',this)">🔥<br>Worked</button>
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <input class="field-input" id="rec-notes" placeholder="Notes (optional — areas of focus, issues, etc.)" style="width:100%;margin-bottom:10px">
+
+          <button class="btn btn-p btn-sm" style="width:100%" onclick="saveRecoveryEvent()">Log Recovery Session</button>
+        </div>
+
+        <!-- History -->
+        <div id="rec-history-wrap" style="margin-top:14px;display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;margin-bottom:6px" onclick="toggleRecHistory()">
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Recent Sessions</div>
+            <span id="rec-hist-chevron" style="font-size:11px;color:var(--muted)">▼</span>
+          </div>
+          <div id="rec-history-list" style="display:none"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Supplement Tracker -->
@@ -1583,6 +1671,38 @@ let _coachAbortCtrl = null;
 let daySupplements    = [];  // today's supplement logs
 let dayActivities     = [];  // today's activity logs
 let activityBurnToday = 0;   // total extra kcal from quick-tap activities
+
+// Recovery state
+let dayRecovery       = [];  // today's recovery events
+let recentRecovery    = [];  // last 10 recovery events for history
+let recSelectedType   = '';  // currently selected recovery type
+let recSelectedAreas  = [];  // selected body areas (multi-select)
+let recSelectedFeel   = '';  // selected feel-after
+let recDuration       = null; // selected duration in minutes
+
+// Recovery type definitions
+const REC_TYPES = [
+  { key: 'deep_tissue',   label: 'Deep Tissue Massage', icon: '💆' },
+  { key: 'dry_needling',  label: 'Dry Needling',        icon: '🪡' },
+  { key: 'hot_tub',       label: 'Hot Tub / Jacuzzi',   icon: '🛁' },
+  { key: 'sauna',         label: 'Sauna',                icon: '🔥' },
+  { key: 'ice_bath',      label: 'Ice Bath / Cold Plunge', icon: '🧊' },
+  { key: 'foam_rolling',  label: 'Foam Rolling',        icon: '🧻' },
+  { key: 'chiro',         label: 'Chiropractic',        icon: '🦴' },
+  { key: 'physio',        label: 'Physical Therapy',    icon: '🏥' },
+  { key: 'rest',          label: 'Full Rest Day',       icon: '😴' },
+  { key: 'custom',        label: 'Custom...',           icon: '✏️' },
+];
+
+const REC_AREAS = ['Full Body','Upper Body','Lower Body','Back','Shoulders','Arms','Legs','Glutes','Neck / Traps','Hips / IT Band','Core'];
+
+const REC_FEELS = {
+  energetic: { label: 'Energetic', icon: '💪' },
+  neutral:   { label: 'Neutral',   icon: '😐' },
+  tired:     { label: 'Tired',     icon: '😴' },
+  sore:      { label: 'Sore',      icon: '😣' },
+  worked:    { label: 'Worked',    icon: '🔥' },
+};
 
 // Momentum state
 let momentumData  = null;
@@ -4252,6 +4372,277 @@ async function handleYesterday(action) {
 }
 
 // ══════════════════════════════════════════════════
+// RECOVERY EVENTS
+// ══════════════════════════════════════════════════
+
+function initRecoveryCard() {
+  // Render type buttons
+  const typeBtns = document.getElementById('rec-type-btns');
+  if (!typeBtns) return;
+  // Include custom types from localStorage
+  const customTypes = JSON.parse(localStorage.getItem('fs3-rec-custom-types') || '[]');
+  const allTypes = [...REC_TYPES.filter(t => t.key !== 'custom'), ...customTypes.map(t => ({ key: 'custom_' + t, label: t, icon: '✏️' })), REC_TYPES.find(t => t.key === 'custom')];
+  typeBtns.innerHTML = allTypes.map(t =>
+    `<button class="rec-type-btn" data-key="${t.key}" onclick="selectRecType('${t.key}','${t.label}',this)">${t.icon} ${t.label}</button>`
+  ).join('');
+
+  // Render area chips
+  const areaEl = document.getElementById('rec-area-chips');
+  if (areaEl) {
+    areaEl.innerHTML = REC_AREAS.map(a =>
+      `<span class="rec-area-chip" onclick="toggleRecArea('${a}',this)">${a}</span>`
+    ).join('');
+  }
+}
+
+function toggleRecoveryCard() {
+  const body    = document.getElementById('rec-card-body');
+  const chevron = document.getElementById('rec-card-chevron');
+  if (!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
+  if (!isOpen) initRecoveryCard();
+}
+
+function toggleRecHistory() {
+  const list    = document.getElementById('rec-history-list');
+  const chevron = document.getElementById('rec-hist-chevron');
+  if (!list) return;
+  const isOpen = list.style.display !== 'none';
+  list.style.display = isOpen ? 'none' : 'block';
+  if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
+}
+
+function selectRecType(key, label, btnEl) {
+  document.querySelectorAll('.rec-type-btn').forEach(b => b.classList.remove('sel'));
+  btnEl.classList.add('sel');
+  recSelectedType = key === 'custom' ? '' : key;
+  const customWrap = document.getElementById('rec-custom-wrap');
+  if (customWrap) customWrap.style.display = key === 'custom' ? 'block' : 'none';
+  if (key !== 'custom') recSelectedType = key;
+}
+
+function toggleRecArea(area, chipEl) {
+  chipEl.classList.toggle('sel');
+  if (chipEl.classList.contains('sel')) {
+    if (!recSelectedAreas.includes(area)) recSelectedAreas.push(area);
+  } else {
+    recSelectedAreas = recSelectedAreas.filter(a => a !== area);
+  }
+}
+
+function selectRecFeel(feel, btnEl) {
+  document.querySelectorAll('.rec-feel-btn').forEach(b => b.classList.remove('sel'));
+  btnEl.classList.add('sel');
+  recSelectedFeel = feel;
+}
+
+function setRecDuration(mins, btnEl) {
+  document.querySelectorAll('.rec-type-btn[onclick^="setRecDuration"]').forEach(b => b.classList.remove('sel'));
+  btnEl.classList.add('sel');
+  recDuration = mins;
+  const inp = document.getElementById('rec-duration-input');
+  if (inp) inp.value = mins;
+}
+
+function clearRecDurationBtns() {
+  document.querySelectorAll('.rec-type-btn[onclick^="setRecDuration"]').forEach(b => b.classList.remove('sel'));
+  const inp = document.getElementById('rec-duration-input');
+  recDuration = inp ? (parseInt(inp.value) || null) : null;
+}
+
+async function saveRecoveryEvent() {
+  if (!WORKER_URL || !FS_API_KEY) { toast('Connect Worker first', true); return; }
+
+  // Resolve type label
+  let typeKey   = recSelectedType;
+  let typeLabel = '';
+  if (typeKey === 'custom' || typeKey === '') {
+    const customInput = document.getElementById('rec-custom-input')?.value.trim();
+    if (!customInput) { toast('Select or enter a recovery type', true); return; }
+    typeKey   = 'custom_' + customInput.toLowerCase().replace(/\s+/g,'_');
+    typeLabel = customInput;
+    // Persist custom type
+    const existing = JSON.parse(localStorage.getItem('fs3-rec-custom-types') || '[]');
+    if (!existing.includes(customInput)) {
+      existing.push(customInput);
+      localStorage.setItem('fs3-rec-custom-types', JSON.stringify(existing));
+    }
+  } else {
+    const found = REC_TYPES.find(t => t.key === typeKey);
+    typeLabel = found ? found.label : typeKey;
+  }
+
+  if (!typeKey) { toast('Select a recovery type', true); return; }
+
+  const dur      = recDuration || parseInt(document.getElementById('rec-duration-input')?.value) || null;
+  const areas    = recSelectedAreas.join(', ');
+  const feel     = recSelectedFeel || null;
+  const notes    = document.getElementById('rec-notes')?.value.trim() || null;
+
+  try {
+    const res = await wFetch('/api/recovery', {
+      method: 'POST',
+      body: JSON.stringify({
+        date:      viewDate,
+        typeKey,
+        typeLabel,
+        duration:  dur,
+        areas,
+        feel,
+        notes,
+        loggedAt:  new Date().toISOString(),
+      }),
+    });
+    const newEvent = { id: res.id, date: viewDate, type_key: typeKey, type_label: typeLabel, duration_mins: dur, areas, feel, notes };
+    dayRecovery.push(newEvent);
+    recentRecovery.unshift(newEvent);
+    resetRecoveryForm();
+    renderRecoveryBadge();
+    renderRecoveryHistory();
+    markCoachBadge();
+    toast(`✓ ${typeLabel} logged`);
+  } catch (e) {
+    toast('Failed: ' + e.message, true);
+  }
+}
+
+function resetRecoveryForm() {
+  recSelectedType  = '';
+  recSelectedAreas = [];
+  recSelectedFeel  = '';
+  recDuration      = null;
+  document.querySelectorAll('.rec-type-btn').forEach(b => b.classList.remove('sel'));
+  document.querySelectorAll('.rec-area-chip').forEach(b => b.classList.remove('sel'));
+  document.querySelectorAll('.rec-feel-btn').forEach(b => b.classList.remove('sel'));
+  const inp = document.getElementById('rec-duration-input');
+  if (inp) inp.value = '';
+  const notes = document.getElementById('rec-notes');
+  if (notes) notes.value = '';
+  const customWrap = document.getElementById('rec-custom-wrap');
+  if (customWrap) customWrap.style.display = 'none';
+}
+
+function renderRecoveryBadge() {
+  const badge = document.getElementById('rec-logged-badge');
+  if (badge) badge.style.display = dayRecovery.length > 0 ? 'inline' : 'none';
+}
+
+function renderRecoveryHistory() {
+  const wrap = document.getElementById('rec-history-wrap');
+  const list = document.getElementById('rec-history-list');
+  if (!wrap || !list) return;
+  if (!recentRecovery.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  list.innerHTML = recentRecovery.slice(0, 10).map(r => {
+    const typeObj = REC_TYPES.find(t => t.key === r.type_key);
+    const icon    = typeObj ? typeObj.icon : '✏️';
+    const feelObj = r.feel ? REC_FEELS[r.feel] : null;
+    const feelStr = feelObj ? ` · ${feelObj.icon} ${feelObj.label}` : ' · feel not logged';
+    const areaStr = r.areas ? ` · ${r.areas}` : '';
+    const durStr  = r.duration_mins ? ` · ${r.duration_mins} min` : '';
+    const noteStr = r.notes ? `<div style="color:var(--muted2);margin-top:2px">${r.notes}</div>` : '';
+    return `<div class="rec-history-item">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:500">${icon} ${r.type_label || r.type_key}</span>
+        <span style="color:var(--muted2);font-size:10px">${r.date}</span>
+      </div>
+      <div style="color:var(--muted);margin-top:2px">${durStr}${areaStr}${feelStr}</div>
+      ${noteStr}
+      ${!r.feel ? `<button onclick="addRecoveryFeel(${r.id}, '${r.type_label}')"
+        style="margin-top:4px;background:none;border:1px solid var(--border2);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--muted);cursor:pointer">+ Add how you felt</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function addRecoveryFeel(id, typeLabel) {
+  const feels = ['energetic','neutral','tired','sore','worked'];
+  const labels = ['💪 Energetic','😐 Neutral','😴 Tired','😣 Sore','🔥 Worked'];
+  const choice = prompt(`How did you feel after ${typeLabel}?\n\n${labels.join('  ')}`);
+  if (!choice) return;
+  const feel = feels.find(f => choice.toLowerCase().includes(f) || choice.includes(REC_FEELS[f]?.icon));
+  if (!feel) { toast('Enter: energetic, neutral, tired, sore, or worked', true); return; }
+  if (WORKER_URL && FS_API_KEY) {
+    await wFetch(`/api/recovery/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ feel }),
+    }).catch(() => {});
+  }
+  const ev = recentRecovery.find(r => r.id === id);
+  if (ev) ev.feel = feel;
+  renderRecoveryHistory();
+  toast(`✓ Feel updated`);
+}
+
+// ── Follow-up prompt for feel-after ──────────────────────────────────────────
+function checkRecoveryFollowup() {
+  const yesterday = daysAgoStr(1, todayISO());
+  const dismissed = localStorage.getItem('fs3-rec-followup-dismissed');
+  if (dismissed === todayISO()) return;
+  // Find yesterday recovery events with no feel logged
+  const pendingFeel = recentRecovery.filter(r => r.date === yesterday && !r.feel);
+  if (!pendingFeel.length) return;
+  const promptEl  = document.getElementById('rec-followup-prompt');
+  const infoEl    = document.getElementById('rec-followup-info');
+  const feelsEl   = document.getElementById('rec-followup-feel-btns');
+  if (!promptEl) return;
+  const labels = pendingFeel.map(r => r.type_label || r.type_key).join(', ');
+  if (infoEl) infoEl.textContent = `Yesterday: ${labels}${pendingFeel[0].areas ? ' · ' + pendingFeel[0].areas : ''}`;
+  if (feelsEl) {
+    feelsEl.innerHTML = Object.entries(REC_FEELS).map(([key, f]) =>
+      `<button class="rec-feel-btn" style="flex:none;padding:6px 10px;font-size:11px" onclick="submitRecoveryFollowup('${key}', [${pendingFeel.map(r => r.id).join(',')}])">${f.icon} ${f.label}</button>`
+    ).join('');
+  }
+  promptEl.style.display = 'block';
+  // Auto-expand recovery card to show follow-up
+  const body    = document.getElementById('rec-card-body');
+  const chevron = document.getElementById('rec-card-chevron');
+  if (body && body.style.display === 'none') {
+    body.style.display = 'block';
+    if (chevron) chevron.textContent = '▲';
+    initRecoveryCard();
+  }
+}
+
+async function submitRecoveryFollowup(feel, ids) {
+  const promptEl = document.getElementById('rec-followup-prompt');
+  if (promptEl) promptEl.style.display = 'none';
+  localStorage.setItem('fs3-rec-followup-dismissed', todayISO());
+  for (const id of ids) {
+    if (WORKER_URL && FS_API_KEY) {
+      wFetch(`/api/recovery/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ feel }),
+      }).catch(() => {});
+    }
+    const ev = recentRecovery.find(r => r.id === id);
+    if (ev) ev.feel = feel;
+  }
+  renderRecoveryHistory();
+  markCoachBadge();
+  toast(`✓ Recovery feel logged — ${REC_FEELS[feel].icon} ${REC_FEELS[feel].label}`);
+}
+
+function dismissRecoveryFollowup() {
+  localStorage.setItem('fs3-rec-followup-dismissed', todayISO());
+  const promptEl = document.getElementById('rec-followup-prompt');
+  if (promptEl) promptEl.style.display = 'none';
+}
+
+async function loadRecentRecovery() {
+  if (!WORKER_URL || !FS_API_KEY) return;
+  try {
+    const res = await wFetch('/api/recovery?recent=10');
+    recentRecovery = res.events || [];
+    dayRecovery    = recentRecovery.filter(r => r.date === viewDate);
+    renderRecoveryBadge();
+    renderRecoveryHistory();
+    checkRecoveryFollowup();
+  } catch {}
+}
+
+// ══════════════════════════════════════════════════
 // BAD DAY RESET
 // ══════════════════════════════════════════════════
 
@@ -4332,6 +4723,17 @@ function buildCoachPayload(question = null, mode = 'checkin') {
     supplements:      daySupplements.map(s => ({ supplement: s.supplement, taken_at: s.taken_at })),
     supplementDetails: getSupplementCoachContext(),
     supplementCalories: getSupplementCalories(),
+    recoveryEvents: recentRecovery.filter(r => {
+      // Last 7 days
+      const d = new Date(r.date + 'T12:00:00');
+      return (Date.now() - d.getTime()) < 7 * 86400000;
+    }).map(r => ({
+      date: r.date,
+      type: r.type_label || r.type_key,
+      duration: r.duration_mins,
+      areas: r.areas,
+      feel: r.feel,
+    })),
   };
 }
 
@@ -5287,6 +5689,7 @@ async function init() {
         loadLibraryFoods();  // needed for quickAdd + pin on foods not in smart list
         loadWeeklyAvg();
         loadCreatineStreak();
+        loadRecentRecovery();
         // Auto check-in on first open of a new day (once per day, only if coach thread is empty)
         const lastAutoCheckin = localStorage.getItem('fs3-auto-checkin-date');
         if (lastAutoCheckin !== todayISO() && !coachThread.length) {
