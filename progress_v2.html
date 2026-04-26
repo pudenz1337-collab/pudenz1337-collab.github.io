@@ -2341,6 +2341,7 @@ function renderTraining() {
   // Weekly volume chart
   const weeklyVol = buildWeeklyVolume(sessions, 12);  // 12 weeks for Training tab chart
   const hasVol    = weeklyVol.some(w => w.vol > 0);
+  const bwOnlySessions = sessions.filter(s => (s.totalVolume || 0) === 0).length;
   if (!hasVol) {
     showChartNoData('chart-volume', '⚠ Re-upload Fitbod CSV to see volume data');
   } else {
@@ -2373,6 +2374,15 @@ function renderTraining() {
     });
   }
 
+  // Note bodyweight sessions below volume chart if any
+  if (bwOnlySessions > 0) {
+    const noteEl = document.getElementById('chart-volume-nodata');
+    if (noteEl && !noteEl.textContent) {
+      noteEl.style.cssText = 'font-size:10px;color:var(--muted2);padding:4px 0;display:block';
+      noteEl.textContent   = `${bwOnlySessions} bodyweight-only session${bwOnlySessions > 1 ? 's' : ''} not shown in chart`;
+    }
+  }
+
   // Muscle group bars
   const { vol: mgVol, sets: mgSets } = buildMuscleGroupVol(sessions.filter(s => daysDiff(s.date) <= 28));
   const mgMax    = Math.max(...Object.values(mgVol), 1);
@@ -2398,20 +2408,38 @@ function renderTraining() {
 
   // PRs
   const prs = buildPRs(sessions);
-  document.getElementById('pr-list').innerHTML = prs.slice(0, 12).map((pr, i) => {
-    const metric = pr.hasWeighted
-      ? `<div class="pr-val">${parseFloat(pr.weight).toFixed(2)} lbs</div>
-         <div style="font-size:10px;color:var(--muted)">× ${pr.reps} reps</div>`
-      : `<div class="pr-val">${pr.reps} reps</div>
-         <div style="font-size:10px;color:var(--muted)">bodyweight</div>`;
-    return `<div class="pr-item">
-      <div>
-        <div class="pr-name">${i + 1}. ${pr.exercise}</div>
-        <div style="font-size:10px;color:var(--muted)">${pr.date}</div>
-      </div>
-      <div style="text-align:right">${metric}</div>
-    </div>`;
-  }).join('') || '<div style="text-align:center;padding:16px;color:var(--muted)">No PR data yet — upload Fitbod CSV</div>';
+  const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const recentPRs = prs.filter(pr => pr.date && new Date(pr.date + 'T12:00:00') >= thirtyDaysAgo);
+  const allPRsSorted = [...prs].sort((a, b) => {
+    // Recent PRs first, then by weight
+    const aRecent = a.date && new Date(a.date + 'T12:00:00') >= thirtyDaysAgo;
+    const bRecent = b.date && new Date(b.date + 'T12:00:00') >= thirtyDaysAgo;
+    if (aRecent && !bRecent) return -1;
+    if (!aRecent && bRecent) return 1;
+    if (a.hasWeighted && b.hasWeighted) return b.weight - a.weight;
+    return 0;
+  });
+
+  document.getElementById('pr-list').innerHTML = (allPRsSorted.length
+    ? allPRsSorted.map((pr, i) => {
+        const isRecent = pr.date && new Date(pr.date + 'T12:00:00') >= thirtyDaysAgo;
+        const metric = pr.hasWeighted
+          ? `<div class="pr-val" style="${isRecent ? 'color:var(--accent)' : ''}">${Math.round(pr.weight)} lbs</div>
+             <div style="font-size:10px;color:var(--muted)">× ${pr.reps} reps${pr.e1rm ? ' · e1RM ' + Math.round(pr.e1rm) : ''}</div>`
+          : `<div class="pr-val">${pr.reps} reps</div>
+             <div style="font-size:10px;color:var(--muted)">bodyweight</div>`;
+        return `<div class="pr-item" style="${isRecent ? 'border-left:3px solid var(--accent);padding-left:8px' : ''}">
+          <div style="flex:1;min-width:0">
+            <div class="pr-name" style="white-space:normal">${pr.exercise}</div>
+            <div style="font-size:10px;color:${isRecent ? 'var(--accent)' : 'var(--muted)'}">${pr.date}${isRecent ? ' 🆕' : ''}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">${metric}</div>
+        </div>`;
+      }).join('')
+    : '<div style="text-align:center;padding:16px;color:var(--muted)">No PR data yet — upload Fitbod CSV</div>') +
+    (allPRsSorted.length > 15
+      ? `<div style="text-align:center;padding:8px;font-size:10px;color:var(--muted)">${allPRsSorted.length} exercises total</div>`
+      : '');
 
   // Muscle group frequency card
   renderMuscleGroupFrequency(sessions);
@@ -2423,20 +2451,23 @@ function renderTraining() {
     sessEl.innerHTML = recent.map((s, idx) => {
       const uid    = 'sess_' + idx;
       const vol    = s.totalVolume || 0;
-      const volStr = vol >= 1000 ? (vol/1000).toFixed(2) + 'k' : parseFloat(vol).toFixed(2);
+      const isBodyweightSession = vol === 0;
+      const volStr = isBodyweightSession
+        ? 'Bodyweight'
+        : vol >= 1000 ? (vol/1000).toFixed(1) + 'k lbs' : Math.round(vol) + ' lbs';
       const mgs    = (s.muscleGroupsWorked || []).join(', ') || '—';
       const exList = (s.exercises || []).filter(e => e.name)
         .map(e => {
           const heaviest = (e.sets || []).filter(s => s.weight > 0).sort((a,b) => b.weight - a.weight)[0];
           return heaviest
-            ? `${e.name}: ${parseFloat(heaviest.weight).toFixed(2)}lbs × ${heaviest.reps}`
-            : e.name;
+            ? `${e.name}: ${parseFloat(heaviest.weight).toFixed(1)}lbs × ${heaviest.reps}`
+            : `${e.name} (BW)`;
         }).slice(0, 8).join(' | ');
       return `<div style="border-bottom:1px solid var(--border);padding:8px 0">
         <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleSection('sx-${uid}','sx-chv-${uid}')">
           <div>
             <div style="font-size:12px;font-weight:600;color:var(--accent)">${s.date}</div>
-            <div style="font-size:11px;color:var(--muted)">${mgs} · ${volStr} lbs${s.rpe ? ' · RPE ' + s.rpe : ''}</div>
+            <div style="font-size:11px;color:var(--muted)">${mgs} · <span style="color:${isBodyweightSession ? 'var(--muted)' : 'inherit'}">${volStr}</span>${s.rpe ? ' · RPE ' + s.rpe : ''}</div>
           </div>
           <span id="sx-chv-${uid}" style="color:var(--muted);font-size:11px">▶</span>
         </div>
@@ -2633,17 +2664,20 @@ function buildPRs(sessions) {
       const r = parseInt(set.reps)     || 0;
       if (!r) return;  // need at least reps
       if (!bests[ex.name]) {
-        bests[ex.name] = { exercise: ex.name, weight: w, reps: r, date: s.date, hasWeighted: w > 0 };
+        const initE1rm = (w && r) ? Math.round(w * (1 + r / 30) * 10) / 10 : null;
+        bests[ex.name] = { exercise: ex.name, weight: w, reps: r, date: s.date, hasWeighted: w > 0, e1rm: initE1rm };
         return;
       }
       const cur = bests[ex.name];
       if (w > 0) {
         // Weighted set — update if heavier (or same weight, more reps)
         cur.hasWeighted = true;
+        const e1rm = set.e1rm || (w && r ? Math.round(w * (1 + r / 30) * 10) / 10 : null);
         if (w > cur.weight || (w === cur.weight && r > cur.reps)) {
-          cur.weight = parseFloat(w.toFixed(2));
+          cur.weight = parseFloat(w.toFixed(1));
           cur.reps   = r;
           cur.date   = s.date;
+          cur.e1rm   = e1rm;
         }
       } else {
         // Bodyweight — only update rep PR if no weighted sets seen yet
