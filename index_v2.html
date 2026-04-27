@@ -4059,12 +4059,15 @@ function closeEditFood() {
 
 function saveEditFood() {
   if (!_editFoodId) return;
-  const food    = getAllFoods().find(f => f.id === _editFoodId);
+  // Search smart list AND full library — library-only foods are only in v2LibraryFoods
+  const food = getAllFoods().find(f => f.id === _editFoodId)
+            || v2LibraryFoods.find(f => f.id === _editFoodId)
+            || v2LibraryFoods.find(f => String(f.id) === String(_editFoodId));
   const newName = document.getElementById('ef-name').value.trim();
   const updates = {
-    id:       food?.foodLibraryId || null,
-    name:     food?.name          || _editFoodId,
-    newName:  (newName && newName !== food?.name) ? newName : undefined,
+    id:       food?.foodLibraryId || food?.id || null,
+    name:     food?.name          || '',
+    newName:  (newName && food?.name && newName !== food?.name) ? newName : undefined,
     calories: parseFloat(document.getElementById('ef-cal').value)   || 0,
     protein:  parseFloat(document.getElementById('ef-prot').value)  || 0,
     carbs:    parseFloat(document.getElementById('ef-carb').value)  || 0,
