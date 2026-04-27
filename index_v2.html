@@ -1738,7 +1738,8 @@ function getEffectiveTargets() {
 // Scanning / food sheet
 let barcodeScanner = null;
 let scanStream     = null;
-let _editFoodId    = null;
+let _editFoodId         = null;
+let _editFoodIsLogEntry = false;
 let _scannedFood   = null;
 let activeTab      = 'smart';
 
@@ -4014,9 +4015,32 @@ function deleteFood(id) {
   toast('Deleted');
 }
 
+function openFoodEntryEdit(encodedId) {
+  // Edit a food log entry directly — works even if not in library
+  const id   = decodeURIComponent(encodedId);
+  const entry = dayData.foodLog.find(f => f.id === id);
+  // Try library first, fall back to log entry itself
+  const food  = getAllFoods().find(f => f.id === id) || entry;
+  if (!food) { toast('Food not found', true); return; }
+  _editFoodId        = id;
+  _editFoodIsLogEntry = true;  // flag so saveEditFood updates the log entry
+  document.getElementById('ef-name').value    = food.displayName || food.name    || '';
+  document.getElementById('ef-cal').value     = food.calories || entry?.calories || 0;
+  document.getElementById('ef-prot').value    = food.protein  || entry?.protein  || 0;
+  document.getElementById('ef-carb').value    = food.carbs    || entry?.carbs    || 0;
+  document.getElementById('ef-fat').value     = food.fat      || entry?.fat      || 0;
+  document.getElementById('ef-fiber').value   = food.fiber    || entry?.fiber    || 0;
+  document.getElementById('ef-serving').value = food.serving  || entry?.serving  || '';
+  document.getElementById('edit-food-modal').classList.add('open');
+}
+
 function openEditFood(id) {
-  const food = getAllFoods().find(f => f.id === id);
-  if (!food) { console.warn('[openEditFood] not found:', id); return; }
+  // Check smart list first, then full library (foods not recently used live only in v2LibraryFoods)
+  const food = getAllFoods().find(f => f.id === id)
+            || v2LibraryFoods.find(f => f.id === id)
+            || v2LibraryFoods.find(f => String(f.id) === String(id));
+  if (!food) { console.warn('[openEditFood] not found:', id); toast('Food not found — try refreshing the library', true); return; }
+  _editFoodIsLogEntry = false;
   _editFoodId = id;
   document.getElementById('ef-name').value    = food.name    || '';
   document.getElementById('ef-cal').value     = food.calories || 0;
@@ -4048,15 +4072,46 @@ function saveEditFood() {
     fiber:    parseFloat(document.getElementById('ef-fiber').value) || 0,
     serving:  document.getElementById('ef-serving').value.trim() || '',
   };
-  // Update v2SmartFoods cache in all buckets
-  for (const bucket of [v2SmartFoods.pinned, v2SmartFoods.today, v2SmartFoods.recent]) {
-    const f = bucket.find(f => f.id === _editFoodId);
-    if (f) {
-      Object.assign(f, { calories: updates.calories, protein: updates.protein,
-        carbs: updates.carbs, fat: updates.fat, fiber: updates.fiber, serving: updates.serving });
-      if (updates.newName) f.name = updates.newName;
+  // Always update the food log entry in dayData if this entry exists in today's log
+  const logEntry = dayData.foodLog.find(f => f.id === _editFoodId);
+  if (logEntry) {
+    Object.assign(logEntry, {
+      calories: updates.calories,
+      protein:  updates.protein,
+      carbs:    updates.carbs,
+      fat:      updates.fat,
+      fiber:    updates.fiber,
+      serving:  updates.serving,
+    });
+    if (updates.newName) { logEntry.name = updates.newName; logEntry.displayName = updates.newName; }
+    saveDayDebounced();
+    renderFoodTimeline();
+    renderRings();
+    // Persist updated entry to D1
+    if (WORKER_URL && FS_API_KEY) {
+      const entryId = logEntry.d1Id || logEntry.id;
+      wFetch(`/api/foods/entry/${entryId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          calories: updates.calories,
+          protein_g: updates.protein,
+          carbs_g:   updates.carbs,
+          fat_g:     updates.fat,
+          fiber_g:   updates.fiber,
+          name:      updates.newName || logEntry.name,
+        }),
+      }).catch(() => {});
     }
   }
+
+  // Update both v2SmartFoods and v2LibraryFoods caches
+  const allCacheSources = [...v2SmartFoods.pinned, ...v2SmartFoods.today, ...v2SmartFoods.recent, ...v2LibraryFoods];
+  allCacheSources.forEach(f => {
+    if (f.id !== _editFoodId) return;
+    Object.assign(f, { calories: updates.calories, protein: updates.protein,
+      carbs: updates.carbs, fat: updates.fat, fiber: updates.fiber, serving: updates.serving });
+    if (updates.newName) f.name = updates.newName;
+  });
   wFetch('/api/foods', { method: 'PUT', body: JSON.stringify(updates) })
     .then(() => { loadSmartFoods(); loadLibraryFoods(); })
     .catch(e => toast('Sync failed: ' + e.message, true));
