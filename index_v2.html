@@ -1610,6 +1610,10 @@ body{
         oninput="updateQtyPreview(parseFloat(this.value)||0)">
     </div>
     <div id="qty-preview" style="font-size:12px;color:var(--muted);margin-bottom:12px;min-height:18px"></div>
+    <div style="margin-bottom:12px">
+      <div class="field-label">Time eaten</div>
+      <input class="field-input" id="qty-time" type="time" style="width:100%">
+    </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-p" style="flex:1" onclick="saveQtyEdit()">Update</button>
       <button class="btn btn-g btn-sm" onclick="closeQtyEdit()">Cancel</button>
@@ -2650,6 +2654,18 @@ function openQtyEdit(id) {
   document.getElementById('qty-edit-title').textContent = entry.name;
   document.getElementById('qty-custom').value = '';
   updateQtyPreview(entry.qty || 1);
+  // Pre-fill time from entry timestamp (convert UTC to local HH:MM)
+  const timeEl = document.getElementById('qty-time');
+  if (timeEl && entry.timestamp) {
+    const localDate = new Date(entry.timestamp);
+    const hh = String(localDate.getHours()).padStart(2,'0');
+    const mm = String(localDate.getMinutes()).padStart(2,'0');
+    timeEl.value = `${hh}:${mm}`;
+  } else if (timeEl) {
+    // Default to current time if no timestamp
+    const now = new Date();
+    timeEl.value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  }
   document.getElementById('qty-edit-modal').classList.add('open');
 }
 
@@ -2696,13 +2712,34 @@ function saveQtyEdit() {
   entry.fiber       = Math.round(baseFib  * newQty * 10) / 10;
   entry.displayName = newQty !== 1 ? `${entry.name} ×${newQty}` : entry.name;
 
+  // Update timestamp if time was changed
+  const timeEl    = document.getElementById('qty-time');
+  const timeValue = timeEl?.value;  // HH:MM
+  let timeChanged = false;
+  if (timeValue) {
+    const newISO = new Date(`${viewDate}T${timeValue}:00`).toISOString();
+    if (newISO !== entry.timestamp) {
+      entry.timestamp = newISO;
+      timeChanged = true;
+      // Persist timestamp to D1
+      if (WORKER_URL && FS_API_KEY) {
+        const d1Id = entry.d1Id || entry.id;
+        wFetch(`/api/foods/entry/${d1Id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ timestamp: newISO }),
+        }).catch(() => {});
+      }
+    }
+  }
+
   closeQtyEdit();
   renderFoodTimeline();
   renderRings();
   renderInsights();
   saveDayDebounced();
   markCoachBadge();
-  toast(`✓ Updated to ×${newQty}`);
+  const msg = timeChanged ? `✓ Updated ×${newQty} · time set to ${timeValue}` : `✓ Updated to ×${newQty}`;
+  toast(msg);
 }
 
 function renderFoodTimeline() {
