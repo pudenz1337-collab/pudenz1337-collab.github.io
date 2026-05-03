@@ -836,32 +836,57 @@ body{
         <span id="activity-burn-total" style="font-size:11px;color:var(--accent);font-family:'DM Mono',monospace"></span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:8px">MET values from Compendium of Physical Activities</div>
-      <div class="activity-grid" id="activity-grid">
-        <button class="activity-btn" id="act-golf_walk_9" onclick="logActivity('golf_walk_9',this)">
+      <!-- Golf buttons — additive (each tap = one 9-hole session) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <button class="activity-btn" id="act-golf_walk_9" onclick="addActivitySession('golf_walk_9')">
           <span class="act-icon">⛳</span>
           <span>Golf 9 holes</span>
           <span style="font-size:10px">(walking)</span>
           <span class="act-kcal" id="act-kcal-golf_walk_9">~675 kcal</span>
+          <span id="act-count-golf_walk_9" style="font-size:10px;color:var(--accent);font-weight:600;display:none"></span>
         </button>
-        <button class="activity-btn" id="act-golf_cart_9" onclick="logActivity('golf_cart_9',this)">
+        <button class="activity-btn" id="act-golf_cart_9" onclick="addActivitySession('golf_cart_9')">
           <span class="act-icon">🛺</span>
           <span>Golf 9 holes</span>
           <span style="font-size:10px">(cart)</span>
           <span class="act-kcal" id="act-kcal-golf_cart_9">~445 kcal</span>
+          <span id="act-count-golf_cart_9" style="font-size:10px;color:var(--accent);font-weight:600;display:none"></span>
         </button>
-        <button class="activity-btn" id="act-walk_30" onclick="logActivity('walk_30',this)">
-          <span class="act-icon">🚶</span>
-          <span>30 min walk</span>
-          <span class="act-kcal" id="act-kcal-walk_30">~110 kcal</span>
-        </button>
-        <button class="activity-btn" id="act-active_day" onclick="logActivity('active_day',this)">
-          <span class="act-icon">⚡</span>
-          <span>Active day</span>
-          <span style="font-size:10px">(on feet all day)</span>
+      </div>
+      <!-- Active day toggle -->
+      <div style="margin-bottom:10px">
+        <button class="activity-btn" id="act-active_day" onclick="logActivity('active_day',this)" style="width:100%;flex-direction:row;gap:8px;padding:10px 12px;justify-content:flex-start">
+          <span class="act-icon" style="font-size:18px">⚡</span>
+          <div style="text-align:left;flex:1">
+            <div style="font-size:12px;font-weight:500">Active day</div>
+            <div style="font-size:10px;color:var(--muted)">on feet all day</div>
+          </div>
           <span class="act-kcal" id="act-kcal-active_day">+250 kcal</span>
         </button>
       </div>
-      <div id="activity-log-list" style="margin-top:8px;font-size:11px;color:var(--muted)"></div>
+      <!-- Steps + Floors entry -->
+      <div style="padding:10px 12px;background:var(--card2);border:1px solid var(--border2);border-radius:10px;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px">📱 Steps / Floors (from Health app)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Steps</div>
+            <input type="number" id="steps-input" class="field-input" placeholder="e.g. 12000" min="0" step="500"
+              style="width:100%;padding:6px 8px;font-size:13px" oninput="previewStepsKcal()">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Floors (optional)</div>
+            <input type="number" id="floors-input" class="field-input" placeholder="e.g. 8" min="0" step="1"
+              style="width:100%;padding:6px 8px;font-size:13px" oninput="previewStepsKcal()">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-p btn-sm" onclick="logSteps()" style="flex:1">Log Steps</button>
+          <span id="steps-kcal-preview" style="font-size:11px;color:var(--accent);font-family:'DM Mono',monospace"></span>
+          <button id="steps-clear-btn" style="display:none;background:none;border:none;color:var(--muted2);font-size:11px;cursor:pointer;text-decoration:underline" onclick="clearSteps()">clear</button>
+        </div>
+        <div id="steps-logged-info" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
+      </div>
+      <div id="activity-log-list" style="margin-top:4px;font-size:11px;color:var(--muted)"></div>
     </div>
 
     <!-- Recovery Events -->
@@ -4218,12 +4243,31 @@ function getActivityKcal(activityType) {
   return d.flat ?? Math.round(d.met * weightKg * d.hours);
 }
 
+// ── ADDITIVE: golf sessions (each tap adds one 9-hole session) ──────────────
+async function addActivitySession(activityType) {
+  if (!WORKER_URL || !FS_API_KEY) { toast('Connect Worker first', true); return; }
+  const weightKg = (evoltScanGoals?.weightKg) || 63.5;
+  try {
+    const res = await wFetch('/api/activity', {
+      method: 'POST',
+      body: JSON.stringify({ date: viewDate, activityType, weightKg, allowMultiple: true }),
+    });
+    dayActivities.push({ id: res.id, activity_type: activityType, calories: res.calories, label: res.label });
+    activityBurnToday = dayActivities.reduce((a, act) => a + (act.calories || 0), 0);
+    renderActivities();
+    markCoachBadge();
+    const count = dayActivities.filter(a => a.activity_type === activityType).length;
+    toast(`✓ ${res.label} ×${count} — +${res.calories} kcal`);
+  } catch (e) {
+    toast('Failed: ' + e.message, true);
+  }
+}
+
+// ── TOGGLE: active_day (single, existing logActivity handles this) ────────────
 async function logActivity(activityType, btnEl) {
   if (!WORKER_URL || !FS_API_KEY) { toast('Connect Worker first', true); return; }
-  // Remove previous log of same type today to avoid double-counting
   const existing = dayActivities.find(a => a.activity_type === activityType);
   if (existing) {
-    // Toggle off
     await wFetch(`/api/activity/${existing.id}`, { method: 'DELETE' }).catch(() => {});
     dayActivities = dayActivities.filter(a => a.activity_type !== activityType);
     activityBurnToday = dayActivities.reduce((a, act) => a + (act.calories || 0), 0);
@@ -4237,7 +4281,7 @@ async function logActivity(activityType, btnEl) {
       method: 'POST',
       body: JSON.stringify({ date: viewDate, activityType, weightKg }),
     });
-    dayActivities.push({ id: res.id, activity_type: activityType, calories: res.calories });
+    dayActivities.push({ id: res.id, activity_type: activityType, calories: res.calories, label: res.label });
     activityBurnToday = dayActivities.reduce((a, act) => a + (act.calories || 0), 0);
     renderActivities();
     markCoachBadge();
@@ -4247,32 +4291,163 @@ async function logActivity(activityType, btnEl) {
   }
 }
 
+// ── STEPS + FLOORS ────────────────────────────────────────────────────────────
+function previewStepsKcal() {
+  const steps    = parseInt(document.getElementById('steps-input')?.value) || 0;
+  const floors   = parseInt(document.getElementById('floors-input')?.value) || 0;
+  const weightKg = (evoltScanGoals?.weightKg) || 63.5;
+  const stepsKcal  = Math.round(steps  * 0.04 * weightKg / 1000);
+  const floorsKcal = Math.round(floors * 0.15 * weightKg);
+  const total = stepsKcal + floorsKcal;
+  const preview = document.getElementById('steps-kcal-preview');
+  if (preview) preview.textContent = total > 0 ? `~${total} kcal` : '';
+}
+
+async function logSteps() {
+  if (!WORKER_URL || !FS_API_KEY) { toast('Connect Worker first', true); return; }
+  const steps  = parseInt(document.getElementById('steps-input')?.value) || 0;
+  const floors = parseInt(document.getElementById('floors-input')?.value) || 0;
+  if (!steps && !floors) { toast('Enter steps or floors first', true); return; }
+  const weightKg   = (evoltScanGoals?.weightKg) || 63.5;
+  const stepsKcal  = Math.round(steps  * 0.04 * weightKg / 1000);
+  const floorsKcal = Math.round(floors * 0.15 * weightKg);
+  const totalKcal  = stepsKcal + floorsKcal;
+  // Remove any existing steps entry today (replace, not stack)
+  const existingSteps = dayActivities.filter(a => a.activity_type === 'steps');
+  for (const e of existingSteps) {
+    await wFetch(`/api/activity/${e.id}`, { method: 'DELETE' }).catch(() => {});
+  }
+  dayActivities = dayActivities.filter(a => a.activity_type !== 'steps');
+  try {
+    const res = await wFetch('/api/activity', {
+      method: 'POST',
+      body: JSON.stringify({
+        date: viewDate,
+        activityType: 'steps',
+        weightKg,
+        steps,
+        floors: floors || 0,
+        calories: totalKcal,
+        allowMultiple: false,
+      }),
+    });
+    dayActivities.push({ id: res.id, activity_type: 'steps', calories: totalKcal, steps, floors });
+    activityBurnToday = dayActivities.reduce((a, act) => a + (act.calories || 0), 0);
+    renderActivities();
+    markCoachBadge();
+    const parts = [];
+    if (steps)  parts.push(`${steps.toLocaleString()} steps`);
+    if (floors) parts.push(`${floors} floors`);
+    toast(`✓ ${parts.join(' + ')} — +${totalKcal} kcal`);
+  } catch (e) {
+    toast('Failed: ' + e.message, true);
+  }
+}
+
+async function clearSteps() {
+  const existingSteps = dayActivities.filter(a => a.activity_type === 'steps');
+  for (const e of existingSteps) {
+    await wFetch(`/api/activity/${e.id}`, { method: 'DELETE' }).catch(() => {});
+  }
+  dayActivities = dayActivities.filter(a => a.activity_type !== 'steps');
+  activityBurnToday = dayActivities.reduce((a, act) => a + (act.calories || 0), 0);
+  const inp = document.getElementById('steps-input');
+  const flr = document.getElementById('floors-input');
+  if (inp) inp.value = '';
+  if (flr) flr.value = '';
+  document.getElementById('steps-kcal-preview').textContent = '';
+  renderActivities();
+  markCoachBadge();
+  toast('Steps cleared');
+}
+
 function renderActivities() {
-  const logEl  = document.getElementById('activity-log-list');
+  const logEl   = document.getElementById('activity-log-list');
   const totalEl = document.getElementById('activity-burn-total');
 
-  // Update button states
-  ['golf_walk_9','golf_cart_9','walk_30','active_day'].forEach(type => {
-    const btn = document.getElementById('act-' + type);
+  // Golf buttons — show count per type
+  ['golf_walk_9','golf_cart_9'].forEach(type => {
+    const btn      = document.getElementById('act-' + type);
+    const countEl  = document.getElementById('act-count-' + type);
     if (!btn) return;
-    const isLogged = dayActivities.some(a => a.activity_type === type);
-    btn.classList.toggle('logged', isLogged);
-    // Update kcal label with weight-adjusted estimate
+    const sessions = dayActivities.filter(a => a.activity_type === type);
+    const count    = sessions.length;
+    btn.classList.toggle('logged', count > 0);
     const kcalEl = document.getElementById('act-kcal-' + type);
-    if (kcalEl) kcalEl.textContent = (isLogged ? '✓ ' : '~') + getActivityKcal(type) + ' kcal';
+    if (kcalEl) {
+      const perSession = getActivityKcal(type);
+      kcalEl.textContent = count > 0 ? `${count} × ${perSession} = ${count * perSession} kcal` : `~${perSession} kcal`;
+    }
+    if (countEl) {
+      countEl.style.display = count > 0 ? 'inline' : 'none';
+      countEl.textContent   = count > 0 ? `×${count} logged` : '';
+    }
   });
 
-  if (totalEl) {
-    totalEl.textContent = activityBurnToday > 0 ? `+${activityBurnToday} kcal today` : '';
+  // Active day toggle
+  const activeBtn = document.getElementById('act-active_day');
+  if (activeBtn) {
+    const isLogged = dayActivities.some(a => a.activity_type === 'active_day');
+    activeBtn.classList.toggle('logged', isLogged);
+    const kcalEl = document.getElementById('act-kcal-active_day');
+    if (kcalEl) kcalEl.textContent = isLogged ? '✓ +250 kcal' : '+250 kcal';
   }
+
+  // Steps info
+  const stepsEntry = dayActivities.find(a => a.activity_type === 'steps');
+  const clearBtn   = document.getElementById('steps-clear-btn');
+  const stepsInfo  = document.getElementById('steps-logged-info');
+  if (stepsEntry) {
+    if (clearBtn)  clearBtn.style.display = 'inline';
+    if (stepsInfo) {
+      const parts = [];
+      if (stepsEntry.steps)  parts.push(`${(stepsEntry.steps).toLocaleString()} steps`);
+      if (stepsEntry.floors) parts.push(`${stepsEntry.floors} floors`);
+      stepsInfo.textContent = parts.length ? `✓ ${parts.join(' + ')} — +${stepsEntry.calories} kcal` : `✓ +${stepsEntry.calories} kcal`;
+    }
+    // Restore input values
+    const inp = document.getElementById('steps-input');
+    const flr = document.getElementById('floors-input');
+    if (inp && stepsEntry.steps)  inp.value  = stepsEntry.steps;
+    if (flr && stepsEntry.floors) flr.value  = stepsEntry.floors;
+    previewStepsKcal();
+  } else {
+    if (clearBtn)  clearBtn.style.display = 'none';
+    if (stepsInfo) stepsInfo.textContent  = '';
+  }
+
+  // Total burn
+  if (totalEl) totalEl.textContent = activityBurnToday > 0 ? `+${activityBurnToday} kcal today` : '';
+
+  // Activity log list — group by type with remove buttons
   if (logEl) {
-    logEl.innerHTML = dayActivities.length
-      ? dayActivities.map(a => `<div style="display:flex;justify-content:space-between;padding:4px 0">
-          <span>${a.activity_type.replace(/_/g,' ')}</span>
+    const golfTypes = ['golf_walk_9','golf_cart_9'];
+    const otherActs = dayActivities.filter(a => a.activity_type !== 'steps' && !golfTypes.includes(a.activity_type));
+    const golfEntries = golfTypes.flatMap(type =>
+      dayActivities.filter(a => a.activity_type === type).map((a, i) => ({...a, sessionNum: i+1}))
+    );
+    const allEntries = [...golfEntries, ...otherActs];
+    logEl.innerHTML = allEntries.map(a => {
+      const label = a.activity_type === 'golf_walk_9' ? `⛳ Golf 9 holes walking #${a.sessionNum||''}` :
+                    a.activity_type === 'golf_cart_9'  ? `🛺 Golf 9 holes cart #${a.sessionNum||''}` :
+                    a.activity_type.replace(/_/g,' ');
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">
+        <span>${label}</span>
+        <div style="display:flex;align-items:center;gap:8px">
           <span style="color:var(--accent)">+${a.calories} kcal</span>
-        </div>`).join('')
-      : '';
+          <button onclick="removeActivityEntry('${a.id}')" style="background:none;border:none;color:var(--muted2);cursor:pointer;font-size:11px;padding:0">✕</button>
+        </div>
+      </div>`;
+    }).join('');
   }
+}
+
+async function removeActivityEntry(id) {
+  await wFetch(`/api/activity/${id}`, { method: 'DELETE' }).catch(() => {});
+  dayActivities = dayActivities.filter(a => a.id !== id && String(a.id) !== String(id));
+  activityBurnToday = dayActivities.reduce((a, act) => a + (act.calories || 0), 0);
+  renderActivities();
+  markCoachBadge();
 }
 
 // ══════════════════════════════════════════════════
