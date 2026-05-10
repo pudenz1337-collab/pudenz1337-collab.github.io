@@ -396,6 +396,23 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
       <button class="btn btn-p btn-sm" onclick="showPanel('upload',document.getElementById('nav-upload'))">Upload Data →</button>
     </div>
 
+    <!-- Recovery Trend (NS Engine data) -->
+    <div id="recovery-trend-wrap" style="display:none">
+      <div class="section-label">🧠 Nervous System — 30 Day Trend</div>
+      <div class="card" style="margin-bottom:10px">
+        <div class="card-title">Readiness Score</div>
+        <div class="chart-wrap chart-wrap-sm"><canvas id="chart-readiness"></canvas><div class="chart-nodata" id="chart-readiness-nodata">Complete morning check-ins in FuelStrong to see trend data</div></div>
+      </div>
+      <div class="card" style="margin-bottom:10px">
+        <div class="card-title">Vestibular Symptom Severity</div>
+        <div id="vestibular-trend-list" style="display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Sleep Quality Pattern</div>
+        <div class="chart-wrap chart-wrap-sm"><canvas id="chart-sleep"></canvas><div class="chart-nodata" id="chart-sleep-nodata">Check-in data appears here</div></div>
+      </div>
+    </div>
+
   </div>
 
   <!-- ═══════ BODY ═══════ -->
@@ -1049,6 +1066,7 @@ async function loadFromWorker() {
     renderDataSummary();
     checkInsightsFreshness();
     loadMomentum();
+    loadNervousSystemHistory(); // load NS trend data silently
   } catch (e) {
     setConn('err');
     sync.style.display = 'none';
@@ -3790,6 +3808,171 @@ function toast(msg, isErr = false) {
 // ══════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// NERVOUS SYSTEM TREND (Progress analytics)
+// ══════════════════════════════════════════════════
+async function loadNervousSystemHistory() {
+  if (!WORKER_URL || !FS_API_KEY) return;
+  try {
+    const since = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
+    })();
+    const res = await wFetch(`/api/nervous-system/history?since=${since}`);
+    const checkins = res.checkins || [];
+    if (checkins.length) renderNervousSystemTrend(checkins);
+  } catch (e) {
+    console.log('[NS History]', e.message);
+  }
+}
+
+function renderNervousSystemTrend(checkins) {
+  const wrap = document.getElementById('recovery-trend-wrap');
+  if (!wrap) return;
+  if (!checkins.length) return;
+  wrap.style.display = 'block';
+
+  // ── Readiness Score Chart ─────────────────────────────────────────────────
+  const labels    = checkins.map(c => c.date.slice(5));
+  const scores    = checkins.map(c => c.readiness_score);
+  const hasScores = scores.some(s => s != null);
+
+  if (hasScores && document.getElementById('chart-readiness')) {
+    // Color-coded points by tier
+    const pointColors = scores.map(s => {
+      if (s === null) return 'transparent';
+      if (s >= 85) return '#00e5a0';
+      if (s >= 70) return '#8edc6e';
+      if (s >= 55) return '#ffd460';
+      if (s >= 40) return '#ff6b35';
+      return '#ff4560';
+    });
+    const cfg = buildChartConfig(labels, [{
+      label: 'Readiness',
+      data: scores,
+      borderColor: '#4da8ff',
+      backgroundColor: 'rgba(77,168,255,.08)',
+      fill: true,
+      tension: 0.35,
+      pointBackgroundColor: pointColors,
+      pointRadius: 5,
+      pointHoverRadius: 7,
+      spanGaps: true,
+    }], { min: 0, max: 100 });
+    // Add tier reference lines
+    cfg.options.plugins = cfg.options.plugins || {};
+    cfg.options.plugins.annotation = undefined; // skip — Chart.js annotation plugin not loaded
+    makeOrUpdate('chart-readiness', cfg);
+  } else if (document.getElementById('chart-readiness')) {
+    showChartNoData('chart-readiness', 'Complete morning check-ins in FuelStrong to see readiness trend');
+  }
+
+  // ── Vestibular Severity Timeline ──────────────────────────────────────────
+  const vestEl = document.getElementById('vestibular-trend-list');
+  if (vestEl) {
+    const vestMap = { none: { label: 'Clear', color: 'var(--accent)', bar: 0 }, mild: { label: 'Mild', color: 'var(--yellow)', bar: 33 }, moderate: { label: 'Moderate', color: 'var(--orange)', bar: 66 }, significant: { label: 'Significant', color: 'var(--danger)', bar: 100 } };
+    const withVest = checkins.filter(c => c.vestibular_symptoms);
+    if (withVest.length) {
+      // Summary counts
+      const counts = {};
+      withVest.forEach(c => { counts[c.vestibular_symptoms] = (counts[c.vestibular_symptoms] || 0) + 1; });
+      const total = withVest.length;
+      const clearDays    = counts['none'] || 0;
+      const mildDays     = counts['mild'] || 0;
+      const modDays      = counts['moderate'] || 0;
+      const signifDays   = counts['significant'] || 0;
+
+      vestEl.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">
+          ${[
+            { label: 'Clear Days', val: clearDays, color: 'var(--accent)' },
+            { label: 'Mild Days', val: mildDays, color: 'var(--yellow)' },
+            { label: 'Moderate Days', val: modDays, color: 'var(--orange)' },
+            { label: 'Flare Days', val: signifDays, color: 'var(--danger)' },
+          ].map(s => `<div style="text-align:center;padding:8px 4px;background:var(--card2);border-radius:8px">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:${s.color}">${s.val}</div>
+            <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">${s.label}</div>
+          </div>`).join('')}
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Last 10 logged days</div>
+        ${withVest.slice(-10).reverse().map(c => {
+          const v = vestMap[c.vestibular_symptoms] || { label: c.vestibular_symptoms, color: 'var(--muted)', bar: 0 };
+          return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
+            <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);width:42px;flex-shrink:0">${c.date.slice(5)}</div>
+            <div style="flex:1;height:5px;background:var(--border2);border-radius:99px;overflow:hidden">
+              <div style="height:100%;width:${v.bar}%;background:${v.color};border-radius:99px"></div>
+            </div>
+            <div style="font-size:10px;color:${v.color};width:70px;text-align:right;flex-shrink:0">${v.label}${c.readiness_score ? ` · ${c.readiness_score}` : ''}</div>
+          </div>`;
+        }).join('')}`;
+    } else {
+      vestEl.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:14px 0">Log vestibular signals in FuelStrong morning check-ins</div>';
+    }
+  }
+
+  // ── Sleep Quality Chart ───────────────────────────────────────────────────
+  const sleepQuals = checkins.map(c => c.sleep_quality);
+  const hasSleep = sleepQuals.some(s => s != null);
+  if (hasSleep && document.getElementById('chart-sleep')) {
+    const sleepColors = sleepQuals.map(q => {
+      if (q === null) return 'transparent';
+      if (q >= 4) return '#00e5a0';
+      if (q === 3) return '#ffd460';
+      return '#ff4560';
+    });
+    makeOrUpdate('chart-sleep', buildChartConfig(labels, [{
+      label: 'Sleep Quality',
+      data: sleepQuals,
+      borderColor: '#b47fff',
+      backgroundColor: 'rgba(180,127,255,.07)',
+      fill: true,
+      tension: 0.3,
+      pointBackgroundColor: sleepColors,
+      pointRadius: 4,
+      spanGaps: true,
+    }], { min: 1, max: 5 }));
+  } else if (document.getElementById('chart-sleep')) {
+    showChartNoData('chart-sleep', 'Log sleep quality in morning check-ins');
+  }
+
+  // ── Summary insight ───────────────────────────────────────────────────────
+  const avgScore = checkins.filter(c => c.readiness_score).length
+    ? Math.round(checkins.filter(c => c.readiness_score).reduce((a,c) => a + c.readiness_score, 0) / checkins.filter(c => c.readiness_score).length)
+    : null;
+  const flareDays = checkins.filter(c => c.vestibular_symptoms === 'significant').length;
+  const sleepAid2Days = checkins.filter(c => c.sleep_aid === 2).length;
+
+  if (avgScore !== null) {
+    const summaryEl = document.createElement('div');
+    summaryEl.className = 'card';
+    summaryEl.style.marginTop = '10px';
+    const tier = avgScore >= 70 ? { color: 'var(--accent)', label: 'Good baseline' }
+               : avgScore >= 55 ? { color: 'var(--yellow)', label: 'Room to improve' }
+               : { color: 'var(--orange)', label: 'Recovery needs attention' };
+    summaryEl.innerHTML = `
+      <div class="card-title">30-Day Summary</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div class="stat" style="text-align:center">
+          <div class="stat-val" style="color:${tier.color}">${avgScore}</div>
+          <div class="stat-label">Avg Readiness</div>
+          <div class="stat-sub">${tier.label}</div>
+        </div>
+        <div class="stat" style="text-align:center">
+          <div class="stat-val" style="color:${flareDays > 4 ? 'var(--danger)' : flareDays > 2 ? 'var(--orange)' : 'var(--accent)'}">${flareDays}</div>
+          <div class="stat-label">Flare Days</div>
+          <div class="stat-sub">${flareDays > 4 ? 'High burden' : flareDays > 2 ? 'Moderate' : 'Low burden'}</div>
+        </div>
+        <div class="stat" style="text-align:center">
+          <div class="stat-val" style="color:${sleepAid2Days > 5 ? 'var(--orange)' : 'var(--muted)'}">${checkins.length}</div>
+          <div class="stat-label">Check-ins</div>
+          <div class="stat-sub">${checkins.length} / 30 days</div>
+        </div>
+      </div>`;
+    wrap.appendChild(summaryEl);
+  }
+}
+
 function init() {
   if (WORKER_URL) document.getElementById('worker-url').value = WORKER_URL;
   const keyEl = document.getElementById('api-key');

@@ -689,6 +689,45 @@ body{
   text-transform:uppercase;color:var(--muted);
   margin:12px 0 7px;
 }
+
+/* ── NERVOUS SYSTEM CHECK-IN ── */
+.ns-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:13px 14px;margin-bottom:10px}
+.ns-section{padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)}
+.ns-section:last-child{padding-bottom:0;margin-bottom:0;border-bottom:none}
+.ns-section-label{font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.sig-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px}
+.sig-btn{
+  padding:5px 10px;border-radius:7px;border:1px solid var(--border);
+  background:var(--card2);color:var(--muted);cursor:pointer;
+  font-family:'DM Sans',sans-serif;font-size:11px;font-weight:500;
+  transition:all .15s;white-space:nowrap;
+}
+.sig-btn:active{transform:scale(.95)}
+.sig-btn.active{border-color:var(--accent);background:var(--accent-dim);color:var(--accent);font-weight:600}
+.sig-btn.active-warn{border-color:var(--yellow);background:var(--yellow-dim);color:var(--yellow);font-weight:600}
+.sig-btn.active-danger{border-color:var(--orange);background:rgba(255,107,53,.1);color:var(--orange);font-weight:600}
+.sig-btn.active-purple{border-color:var(--purple);background:rgba(180,127,255,.1);color:var(--purple);font-weight:600}
+.ns-fatigue-wrap{margin-bottom:10px}
+.ns-fatigue-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.ns-fatigue-label{font-size:11px;font-weight:500}
+.ns-fatigue-val{font-family:'Bebas Neue',sans-serif;font-size:18px}
+.ns-slider{-webkit-appearance:none;width:100%;height:5px;border-radius:99px;outline:none;cursor:pointer;margin-bottom:2px}
+.ns-slider.phys::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--orange);border:2px solid var(--bg);cursor:pointer}
+.ns-slider.cog::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--blue);border:2px solid var(--bg);cursor:pointer}
+.ns-diss-note{font-size:11px;color:var(--blue);padding:7px 10px;background:var(--blue-dim);border-radius:7px;margin-top:6px;line-height:1.5;display:none}
+.ns-double-note{font-size:11px;color:var(--purple);padding:7px 10px;background:rgba(180,127,255,.08);border:1px solid rgba(180,127,255,.15);border-radius:7px;margin-top:6px;line-height:1.5;display:none}
+
+/* ── READINESS SCORE BAR ── */
+.readiness-bar{border-radius:var(--radius);padding:12px 14px;border:1px solid;display:flex;align-items:center;gap:14px;margin-bottom:10px}
+.readiness-score{font-family:'Bebas Neue',sans-serif;font-size:40px;line-height:1;flex-shrink:0}
+.readiness-tier{font-size:12px;font-weight:700;letter-spacing:.3px;margin-bottom:3px}
+.readiness-narrative{font-size:11px;line-height:1.55;color:var(--text);opacity:.85}
+.ns-ft-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.ns-ft-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:99px;letter-spacing:.3px}
+
+/* ── AFTERNOON CHECK-IN ── */
+.afternoon-card{background:rgba(180,127,255,.05);border:1px solid rgba(180,127,255,.18);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px}
+.afternoon-label{font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--purple);margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -713,6 +752,121 @@ body{
 
   <!-- ═══════ TODAY ═══════ -->
   <div id="panel-today" class="panel active">
+
+    <!-- NERVOUS SYSTEM MORNING CHECK-IN -->
+    <div class="ns-card" id="ns-checkin-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none" onclick="toggleNSCheckin()">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)">🧠 Morning Check-In</span>
+          <span id="ns-pressure-badge" style="display:none;font-size:9px;padding:2px 7px;border-radius:99px;font-family:'DM Mono',monospace;border:1px solid var(--border)"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="ns-summary-badge" style="display:none"></span>
+          <span id="ns-chevron" style="font-size:10px;color:var(--muted)">▼</span>
+        </div>
+      </div>
+
+      <div id="ns-checkin-body" style="margin-top:12px">
+
+        <!-- SLEEP -->
+        <div class="ns-section">
+          <div class="ns-section-label">😴 Sleep last night</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:5px">Duration</div>
+          <div class="sig-row" id="ns-dur-btns">
+            <button class="sig-btn" onclick="nsSetDur('&lt;5',this)">&lt;5 hrs</button>
+            <button class="sig-btn" onclick="nsSetDur('5-6',this)">5–6 hrs</button>
+            <button class="sig-btn" onclick="nsSetDur('6-7',this)">6–7 hrs</button>
+            <button class="sig-btn" onclick="nsSetDur('7-8',this)">7–8 hrs</button>
+            <button class="sig-btn" onclick="nsSetDur('8+',this)">8+ hrs</button>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:5px;margin-top:8px">Quality</div>
+          <div class="sig-row" id="ns-qual-btns">
+            <button class="sig-btn" onclick="nsSetQual(1,this)">1 Terrible</button>
+            <button class="sig-btn" onclick="nsSetQual(2,this)">2 Poor</button>
+            <button class="sig-btn" onclick="nsSetQual(3,this)">3 OK</button>
+            <button class="sig-btn" onclick="nsSetQual(4,this)">4 Good</button>
+            <button class="sig-btn" onclick="nsSetQual(5,this)">5 Great</button>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:5px;margin-top:8px">Sleep aid</div>
+          <div class="sig-row" id="ns-aid-btns">
+            <button class="sig-btn" onclick="nsSetAid(0,this)">None</button>
+            <button class="sig-btn" onclick="nsSetAid(1,this)">1 Pill</button>
+            <button class="sig-btn" onclick="nsSetAid(2,this)">2 Pills</button>
+          </div>
+          <div class="ns-double-note" id="ns-double-note">💊 Double dose — diphenhydramine's ~10hr half-life means cognitive sedation may persist until afternoon. Factored into your readiness score.</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:5px;margin-top:8px">Woke up tired despite sleeping?</div>
+          <div class="sig-row" id="ns-tired-btns">
+            <button class="sig-btn" onclick="nsSetTired(true,this)">Yes — still exhausted</button>
+            <button class="sig-btn" onclick="nsSetTired(false,this)">No — sleep helped</button>
+          </div>
+        </div>
+
+        <!-- FATIGUE -->
+        <div class="ns-section">
+          <div class="ns-section-label">⚡ Fatigue today</div>
+          <div class="ns-fatigue-wrap">
+            <div class="ns-fatigue-row">
+              <span class="ns-fatigue-label" style="color:var(--orange)">Physical</span>
+              <span class="ns-fatigue-val" id="ns-pf-val" style="color:var(--orange)">—</span>
+            </div>
+            <input type="range" class="ns-slider phys" id="ns-pf-slider" min="1" max="10" value="5"
+              style="background:linear-gradient(to right,var(--orange) 50%,var(--border2) 50%)"
+              oninput="nsSetPhys(parseInt(this.value))">
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted)"><span>Feeling good</span><span>Completely wiped</span></div>
+          </div>
+          <div class="ns-fatigue-wrap">
+            <div class="ns-fatigue-row">
+              <span class="ns-fatigue-label" style="color:var(--blue)">Cognitive / brain fog</span>
+              <span class="ns-fatigue-val" id="ns-cf-val" style="color:var(--blue)">—</span>
+            </div>
+            <input type="range" class="ns-slider cog" id="ns-cf-slider" min="1" max="10" value="5"
+              style="background:linear-gradient(to right,var(--blue) 50%,var(--border2) 50%)"
+              oninput="nsSetCog(parseInt(this.value))">
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted)"><span>Sharp &amp; clear</span><span>Can't think straight</span></div>
+          </div>
+          <div class="ns-diss-note" id="ns-diss-note">🧠 Cognitive fatigue significantly higher than physical — characteristic of neurological fatigue, not muscular. Your vestibular system is doing heavy background work.</div>
+        </div>
+
+        <!-- VESTIBULAR -->
+        <div class="ns-section">
+          <div class="ns-section-label">🌀 Vestibular &amp; neurological</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:5px">Symptoms today</div>
+          <div class="sig-row" id="ns-vest-btns">
+            <button class="sig-btn" onclick="nsSetVest('none',this)">None — clear day</button>
+            <button class="sig-btn" onclick="nsSetVest('mild',this)">Mild</button>
+            <button class="sig-btn" onclick="nsSetVest('moderate',this)">Moderate</button>
+            <button class="sig-btn" onclick="nsSetVest('significant',this)">Significant</button>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:5px;margin-top:8px">Visual strain</div>
+          <div class="sig-row" id="ns-vis-btns">
+            <button class="sig-btn" onclick="nsSetVis('none',this)">None</button>
+            <button class="sig-btn" onclick="nsSetVis('mild',this)">Mild</button>
+            <button class="sig-btn" onclick="nsSetVis('significant',this)">Significant</button>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:5px;margin-top:8px">Balance confidence</div>
+          <div class="sig-row" id="ns-bal-btns">
+            <button class="sig-btn" onclick="nsSetBal('good',this)">Good — steady</button>
+            <button class="sig-btn" onclick="nsSetBal('reduced',this)">Reduced</button>
+            <button class="sig-btn" onclick="nsSetBal('poor',this)">Poor</button>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:5px;margin-top:8px">Weather sensitivity <span id="ns-pressure-inline" style="color:var(--muted);font-size:9px"></span></div>
+          <div class="sig-row" id="ns-weather-btns">
+            <button class="sig-btn" onclick="nsSetWeather(false,this)">No — normal</button>
+            <button class="sig-btn" onclick="nsSetWeather(true,this)">Yes — feeling it</button>
+          </div>
+        </div>
+
+        <button class="btn btn-p" style="width:100%;margin-top:4px;font-size:13px" onclick="saveNSCheckin()">
+          Save Check-In → Generate Readiness Score
+        </button>
+      </div><!-- /ns-checkin-body -->
+    </div><!-- /ns-card -->
+
+    <!-- READINESS SCORE -->
+    <div id="ns-readiness-wrap" style="display:none"></div>
+
+    <!-- AFTERNOON CHECK-IN (time-gated: shows after noon) -->
+    <div id="ns-afternoon-wrap" style="display:none"></div>
 
     <!-- Day Plan -->
     <div style="display:flex;gap:7px;margin-bottom:10px;align-items:center">
@@ -1776,6 +1930,29 @@ let activeTab      = 'smart';
 let _saveDayTimer, _searchTimer;
 let _localDirty = false; // true only when THIS device made a change
 
+// ── Nervous System Check-In state ──────────────────────────────────────────
+let nsState = JSON.parse(localStorage.getItem('fs3-ns-today') || 'null') || {
+  sleepDuration:   null,
+  sleepQuality:    null,
+  sleepAid:        null,
+  wokeUpTired:     null,
+  physicalFatigue: null,
+  cognitiveFatigue: null,
+  vestibularSymptoms: null,
+  visualStrain:    null,
+  balanceConf:     null,
+  weatherSensitive: null,
+  checkinComplete: false,
+  // afternoon
+  afternoonOverall: null,
+  napTaken:         null,
+  napFelt:          null,
+  vestibularAfternoon: null,
+  afternoonComplete: false,
+};
+let nsReadinessScore = null;
+let nsBarometricPressure = null;
+
 // History (completed days)
 let history = JSON.parse(localStorage.getItem('fs3-hist') || '[]');
 let undoEntry = JSON.parse(localStorage.getItem('fs3-undo') || 'null');
@@ -1790,6 +1967,469 @@ function todayISO() {
 
 function isToday(dateStr) {
   return dateStr === todayISO();
+}
+
+// ══════════════════════════════════════════════════
+// NERVOUS SYSTEM ENGINE
+// ══════════════════════════════════════════════════
+
+function nsSetDur(val, btnEl) {
+  nsState.sleepDuration = val;
+  document.querySelectorAll('#ns-dur-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  const cls = ['<5','5-6'].includes(val) ? 'active-danger' : val === '6-7' ? 'active-warn' : 'active';
+  btnEl.classList.add(cls);
+  nsSave();
+}
+function nsSetQual(val, btnEl) {
+  nsState.sleepQuality = val;
+  document.querySelectorAll('#ns-qual-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  btnEl.classList.add(val <= 2 ? 'active-danger' : val === 3 ? 'active-warn' : 'active');
+  nsSave();
+}
+function nsSetAid(val, btnEl) {
+  nsState.sleepAid = val;
+  document.querySelectorAll('#ns-aid-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  btnEl.classList.add(val === 2 ? 'active-purple' : val === 1 ? 'active-warn' : 'active');
+  document.getElementById('ns-double-note').style.display = val === 2 ? 'block' : 'none';
+  nsSave();
+}
+function nsSetTired(val, btnEl) {
+  nsState.wokeUpTired = val;
+  document.querySelectorAll('#ns-tired-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  btnEl.classList.add(val ? 'active-danger' : 'active');
+  nsSave();
+}
+function nsSetPhys(val) {
+  nsState.physicalFatigue = val;
+  document.getElementById('ns-pf-val').textContent = val;
+  const pct = (val - 1) / 9 * 100;
+  document.getElementById('ns-pf-slider').style.background =
+    `linear-gradient(to right,var(--orange) ${pct}%,var(--border2) ${pct}%)`;
+  nsCheckDissociation();
+  nsSave();
+}
+function nsSetCog(val) {
+  nsState.cognitiveFatigue = val;
+  document.getElementById('ns-cf-val').textContent = val;
+  const pct = (val - 1) / 9 * 100;
+  document.getElementById('ns-cf-slider').style.background =
+    `linear-gradient(to right,var(--blue) ${pct}%,var(--border2) ${pct}%)`;
+  nsCheckDissociation();
+  nsSave();
+}
+function nsCheckDissociation() {
+  const pf = nsState.physicalFatigue || 0;
+  const cf = nsState.cognitiveFatigue || 0;
+  document.getElementById('ns-diss-note').style.display = (cf >= 6 && cf - pf >= 3) ? 'block' : 'none';
+}
+function nsSetVest(val, btnEl) {
+  nsState.vestibularSymptoms = val;
+  document.querySelectorAll('#ns-vest-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  btnEl.classList.add(val === 'significant' ? 'active-danger' : val === 'moderate' ? 'active-warn' : val === 'mild' ? 'active-warn' : 'active');
+  nsSave();
+}
+function nsSetVis(val, btnEl) {
+  nsState.visualStrain = val;
+  document.querySelectorAll('#ns-vis-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  btnEl.classList.add(val === 'significant' ? 'active-danger' : val === 'mild' ? 'active-warn' : 'active');
+  nsSave();
+}
+function nsSetBal(val, btnEl) {
+  nsState.balanceConf = val;
+  document.querySelectorAll('#ns-bal-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  btnEl.classList.add(val === 'poor' ? 'active-danger' : val === 'reduced' ? 'active-warn' : 'active');
+  nsSave();
+}
+function nsSetWeather(val, btnEl) {
+  nsState.weatherSensitive = val;
+  document.querySelectorAll('#ns-weather-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  btnEl.classList.add(val ? 'active-warn' : 'active');
+  nsSave();
+}
+function nsSave() {
+  localStorage.setItem('fs3-ns-today', JSON.stringify(nsState));
+}
+
+// ── Readiness Score Calculation ───────────────────────────────────────────
+function nsComputeScore() {
+  if (!nsState.checkinComplete) return null;
+  const r = nsState;
+  let score = 100;
+  // Sleep component (max -34)
+  const sqP = { 1: -12, 2: -8, 3: -4, 4: -1, 5: 0 };
+  score += (sqP[r.sleepQuality] || 0);
+  const sdP = { '<5': -12, '5-6': -7, '6-7': -3, '7-8': 0, '8+': 0 };
+  score += (sdP[r.sleepDuration] || 0);
+  if (r.wokeUpTired) score -= 8;
+  if (r.sleepAid === 2) score -= 7;
+  // Vestibular component (max -36)
+  const vestP = { none: 0, mild: -8, moderate: -18, significant: -28 };
+  score += (vestP[r.vestibularSymptoms] || 0);
+  const visP = { none: 0, mild: -3, significant: -8 };
+  score += (visP[r.visualStrain] || 0);
+  if (r.weatherSensitive) score -= 5;
+  if (r.balanceConf === 'reduced') score -= 3;
+  if (r.balanceConf === 'poor') score -= 10;
+  // Fatigue component (max -35)
+  const pf = r.physicalFatigue || 0;
+  if (pf >= 9) score -= 18; else if (pf >= 7) score -= 12; else if (pf >= 5) score -= 5;
+  const cf = r.cognitiveFatigue || 0;
+  if (cf >= 9) score -= 22; else if (cf >= 7) score -= 15; else if (cf >= 5) score -= 7;
+  if (cf - pf >= 3) score -= 5; // dissociation penalty
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function nsGetTier(score) {
+  if (score === null) return null;
+  if (score >= 85) return { label: 'Ready', color: 'var(--accent)',     bg: 'rgba(0,229,160,.08)',   border: 'rgba(0,229,160,.25)',   emoji: '🟢' };
+  if (score >= 70) return { label: 'Good — Stay Aware', color: '#8edc6e', bg: 'rgba(142,220,110,.08)', border: 'rgba(142,220,110,.2)',  emoji: '🟡' };
+  if (score >= 55) return { label: 'Modified Day', color: 'var(--yellow)', bg: 'var(--yellow-dim)',    border: 'rgba(255,212,96,.3)',   emoji: '🟡' };
+  if (score >= 40) return { label: 'Recovery Priority', color: 'var(--orange)', bg: 'rgba(255,107,53,.08)', border: 'rgba(255,107,53,.25)', emoji: '🟠' };
+  return { label: 'Rest Is The Work', color: 'var(--danger)', bg: 'rgba(255,69,96,.08)', border: 'rgba(255,69,96,.25)', emoji: '🔴' };
+}
+
+function nsGetMode(score) {
+  if (score === null) return 'standard';
+  if (score >= 85) return 'performance';
+  if (score >= 70) return 'standard';
+  if (score >= 55) return 'supportive';
+  if (score >= 40) return 'recovery-priority';
+  return 'recovery-only';
+}
+
+function nsClassifyFatigue() {
+  const r = nsState;
+  if (!r.checkinComplete) return [];
+  const types = [];
+  const cf = r.cognitiveFatigue || 0;
+  const pf = r.physicalFatigue || 0;
+  const vestActive = r.vestibularSymptoms && r.vestibularSymptoms !== 'none';
+  if (vestActive || (cf >= 6 && cf - pf >= 3) || (r.visualStrain && r.visualStrain !== 'none') || r.weatherSensitive || r.balanceConf === 'poor') {
+    types.push({ type: 'neurological', label: 'Neurological', icon: '🧠', color: 'var(--blue)', bg: 'var(--blue-dim)' });
+  }
+  if (r.sleepAid === 2 && (r.wokeUpTired || cf >= 5)) {
+    types.push({ type: 'sedation', label: 'Sleep Aid Sedation', icon: '💊', color: 'var(--purple)', bg: 'rgba(180,127,255,.12)' });
+  }
+  return types;
+}
+
+function nsRenderReadinessBar(score) {
+  const wrap = document.getElementById('ns-readiness-wrap');
+  if (!wrap) return;
+  if (score === null) { wrap.style.display = 'none'; return; }
+  const tier = nsGetTier(score);
+  const fatigueTypes = nsClassifyFatigue();
+  const mode = nsGetMode(score);
+  const vest = nsState.vestibularSymptoms;
+  const narrative = nsReadinessNarrative(score, tier, mode, vest);
+  const badges = fatigueTypes.map(t =>
+    `<span class="ns-ft-badge" style="background:${t.bg};color:${t.color};border:1px solid ${t.color}">${t.icon} ${t.label}</span>`
+  ).join('');
+  wrap.style.display = 'block';
+  wrap.innerHTML = `
+    <div class="readiness-bar" style="background:${tier.bg};border-color:${tier.border}">
+      <div style="text-align:center;flex-shrink:0">
+        <div class="readiness-score" style="color:${tier.color}">${score}</div>
+        <div style="font-size:8px;color:${tier.color};opacity:.65;text-transform:uppercase;letter-spacing:.8px">/100</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="readiness-tier" style="color:${tier.color}">${tier.emoji} ${tier.label}</div>
+        <div class="readiness-narrative">${narrative}</div>
+        ${badges ? `<div class="ns-ft-badges">${badges}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function nsReadinessNarrative(score, tier, mode, vest) {
+  const r = nsState;
+  if (score >= 85) return 'No significant flags — full intensity is appropriate today.';
+  const factors = [];
+  if (vest === 'significant') factors.push('vestibular flare day');
+  else if (vest === 'moderate') factors.push('moderate vestibular symptoms');
+  else if (vest === 'mild') factors.push('mild vestibular activity');
+  if (r.sleepAid === 2) factors.push('double sleep aid — sedation clears mid-afternoon');
+  if (r.wokeUpTired && !['<5','5-6'].includes(r.sleepDuration)) factors.push('woke unrefreshed (neurological signature)');
+  const cf = r.cognitiveFatigue || 0, pf = r.physicalFatigue || 0;
+  if (cf - pf >= 3) factors.push('cognitive >> physical fatigue');
+  if (r.weatherSensitive) factors.push('weather sensitivity flagged');
+  if (!factors.length) return 'Minor fatigue signals — stay aware but proceed as planned.';
+  if (score >= 70) return `Good baseline. Watch: ${factors[0]}.`;
+  if (score >= 55) return `Modified day. Key factors: ${factors.slice(0,2).join(', ')}.`;
+  if (score >= 40) return `Recovery priority. Signals: ${factors.slice(0,2).join(', ')}. Coaching adjusted.`;
+  return `Your nervous system is asking for rest. ${factors[0]}. Rest is the intervention today, not a setback.`;
+}
+
+async function saveNSCheckin() {
+  const r = nsState;
+  const missing = [];
+  if (!r.sleepDuration)         missing.push('sleep duration');
+  if (r.sleepQuality === null)  missing.push('sleep quality');
+  if (r.sleepAid === null)      missing.push('sleep aid');
+  if (r.wokeUpTired === null)   missing.push('woke-up feeling');
+  if (!r.physicalFatigue)       missing.push('physical fatigue');
+  if (!r.cognitiveFatigue)      missing.push('cognitive fatigue');
+  if (!r.vestibularSymptoms)    missing.push('vestibular symptoms');
+  if (missing.length) { toast('Please complete: ' + missing.slice(0,2).join(', ') + (missing.length > 2 ? '…' : ''), true); return; }
+
+  nsState.checkinComplete = true;
+  nsSave();
+
+  const score = nsComputeScore();
+  nsReadinessScore = score;
+
+  // Collapse check-in and show badge
+  document.getElementById('ns-checkin-body').style.display = 'none';
+  document.getElementById('ns-chevron').textContent = '▶';
+  const tier = nsGetTier(score);
+  document.getElementById('ns-summary-badge').style.display = 'inline';
+  document.getElementById('ns-summary-badge').innerHTML =
+    `<span style="font-size:10px;padding:2px 9px;border-radius:99px;background:${tier.bg};color:${tier.color};border:1px solid ${tier.border};font-weight:700">${tier.emoji} ${score} — ${tier.label}</span>`;
+
+  nsRenderReadinessBar(score);
+  renderInsights(); // re-render with new coaching mode
+  nsCheckAfternoon();
+  markCoachBadge();
+
+  // Sync to Worker
+  if (WORKER_URL && FS_API_KEY) {
+    const fatigueTypes = nsClassifyFatigue().map(t => t.type).join(',');
+    wFetch('/api/nervous-system', {
+      method: 'POST',
+      body: JSON.stringify({
+        date: viewDate,
+        sleep_duration:       nsState.sleepDuration,
+        sleep_quality:        nsState.sleepQuality,
+        sleep_aid:            nsState.sleepAid,
+        woke_tired:           nsState.wokeUpTired,
+        physical_fatigue:     nsState.physicalFatigue,
+        cognitive_fatigue:    nsState.cognitiveFatigue,
+        vestibular_symptoms:  nsState.vestibularSymptoms,
+        visual_strain:        nsState.visualStrain,
+        balance_confidence:   nsState.balanceConf,
+        weather_sensitive:    nsState.weatherSensitive,
+        readiness_score:      score,
+        fatigue_types:        fatigueTypes,
+        checkin_complete:     true,
+      }),
+    }).catch(() => {});
+  }
+  toast('✅ Check-in saved');
+}
+
+async function loadNSCheckin() {
+  // Load today's check-in from worker
+  if (!WORKER_URL || !FS_API_KEY || !isToday(viewDate)) return;
+  try {
+    const res = await wFetch(`/api/nervous-system?date=${viewDate}`);
+    if (!res.checkin) return;
+    const c = res.checkin;
+    if (!c.checkin_complete) return;
+    // Map D1 columns back to nsState
+    nsState = {
+      sleepDuration:       c.sleep_duration,
+      sleepQuality:        c.sleep_quality,
+      sleepAid:            c.sleep_aid,
+      wokeUpTired:         !!c.woke_tired,
+      physicalFatigue:     c.physical_fatigue,
+      cognitiveFatigue:    c.cognitive_fatigue,
+      vestibularSymptoms:  c.vestibular_symptoms,
+      visualStrain:        c.visual_strain,
+      balanceConf:         c.balance_confidence,
+      weatherSensitive:    !!c.weather_sensitive,
+      checkinComplete:     true,
+      afternoonOverall:    c.afternoon_overall,
+      napTaken:            c.nap_taken,
+      napFelt:             c.nap_felt,
+      vestibularAfternoon: c.vestibular_afternoon,
+      afternoonComplete:   !!c.afternoon_complete,
+    };
+    nsSave();
+    nsRestoreUI();
+  } catch {}
+}
+
+function nsRestoreUI() {
+  if (!nsState.checkinComplete) return;
+  const score = nsComputeScore();
+  nsReadinessScore = score;
+
+  // Restore sliders
+  if (nsState.physicalFatigue) {
+    const sl = document.getElementById('ns-pf-slider');
+    if (sl) { sl.value = nsState.physicalFatigue; nsSetPhys(nsState.physicalFatigue); }
+  }
+  if (nsState.cognitiveFatigue) {
+    const sl = document.getElementById('ns-cf-slider');
+    if (sl) { sl.value = nsState.cognitiveFatigue; nsSetCog(nsState.cognitiveFatigue); }
+  }
+  if (nsState.sleepAid === 2) document.getElementById('ns-double-note').style.display = 'block';
+
+  // Collapse and show summary badge
+  document.getElementById('ns-checkin-body').style.display = 'none';
+  document.getElementById('ns-chevron').textContent = '▶';
+  const tier = nsGetTier(score);
+  document.getElementById('ns-summary-badge').style.display = 'inline';
+  document.getElementById('ns-summary-badge').innerHTML =
+    `<span style="font-size:10px;padding:2px 9px;border-radius:99px;background:${tier.bg};color:${tier.color};border:1px solid ${tier.border};font-weight:700">${tier.emoji} ${score} — ${tier.label}</span>`;
+
+  nsRenderReadinessBar(score);
+  nsCheckAfternoon();
+}
+
+function toggleNSCheckin() {
+  const body  = document.getElementById('ns-checkin-body');
+  const chev  = document.getElementById('ns-chevron');
+  const open  = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  chev.textContent   = open ? '▶' : '▼';
+}
+
+// ── Afternoon check-in ────────────────────────────────────────────────────
+function nsCheckAfternoon() {
+  const wrap = document.getElementById('ns-afternoon-wrap');
+  if (!wrap) return;
+  const hour = new Date().getHours();
+  if (hour < 12 || !nsState.checkinComplete || !isToday(viewDate)) {
+    wrap.style.display = 'none';
+    return;
+  }
+  if (nsState.afternoonComplete) {
+    wrap.style.display = 'block';
+    wrap.innerHTML = `<div class="afternoon-card"><div class="afternoon-label">🌤 Afternoon Update</div><div style="font-size:11px;color:var(--muted)">✅ Logged${nsState.afternoonOverall ? ' — feeling ' + nsState.afternoonOverall + ' vs morning' : ''}${nsState.napTaken && nsState.napTaken !== 'false' ? ' · napped: ' + nsState.napTaken : ''}</div></div>`;
+    return;
+  }
+  wrap.style.display = 'block';
+  wrap.innerHTML = `
+    <div class="afternoon-card">
+      <div class="afternoon-label">🌤 Afternoon Update</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:5px">Overall vs morning?</div>
+          <div class="sig-row" id="ns-pm-overall-btns">
+            <button class="sig-btn" onclick="nsSetPmOverall('better',this)">Better</button>
+            <button class="sig-btn" onclick="nsSetPmOverall('same',this)">Same</button>
+            <button class="sig-btn" onclick="nsSetPmOverall('worse',this)">Worse</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:5px">Vestibular vs morning?</div>
+          <div class="sig-row" id="ns-pm-vest-btns">
+            <button class="sig-btn" onclick="nsSetPmVest('better',this)">Better</button>
+            <button class="sig-btn" onclick="nsSetPmVest('same',this)">Same</button>
+            <button class="sig-btn" onclick="nsSetPmVest('worse',this)">Worse</button>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:5px">Did you nap?</div>
+      <div class="sig-row" id="ns-nap-btns">
+        <button class="sig-btn" onclick="nsSetNap(false,this)">No nap</button>
+        <button class="sig-btn" onclick="nsSetNap('short',this)">&lt;30 min</button>
+        <button class="sig-btn" onclick="nsSetNap('medium',this)">30–90 min</button>
+        <button class="sig-btn" onclick="nsSetNap('long',this)">90+ min</button>
+      </div>
+      <div id="ns-nap-quality" style="display:none;margin-top:8px">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:5px">How did you feel after?</div>
+        <div class="sig-row" id="ns-napfelt-btns">
+          <button class="sig-btn" onclick="nsSetNapFelt('better',this)">Refreshed</button>
+          <button class="sig-btn" onclick="nsSetNapFelt('same',this)">Neutral</button>
+          <button class="sig-btn" onclick="nsSetNapFelt('groggy',this)">Groggy</button>
+        </div>
+        <div id="ns-groggy-note" style="display:none;font-size:11px;color:var(--orange);padding:6px 9px;background:rgba(255,107,53,.07);border-radius:7px;margin-top:6px;line-height:1.5">Post-nap grogginess signals sleep inertia from deep sleep stages — common with neurological or recovery debt fatigue. If this is a pattern on double-dose nights, medication may still be active.</div>
+      </div>
+      <button class="btn btn-g btn-sm" style="width:100%;margin-top:10px" onclick="nsAfternoonSave()">Save Afternoon Update</button>
+    </div>`;
+}
+
+function nsSetPmOverall(val, btn) {
+  nsState.afternoonOverall = val;
+  nsSave();
+  document.querySelectorAll('#ns-pm-overall-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  btn.classList.add(val === 'worse' ? 'active-danger' : val === 'better' ? 'active' : 'active-warn');
+}
+function nsSetPmVest(val, btn) {
+  nsState.vestibularAfternoon = val;
+  nsSave();
+  document.querySelectorAll('#ns-pm-vest-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  btn.classList.add(val === 'worse' ? 'active-danger' : val === 'better' ? 'active' : 'active-warn');
+}
+function nsSetNap(val, btn) {
+  nsState.napTaken = val;
+  nsSave();
+  document.querySelectorAll('#ns-nap-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  btn.classList.add(val === 'long' ? 'active-purple' : val === 'medium' ? 'active-warn' : val === 'short' ? 'active' : 'active');
+  const qw = document.getElementById('ns-nap-quality');
+  if (qw) qw.style.display = val && val !== false ? 'block' : 'none';
+}
+function nsSetNapFelt(val, btn) {
+  nsState.napFelt = val;
+  nsSave();
+  document.querySelectorAll('#ns-napfelt-btns .sig-btn').forEach(b => b.className = 'sig-btn');
+  btn.classList.add(val === 'groggy' ? 'active-danger' : val === 'better' ? 'active' : 'active-warn');
+  const gn = document.getElementById('ns-groggy-note');
+  if (gn) gn.style.display = val === 'groggy' ? 'block' : 'none';
+}
+
+async function nsAfternoonSave() {
+  nsState.afternoonComplete = true;
+  nsSave();
+  if (WORKER_URL && FS_API_KEY) {
+    wFetch('/api/nervous-system', {
+      method: 'POST',
+      body: JSON.stringify({
+        date: viewDate,
+        afternoon_overall:    nsState.afternoonOverall,
+        nap_taken:            String(nsState.napTaken),
+        nap_felt:             nsState.napFelt,
+        vestibular_afternoon: nsState.vestibularAfternoon,
+        afternoon_complete:   true,
+      }),
+    }).catch(() => {});
+  }
+  nsCheckAfternoon();
+  toast('✅ Afternoon update saved');
+}
+
+// ── Barometric pressure (silent fetch via Open-Meteo) ─────────────────────
+async function fetchNSBarometricPressure() {
+  const today = todayISO();
+  if (localStorage.getItem('fs3-pressure-date') === today) {
+    const change = parseFloat(localStorage.getItem('fs3-pressure-change') || '0');
+    nsUpdatePressureUI(change);
+    return;
+  }
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      const { latitude, longitude } = pos.coords;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude.toFixed(4)}&longitude=${longitude.toFixed(4)}&current=surface_pressure&timezone=auto`;
+      const data = await (await fetch(url)).json();
+      const pressure = data.current?.surface_pressure;
+      if (!pressure) return;
+      const prev = parseFloat(localStorage.getItem('fs3-pressure-current') || '0');
+      const change = prev > 0 ? Math.abs(pressure - prev) : 0;
+      localStorage.setItem('fs3-pressure-date', today);
+      localStorage.setItem('fs3-pressure-current', String(pressure));
+      localStorage.setItem('fs3-pressure-change', String(change));
+      nsBarometricPressure = { pressure, change };
+      nsUpdatePressureUI(change);
+    } catch {}
+  }, () => {});
+}
+
+function nsUpdatePressureUI(change) {
+  const badge   = document.getElementById('ns-pressure-badge');
+  const inline  = document.getElementById('ns-pressure-inline');
+  if (!badge) return;
+  if (change >= 3) {
+    badge.style.display = 'inline';
+    badge.textContent   = `⚠ ${change.toFixed(1)} hPa shift`;
+    badge.style.background = 'var(--yellow-dim)';
+    badge.style.color      = 'var(--yellow)';
+    badge.style.borderColor = 'rgba(255,212,96,.3)';
+    if (inline) inline.textContent = `(auto: ${change.toFixed(1)} hPa change today)`;
+  } else {
+    badge.style.display = 'none';
+  }
 }
 
 function fmtDateDisplay(dateStr) {
@@ -2959,6 +3599,45 @@ function buildInsights() {
   const gw   = tg.water;
   const now  = new Date();
   const hour = now.getHours();
+
+  // ── Nervous system override ───────────────────────────────────────────────
+  const nsMode  = nsGetMode(nsReadinessScore);
+  const vestSym = nsState.vestibularSymptoms;
+
+  // Recovery-only mode: suppress all performance coaching
+  if (nsMode === 'recovery-only') {
+    ins.push({
+      type: 'warn', icon: '🔴', color: 'var(--orange)',
+      title: 'Rest day — recovery is the intervention',
+      body: 'Your readiness score is in the red tier today. The highest-value thing you can do right now is rest. Muscle is built during recovery, not training. Hit protein and water targets gently.',
+    });
+    if (t.protein > 0 && gp) {
+      const left = Math.max(0, gp - t.protein);
+      if (left > 20) ins.push({ type: '', icon: '🥣', color: 'var(--blue)', title: `${Math.round(left)}g protein left`, body: 'Soft, easy options only — Greek yogurt, cottage cheese, a shake. No pressure on timing.' });
+    }
+    return ins.slice(0, 2);
+  }
+
+  // Vestibular training intensity modifier (shown on training days with symptoms)
+  if (vestSym === 'significant' || vestSym === 'moderate') {
+    ins.push({
+      type: vestSym === 'significant' ? 'urgent' : 'warn',
+      icon: '🌀', color: vestSym === 'significant' ? 'var(--orange)' : 'var(--yellow)',
+      title: vestSym === 'significant' ? 'Vestibular flare — reduce intensity' : 'Vestibular symptoms present — modify training',
+      body: vestSym === 'significant'
+        ? 'Flare day. High-intensity training amplifies sensory conflict and can extend recovery debt by 24–48 hrs. Walking or VRT only today. Nutrition goals stay the same.'
+        : 'Moderate symptoms. Lower weights, avoid balance-challenging exercises. Your nervous system is already compensating hard — don\'t add to the load.',
+    });
+  }
+
+  // Sleep aid sedation (double dose)
+  if (nsState.sleepAid === 2 && hour < 14) {
+    ins.push({
+      type: 'blue', icon: '💊', color: 'var(--purple)',
+      title: 'Double sleep aid — fog clears mid-afternoon',
+      body: 'Diphenhydramine\'s ~10hr half-life means cognitive sedation is still pharmacologically active. Schedule anything requiring focus or coordination after 2pm.',
+    });
+  }
 
   // ── Optimistic training day coaching ──────────────────────────────────────
   const todayDow2      = now.getDay();
@@ -5004,6 +5683,23 @@ function buildCoachPayload(question = null, mode = 'checkin') {
       areas: r.areas,
       feel: r.feel,
     })),
+    // Nervous system check-in context (governs coaching tone and intensity)
+    nervousSystem: nsState.checkinComplete ? {
+      readiness_score:     nsComputeScore(),
+      sleep_duration:      nsState.sleepDuration,
+      sleep_quality:       nsState.sleepQuality,
+      sleep_aid:           nsState.sleepAid,
+      woke_tired:          nsState.wokeUpTired,
+      physical_fatigue:    nsState.physicalFatigue,
+      cognitive_fatigue:   nsState.cognitiveFatigue,
+      vestibular_symptoms: nsState.vestibularSymptoms,
+      visual_strain:       nsState.visualStrain,
+      balance_confidence:  nsState.balanceConf,
+      weather_sensitive:   nsState.weatherSensitive,
+      afternoon_overall:   nsState.afternoonOverall,
+      nap_taken:           nsState.napTaken,
+      nap_felt:            nsState.napFelt,
+    } : null,
   };
 }
 
@@ -5960,6 +6656,7 @@ async function init() {
         loadWeeklyAvg();
         loadCreatineStreak();
         loadRecentRecovery();
+        loadNSCheckin();   // load nervous system check-in from D1
         // Auto check-in on first open of a new day (once per day, only if coach thread is empty)
         const lastAutoCheckin = localStorage.getItem('fs3-auto-checkin-date');
         if (lastAutoCheckin !== todayISO() && !coachThread.length) {
@@ -5976,6 +6673,19 @@ async function init() {
   // Hero clock
   setInterval(renderHeroTime, 60000);
   setInterval(renderInsights, 300000); // refresh insights every 5min
+  // Nervous system — restore today's check-in from localStorage and check afternoon
+  nsRestoreUI();
+  nsCheckAfternoon();
+  setInterval(nsCheckAfternoon, 60000); // re-check afternoon availability every minute
+  fetchNSBarometricPressure(); // silent background fetch
+  // Reset NS state on new day
+  const nsStoredDate = localStorage.getItem('fs3-ns-date');
+  if (nsStoredDate && nsStoredDate !== todayISO()) {
+    nsState = { sleepDuration:null,sleepQuality:null,sleepAid:null,wokeUpTired:null,physicalFatigue:null,cognitiveFatigue:null,vestibularSymptoms:null,visualStrain:null,balanceConf:null,weatherSensitive:null,checkinComplete:false,afternoonOverall:null,napTaken:null,napFelt:null,vestibularAfternoon:null,afternoonComplete:false };
+    localStorage.removeItem('fs3-ns-today');
+    nsReadinessScore = null;
+  }
+  localStorage.setItem('fs3-ns-date', todayISO());
 
   // ── Cross-device sync ─────────────────────────────────────────────────────
   // Pull from KV whenever remote is newer than local.
