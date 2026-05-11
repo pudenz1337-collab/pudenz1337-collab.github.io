@@ -815,6 +815,10 @@ function showPanel(id, btn) {
   }
   if (btn && btn.classList) btn.classList.add('active');
 
+  // Reset scroll so new panel content is always visible from the top
+  const content = document.getElementById('app-content');
+  if (content) content.scrollTop = 0;
+
   const fab = document.getElementById('fab');
   const fabFlare = document.getElementById('fab-flare');
   if (id === 'today' || id === 'log') {
