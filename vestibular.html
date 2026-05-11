@@ -43,10 +43,19 @@ body{
 .conn-dot.err{background:var(--danger)}
 
 /* ── LAYOUT ── */
-.app-content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;padding-bottom:calc(var(--nav-h)+20px)}
-.panel{display:none;padding:13px 13px 20px;min-height:100%}
+.app-content{
+  flex:1;overflow-y:auto;overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-y:contain;
+}
+.panel{display:none;padding:13px 13px calc(var(--nav-h) + 28px)}
 .panel.active{display:block}
-#panel-coach.active{display:flex;flex-direction:column;height:calc(100dvh - var(--header-h) - var(--nav-h));padding-bottom:8px}
+#panel-coach.active{
+  display:flex;flex-direction:column;
+  height:calc(100dvh - var(--header-h) - var(--nav-h));
+  padding:13px 13px 8px;
+  overflow:hidden;
+}
 
 /* ── BOTTOM NAV ── */
 .bottom-nav{
