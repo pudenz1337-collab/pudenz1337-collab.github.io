@@ -46,6 +46,7 @@ body{
 .app-content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;padding-bottom:calc(var(--nav-h)+20px)}
 .panel{display:none;padding:13px 13px 20px;min-height:100%}
 .panel.active{display:block}
+#panel-coach.active{display:flex;flex-direction:column;height:calc(100dvh - var(--header-h) - var(--nav-h));padding-bottom:8px}
 
 /* ── BOTTOM NAV ── */
 .bottom-nav{
@@ -448,7 +449,7 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
   </div>
 
   <!-- ═══════ COACH ═══════ -->
-  <div id="panel-coach" class="panel" style="display:flex;flex-direction:column;height:calc(100vh - var(--header-h) - var(--nav-h))">
+  <div id="panel-coach" class="panel panel-coach">
     <div style="font-size:11px;color:var(--muted);margin-bottom:10px" id="coach-status">Vestibular coach — asks questions, finds patterns, never judges</div>
     <div id="coach-thread" style="flex:1;overflow-y:auto;padding-bottom:8px">
       <div class="coach-bubble">
@@ -802,10 +803,16 @@ function setConn(state) {
 // NAVIGATION
 // ══════════════════════════════════════════════════
 function showPanel(id, btn) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => {
+    p.classList.remove('active');
+    p.style.display = 'none';
+  });
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const panel = document.getElementById('panel-' + id);
-  if (panel) panel.classList.add('active');
+  if (panel) {
+    panel.classList.add('active');
+    panel.style.display = id === 'coach' ? 'flex' : 'block';
+  }
   if (btn && btn.classList) btn.classList.add('active');
 
   const fab = document.getElementById('fab');
