@@ -1,0 +1,1735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Vestibular — Hanna</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#080b10; --surface:#0d1119; --card:#121821; --card2:#171f2c;
+  --border:#1a2436; --border2:#1f2d42;
+  --teal:#00c9b8; --teal-dim:rgba(0,201,184,.1);
+  --blue:#4da8ff; --blue-dim:rgba(77,168,255,.1);
+  --yellow:#ffd460; --yellow-dim:rgba(255,212,96,.09);
+  --orange:#ff6b35; --purple:#b47fff;
+  --green:#5ddb8b; --green-dim:rgba(93,219,139,.1);
+  --text:#cfe0f4; --muted:#46576e; --muted2:#2c3a4d;
+  --danger:#ff4560;
+  --radius:13px; --radius-sm:8px;
+  --nav-h:62px; --header-h:54px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overscroll-behavior:none}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'DM Sans',sans-serif;font-size:14px;
+  display:flex;flex-direction:column;
+  max-width:430px;margin:0 auto;
+  height:100dvh;height:100vh;overflow:hidden;
+}
+
+/* ── HEADER ── */
+.app-header{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:0 16px;height:var(--header-h);
+  display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;z-index:100;
+}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:3px;color:var(--teal)}
+.logo span{color:var(--text)}
+.conn-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:all .3s;flex-shrink:0}
+.conn-dot.ok{background:var(--teal);box-shadow:0 0 6px rgba(0,201,184,.5)}
+.conn-dot.err{background:var(--danger)}
+
+/* ── LAYOUT ── */
+.app-content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain;padding-bottom:calc(var(--nav-h)+20px)}
+.panel{display:none;padding:13px 13px 20px;min-height:100%}
+.panel.active{display:block}
+
+/* ── BOTTOM NAV ── */
+.bottom-nav{
+  position:fixed;bottom:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:430px;
+  background:var(--surface);border-top:1px solid var(--border);
+  display:flex;height:var(--nav-h);z-index:100;
+}
+.nav-btn{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  cursor:pointer;color:var(--muted);border:none;background:none;
+  font-family:'DM Sans',sans-serif;padding:6px 0;transition:color .2s;
+}
+.nav-btn.active{color:var(--teal)}
+.nav-btn svg{width:20px;height:20px}
+.nav-btn span{font-size:10px;font-weight:500;letter-spacing:.3px}
+.nav-badge{
+  position:absolute;top:8px;right:50%;transform:translateX(10px);
+  width:7px;height:7px;border-radius:50%;
+  background:var(--teal);box-shadow:0 0 5px rgba(0,201,184,.5);display:none;
+}
+.nav-badge.show{display:block}
+
+/* ── CARDS ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:13px;margin-bottom:9px}
+.card-title{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin-bottom:11px}
+.card-title-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px}
+.card-title-row .card-title{margin-bottom:0}
+
+/* ── TODAY — CHECKIN SUMMARY ── */
+.checkin-summary{
+  background:linear-gradient(145deg,rgba(0,201,184,.06) 0%,rgba(77,168,255,.04) 100%);
+  border:1px solid rgba(0,201,184,.15);
+  border-radius:var(--radius);padding:13px;margin-bottom:9px;
+  position:relative;overflow:hidden;
+}
+.checkin-summary::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--teal),var(--blue));opacity:.5;
+}
+.readiness-hero{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.readiness-num{font-family:'Bebas Neue',sans-serif;font-size:48px;line-height:1;flex-shrink:0}
+.readiness-meta{flex:1}
+.readiness-tier{font-size:12px;font-weight:700;letter-spacing:.3px;margin-bottom:3px}
+.readiness-sub{font-size:11px;color:var(--muted);line-height:1.5}
+.checkin-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.ci-tile{background:var(--card2);border-radius:var(--radius-sm);padding:9px;text-align:center}
+.ci-tile-val{font-family:'Bebas Neue',sans-serif;font-size:20px;line-height:1}
+.ci-tile-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+
+/* ── WEATHER STRIP ── */
+.wx-strip{
+  display:flex;gap:6px;margin-bottom:9px;overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+.wx-strip::-webkit-scrollbar{display:none}
+.wx-card{
+  flex-shrink:0;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:9px 11px;min-width:110px;
+}
+.wx-window{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:5px}
+.wx-temp{font-family:'Bebas Neue',sans-serif;font-size:26px;line-height:1;color:var(--text)}
+.wx-detail{font-size:10px;color:var(--muted);margin-top:3px;line-height:1.5}
+.wx-badge{
+  display:inline-block;font-size:9px;padding:2px 6px;border-radius:99px;
+  font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-top:3px;
+}
+.wx-pressure-up{background:rgba(255,212,96,.12);color:var(--yellow)}
+.wx-pressure-down{background:rgba(255,107,53,.12);color:var(--orange)}
+.wx-pressure-stable{background:rgba(0,201,184,.08);color:var(--teal)}
+
+/* ── EVENT LOG ── */
+.event-entry{
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:11px 13px;margin-bottom:6px;
+  position:relative;
+}
+.event-entry.flare{border-color:rgba(255,107,53,.3);background:rgba(255,107,53,.04)}
+.event-entry.helper{border-color:rgba(93,219,139,.2);background:rgba(93,219,139,.04)}
+.event-time{font-family:'DM Mono',monospace;font-size:10px;color:var(--teal);margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.event-type-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:99px;text-transform:uppercase;letter-spacing:.3px}
+.et-note{background:var(--card);color:var(--muted)}
+.et-flare{background:rgba(255,107,53,.15);color:var(--orange)}
+.et-recovery{background:rgba(93,219,139,.12);color:var(--green)}
+.et-trigger{background:rgba(255,212,96,.12);color:var(--yellow)}
+.et-vrt{background:var(--teal-dim);color:var(--teal)}
+.event-note{font-size:12px;line-height:1.55;color:var(--text);margin-bottom:4px}
+.event-severities{display:flex;gap:8px;flex-wrap:wrap}
+.sev-chip{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);background:var(--card);padding:2px 7px;border-radius:99px}
+.event-remove{position:absolute;top:10px;right:10px;background:none;border:none;color:var(--muted2);cursor:pointer;font-size:15px;line-height:1;padding:0}
+.event-remove:hover{color:var(--danger)}
+
+/* ── LOG SHEET ── */
+.sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:flex-end;backdrop-filter:blur(3px)}
+.sheet-overlay.open{display:flex}
+.sheet{
+  background:var(--surface);border-radius:20px 20px 0 0;
+  width:100%;max-width:430px;margin:0 auto;
+  max-height:92vh;display:flex;flex-direction:column;
+  animation:slideUp .22s cubic-bezier(.32,.72,0,1);
+  border:1px solid var(--border);border-bottom:none;
+}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.sheet-handle{width:34px;height:4px;background:var(--border2);border-radius:2px;margin:10px auto 2px;flex-shrink:0}
+.sheet-header{padding:4px 16px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);flex-shrink:0}
+.sheet-title{font-weight:700;font-size:15px}
+.sheet-close{background:var(--card2);border:1px solid var(--border);color:var(--muted);cursor:pointer;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px}
+.sheet-body{flex:1;overflow-y:auto;padding:14px 14px 28px}
+
+/* ── FORM ELEMENTS ── */
+.field-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px;font-weight:600}
+.field-input{
+  width:100%;background:var(--card2);border:1px solid var(--border2);
+  border-radius:var(--radius-sm);color:var(--text);padding:9px 12px;
+  font-family:'DM Sans',sans-serif;font-size:13px;outline:none;
+}
+.field-input:focus{border-color:var(--teal)}
+textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
+.type-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.type-btn{
+  padding:6px 12px;border-radius:7px;border:1px solid var(--border);
+  background:var(--card2);color:var(--muted);cursor:pointer;
+  font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;
+  transition:all .15s;
+}
+.type-btn:active{transform:scale(.95)}
+.type-btn.active{border-color:var(--teal);background:var(--teal-dim);color:var(--teal)}
+.type-btn.active-orange{border-color:var(--orange);background:rgba(255,107,53,.1);color:var(--orange)}
+.type-btn.active-green{border-color:var(--green);background:var(--green-dim);color:var(--green)}
+.type-btn.active-yellow{border-color:var(--yellow);background:var(--yellow-dim);color:var(--yellow)}
+
+/* ── SEVERITY SLIDERS ── */
+.sev-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}
+.sev-item{text-align:center}
+.sev-label{font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:5px;font-weight:600}
+.sev-val{font-family:'Bebas Neue',sans-serif;font-size:24px;line-height:1;margin-bottom:4px}
+.sev-slider{-webkit-appearance:none;width:100%;height:5px;border-radius:99px;outline:none;cursor:pointer;background:var(--border2)}
+.sev-slider.osc::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--orange);border:2px solid var(--bg);cursor:pointer}
+.sev-slider.bal::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--blue);border:2px solid var(--bg);cursor:pointer}
+.sev-slider.cog::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--purple);border:2px solid var(--bg);cursor:pointer}
+
+/* ── BUTTONS ── */
+.btn{padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;font-size:13px;transition:all .2s}
+.btn-p{background:var(--teal);color:#000}
+.btn-p:hover{background:#00e8d4}
+.btn-g{background:var(--card2);border:1px solid var(--border);color:var(--text)}
+.btn-g:hover{border-color:var(--teal);color:var(--teal)}
+.btn-sm{padding:6px 13px;font-size:12px}
+.btn-full{width:100%}
+.btn-row{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── FAB ── */
+.fab{
+  position:fixed;bottom:calc(var(--nav-h) + 14px);right:16px;
+  background:var(--teal);color:#000;
+  width:52px;height:52px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:26px;cursor:pointer;border:none;
+  box-shadow:0 4px 18px rgba(0,201,184,.4);z-index:90;
+  transition:transform .15s;touch-action:none;
+}
+.fab:active{transform:scale(.92)}
+.fab-flare{
+  position:fixed;bottom:calc(var(--nav-h) + 74px);right:16px;
+  background:var(--orange);color:#fff;
+  padding:7px 14px;border-radius:22px;border:none;
+  font-size:12px;font-weight:600;cursor:pointer;z-index:90;
+  box-shadow:0 3px 12px rgba(255,107,53,.35);
+  font-family:'DM Sans',sans-serif;transition:all .2s;
+  display:none;
+}
+
+/* ── PATTERNS / INSIGHTS ── */
+.insight-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:13px;margin-bottom:8px;
+}
+.insight-header{display:flex;align-items:flex-start;gap:10px;cursor:pointer}
+.insight-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.insight-content{flex:1;min-width:0}
+.insight-type{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--teal);margin-bottom:3px}
+.insight-obs{font-size:12px;line-height:1.55;color:var(--text);margin-bottom:6px}
+.insight-question{font-size:12px;color:var(--blue);font-style:italic;line-height:1.5}
+.insight-conf{font-size:9px;padding:1px 6px;border-radius:10px;font-weight:700;margin-top:4px;display:inline-block}
+.conf-high{background:var(--teal-dim);color:var(--teal)}
+.conf-med{background:var(--yellow-dim);color:var(--yellow)}
+.conf-low{background:rgba(255,107,53,.1);color:var(--orange)}
+.insight-response{margin-top:10px;display:none}
+.validated-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--green);margin-top:4px}
+
+/* ── WEARABLE ENTRY ── */
+.wearable-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.w-field label{font-size:10px;color:var(--muted);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.w-field input{width:100%;background:var(--card2);border:1px solid var(--border2);border-radius:7px;color:var(--text);padding:8px 10px;font-family:'DM Mono',monospace;font-size:13px;outline:none;text-align:center}
+.w-field input:focus{border-color:var(--teal)}
+
+/* ── BIOMARKER ENTRY ── */
+.bm-results-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px}
+.bm-field label{font-size:10px;color:var(--muted);display:block;margin-bottom:3px}
+.bm-field input{width:100%;background:var(--card2);border:1px solid var(--border2);border-radius:7px;color:var(--text);padding:7px 9px;font-family:'DM Mono',monospace;font-size:12px;outline:none}
+
+/* ── REVIEW CARD ── */
+.review-card{
+  background:linear-gradient(145deg,rgba(77,168,255,.05),rgba(180,127,255,.04));
+  border:1px solid rgba(77,168,255,.2);border-radius:var(--radius);padding:14px;margin-bottom:9px;
+}
+.review-trajectory{font-size:13px;font-weight:700;margin-bottom:8px}
+.review-item{display:flex;gap:8px;font-size:12px;line-height:1.55;margin-bottom:5px;color:var(--text)}
+.review-item::before{content:'→';color:var(--teal);flex-shrink:0;margin-top:1px}
+
+/* ── VRT LOG ── */
+.vrt-entry{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.vrt-info{flex:1}
+.vrt-date{font-family:'DM Mono',monospace;font-size:10px;color:var(--teal);margin-bottom:2px}
+.vrt-detail{font-size:12px;color:var(--text)}
+.vrt-feel{font-size:10px;color:var(--muted);margin-top:2px}
+
+/* ── STATS ── */
+.stat-row{display:flex;gap:7px;margin-bottom:8px}
+.stat{flex:1;background:var(--card2);border-radius:var(--radius-sm);padding:10px;text-align:center}
+.stat-val{font-family:'Bebas Neue',sans-serif;font-size:22px;line-height:1}
+.stat-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:2px}
+
+/* ── SECTION LABEL ── */
+.sec-label{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin:12px 0 7px}
+
+/* ── COACH ── */
+.coach-bubble{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:13px 13px 13px 3px;padding:12px 14px;
+  font-size:13px;line-height:1.7;margin-bottom:8px;
+}
+.coach-bubble strong{color:var(--teal)}
+.coach-bubble em{color:var(--yellow);font-style:italic}
+.user-bubble{
+  background:var(--teal-dim);border:1px solid rgba(0,201,184,.2);
+  border-radius:13px 13px 3px 13px;
+  padding:9px 13px;font-size:13px;margin-bottom:8px;
+  margin-left:20%;
+}
+.coach-input-bar{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 30%);padding:8px 0 4px}
+.coach-input-row{display:flex;gap:6px}
+.coach-input{
+  flex:1;background:var(--card2);border:1px solid var(--border);
+  border-radius:20px;color:var(--text);
+  padding:9px 15px;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;
+}
+.coach-input:focus{border-color:var(--teal)}
+.coach-send{
+  background:var(--teal);color:#000;border:none;
+  border-radius:50%;width:38px;height:38px;
+  cursor:pointer;font-size:16px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.coach-send:disabled{opacity:.4;cursor:not-allowed}
+.coach-time{font-size:10px;color:var(--muted);margin-bottom:6px}
+
+/* ── MISC ── */
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(0,201,184,.2);border-top-color:var(--teal);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+#toast{position:fixed;bottom:calc(var(--nav-h)+12px);left:50%;transform:translateX(-50%) translateY(6px);background:var(--teal);color:#000;padding:8px 16px;border-radius:20px;font-weight:600;font-size:13px;z-index:999;opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.err{background:var(--danger);color:#fff}
+.empty-state{text-align:center;padding:36px 20px;color:var(--muted)}
+.empty-icon{font-size:36px;margin-bottom:10px}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
+.mono{font-family:'DM Mono',monospace}
+
+/* ── SETTINGS FORM ── */
+.setting-row{margin-bottom:12px}
+.setting-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px;font-weight:600}
+.setting-input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 12px;font-family:'DM Mono',monospace;font-size:12px;outline:none}
+.setting-input:focus{border-color:var(--teal)}
+
+/* ── FLARE DAY BANNER ── */
+.flare-banner{
+  background:rgba(255,107,53,.08);border:1px solid rgba(255,107,53,.25);
+  border-radius:var(--radius);padding:10px 13px;margin-bottom:9px;
+  display:flex;align-items:center;gap:10px;
+}
+.flare-banner-text{flex:1;font-size:12px;line-height:1.5}
+.flare-clear-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0;font-family:'DM Sans',sans-serif}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="app-header">
+  <div class="logo">Vestibular<span>.</span></div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div id="date-display" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)"></div>
+    <div class="conn-dot" id="conn-dot"></div>
+  </div>
+</div>
+
+<div class="app-content" id="app-content">
+
+  <!-- ═══════ TODAY ═══════ -->
+  <div id="panel-today" class="panel active">
+
+    <!-- Flare day banner (shows when flare mode is active) -->
+    <div class="flare-banner" id="flare-banner" style="display:none">
+      <span style="font-size:18px">🌀</span>
+      <div class="flare-banner-text">
+        <strong style="color:var(--orange)">Flare day active</strong> — logging throughout the day. Tap + to add an update.
+      </div>
+      <button class="flare-clear-btn" onclick="clearFlareDay()">clear</button>
+    </div>
+
+    <!-- NS Check-In Summary (pulled from index data) -->
+    <div id="checkin-summary-wrap">
+      <div class="checkin-summary" id="checkin-summary">
+        <div style="text-align:center;padding:16px;color:var(--muted);font-size:13px">
+          <div style="font-size:24px;margin-bottom:6px">🧠</div>
+          Complete your morning check-in in FuelStrong to see today's readiness score here.
+        </div>
+      </div>
+    </div>
+
+    <!-- Weather strip -->
+    <div id="weather-strip-wrap">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:7px">🌤 Weather Today</div>
+      <div class="wx-strip" id="wx-strip">
+        <div class="wx-card" style="min-width:160px;text-align:center;color:var(--muted);font-size:12px">Fetching weather…</div>
+      </div>
+    </div>
+
+    <!-- Today's events -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 7px">
+      <div class="sec-label" style="margin:0">Today's Log</div>
+      <button class="btn btn-g btn-sm" onclick="setFlareDay()" id="flare-day-btn" style="font-size:11px">🌀 Mark Flare Day</button>
+    </div>
+    <div id="today-events">
+      <div class="empty-state" style="padding:24px">
+        <div style="font-size:13px">Tap + to log how you're feeling</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══════ LOG ═══════ -->
+  <div id="panel-log" class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div class="sec-label" style="margin:0">Event Journal</div>
+      <select id="log-filter" onchange="loadEventLog()" style="background:var(--card2);border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:7px;font-family:'DM Sans',sans-serif;font-size:12px;outline:none">
+        <option value="7">Last 7 days</option>
+        <option value="14">Last 14 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+    </div>
+    <div id="event-log-list">
+      <div class="empty-state"><div class="empty-icon">📓</div><div>No events logged yet</div></div>
+    </div>
+  </div>
+
+  <!-- ═══════ PATTERNS ═══════ -->
+  <div id="panel-patterns" class="panel">
+
+    <!-- Stats row -->
+    <div id="pattern-stats" class="stat-row" style="margin-bottom:10px"></div>
+
+    <!-- Generate button -->
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-p btn-sm" onclick="generateInsight()" id="gen-insight-btn" style="flex:1">
+        ✨ Generate Insight
+      </button>
+      <button class="btn btn-g btn-sm" onclick="showReviewSection()" style="flex:1">
+        📋 Quarterly Review
+      </button>
+    </div>
+
+    <!-- Review section (hidden until triggered) -->
+    <div id="review-section" style="display:none;margin-bottom:10px">
+      <div class="card">
+        <div class="card-title-row">
+          <span class="card-title">Quarterly Review</span>
+          <button class="btn btn-g btn-sm" onclick="document.getElementById('review-section').style.display='none'">×</button>
+        </div>
+        <div id="review-content">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+            Analyzes your last 90 days across all data streams — check-ins, events, weather, wearable, VRT compliance.
+          </div>
+          <button class="btn btn-p btn-sm btn-full" onclick="generateReview()" id="gen-review-btn">
+            Generate 90-Day Review
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Insights list -->
+    <div id="insights-list">
+      <div class="empty-state"><div class="empty-icon">🧬</div><div>Generate your first insight above</div><div style="font-size:11px;margin-top:6px">Need at least 7 check-in days to start finding patterns</div></div>
+    </div>
+
+  </div>
+
+  <!-- ═══════ COACH ═══════ -->
+  <div id="panel-coach" class="panel" style="display:flex;flex-direction:column;height:calc(100vh - var(--header-h) - var(--nav-h))">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px" id="coach-status">Vestibular coach — asks questions, finds patterns, never judges</div>
+    <div id="coach-thread" style="flex:1;overflow-y:auto;padding-bottom:8px">
+      <div class="coach-bubble">
+        Hello. I'm here to help you understand your vestibular patterns over time — not to tell you what to do, but to help you notice what your body is already telling you.<br><br>
+        How are you feeling today?
+      </div>
+    </div>
+    <div class="coach-input-bar">
+      <div id="coach-typing" style="display:none;font-size:11px;color:var(--muted);margin-bottom:5px"><span class="spin"></span> Thinking…</div>
+      <div class="coach-input-row">
+        <input class="coach-input" id="coach-input" placeholder="Type anything…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCoach()}">
+        <button class="coach-send" id="coach-send-btn" onclick="sendCoach()">↑</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ DATA ═══════ -->
+  <div id="panel-data" class="panel">
+
+    <!-- Wearable Entry -->
+    <div class="card">
+      <div class="card-title-row">
+        <span class="card-title">⌚ Galaxy Watch — Daily Entry</span>
+        <div id="wearable-saved" style="font-size:10px;color:var(--teal);display:none">✓ Saved</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Open Samsung Health on your phone, pull last night's summary, enter below.</div>
+      <div class="wearable-grid">
+        <div class="w-field"><label>HRV Morning (ms)</label><input type="number" id="w-hrv" placeholder="e.g. 42" step="0.1"></div>
+        <div class="w-field"><label>Resting HR (bpm)</label><input type="number" id="w-hr" placeholder="e.g. 58"></div>
+        <div class="w-field"><label>Total Sleep (min)</label><input type="number" id="w-total" placeholder="e.g. 420"></div>
+        <div class="w-field"><label>Deep Sleep (min)</label><input type="number" id="w-deep" placeholder="e.g. 85"></div>
+        <div class="w-field"><label>REM Sleep (min)</label><input type="number" id="w-rem" placeholder="e.g. 95"></div>
+        <div class="w-field"><label>Sleep Score</label><input type="number" id="w-score" placeholder="e.g. 78"></div>
+        <div class="w-field"><label>Stress Score</label><input type="number" id="w-stress" placeholder="e.g. 32"></div>
+        <div class="w-field"><label>Steps</label><input type="number" id="w-steps" placeholder="e.g. 6400"></div>
+      </div>
+      <button class="btn btn-p btn-sm btn-full" onclick="saveWearable()">Save Wearable Data</button>
+    </div>
+
+    <!-- VRT Session Log -->
+    <div class="card">
+      <div class="card-title">🔄 VRT Session</div>
+      <div style="margin-bottom:10px">
+        <div class="field-label">Exercises (free text)</div>
+        <input class="field-input" id="vrt-exercises" placeholder="e.g. gaze stabilization, head turns, standing balance…">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <div class="field-label">Duration (min)</div>
+          <input class="field-input" id="vrt-duration" type="number" placeholder="15">
+        </div>
+        <div>
+          <div class="field-label">Difficulty (1–5)</div>
+          <input class="field-input" id="vrt-difficulty" type="number" min="1" max="5" placeholder="3">
+        </div>
+      </div>
+      <div style="margin-bottom:10px">
+        <div class="field-label">How did you feel after?</div>
+        <div class="type-row">
+          <button class="type-btn" onclick="selectVrtFeel('better',this)">Better</button>
+          <button class="type-btn" onclick="selectVrtFeel('same',this)">Same</button>
+          <button class="type-btn" onclick="selectVrtFeel('tired',this)">Tired</button>
+          <button class="type-btn" onclick="selectVrtFeel('worse',this)">Worse</button>
+        </div>
+      </div>
+      <div style="margin-bottom:10px">
+        <div class="field-label">Notes</div>
+        <input class="field-input" id="vrt-notes" placeholder="anything notable…">
+      </div>
+      <button class="btn btn-p btn-sm btn-full" onclick="saveVRT()">Log VRT Session</button>
+    </div>
+
+    <!-- Recent VRT -->
+    <div id="vrt-history-wrap" style="display:none">
+      <div class="sec-label">Recent VRT Sessions</div>
+      <div id="vrt-history-list"></div>
+    </div>
+
+    <!-- Biomarkers -->
+    <div class="card" style="margin-top:4px">
+      <div class="card-title">🧪 Lab Results</div>
+      <div style="margin-bottom:10px">
+        <div class="field-label">Test Type</div>
+        <select class="field-input" id="bm-type">
+          <option value="cortisol_4point">Cortisol 4-Point (saliva)</option>
+          <option value="dutch_complete">DUTCH Complete</option>
+          <option value="thyroid_panel">Thyroid Panel</option>
+          <option value="hormone_panel">Hormone Panel</option>
+          <option value="cgm_summary">CGM Summary</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div><div class="field-label">Test Date</div><input class="field-input" id="bm-date" type="date"></div>
+        <div><div class="field-label">Lab/Source</div><input class="field-input" id="bm-lab" placeholder="e.g. ZRT Lab"></div>
+      </div>
+      <div style="margin-bottom:10px">
+        <div class="field-label">Key Results (free text — describe values)</div>
+        <textarea class="field-input" id="bm-results" placeholder="e.g. Wake cortisol 12.4 ng/mL (optimal 13-24), noon 3.2, afternoon 1.8, evening 0.6. Curve shape flat — suggesting HPA axis fatigue…" style="min-height:80px"></textarea>
+      </div>
+      <div style="margin-bottom:10px">
+        <div class="field-label">Context — what was happening this week?</div>
+        <input class="field-input" id="bm-context" placeholder="e.g. Did this after 3 rough vestibular weeks in November">
+      </div>
+      <button class="btn btn-p btn-sm btn-full" onclick="saveBiomarker()">Save Lab Results</button>
+    </div>
+
+    <!-- Biomarker history -->
+    <div id="bm-history-wrap" style="display:none;margin-top:4px">
+      <div class="sec-label">Lab History</div>
+      <div id="bm-history-list"></div>
+    </div>
+
+  </div>
+
+  <!-- ═══════ SETTINGS ═══════ -->
+  <div id="panel-settings" class="panel">
+    <div class="card">
+      <div class="card-title">Connection</div>
+      <div class="setting-row">
+        <div class="setting-label">Worker URL</div>
+        <input class="setting-input" id="worker-url" placeholder="https://fuelstrong-v2.…workers.dev">
+      </div>
+      <div class="setting-row">
+        <div class="setting-label">API Key</div>
+        <input class="setting-input" id="api-key" type="password" placeholder="your key">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-p btn-sm" onclick="saveSettings()" style="flex:1">Save</button>
+        <button class="btn btn-g btn-sm" onclick="testConnection()" style="flex:1">Test</button>
+      </div>
+      <div id="settings-result" style="font-size:12px;margin-top:8px;color:var(--muted)"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">About</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.7">
+        <strong style="color:var(--text)">Vestibular Health Tracker</strong><br>
+        Designed for bilateral vestibulopathy — tracks compensation state, not episodes.<br><br>
+        Daily check-in lives in <strong style="color:var(--text)">FuelStrong</strong> and syncs here automatically.<br><br>
+        All data shares the same D1 database as FuelStrong and Progress.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">3-Month Review Schedule</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        First entry: <strong style="color:var(--text)" id="first-entry-date">not started</strong><br>
+        Next review due: <strong style="color:var(--teal)" id="next-review-date">—</strong>
+      </div>
+      <button class="btn btn-g btn-sm" onclick="showPanel('patterns', document.getElementById('nav-patterns'));showReviewSection()">Generate Review Now</button>
+    </div>
+  </div>
+
+</div><!-- /app-content -->
+
+<!-- LOG EVENT SHEET -->
+<div class="sheet-overlay" id="log-sheet" onclick="if(event.target===this)closeLogSheet()">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <span class="sheet-title" id="log-sheet-title">Log Event</span>
+      <button class="sheet-close" onclick="closeLogSheet()">✕</button>
+    </div>
+    <div class="sheet-body">
+
+      <!-- Event type -->
+      <div style="margin-bottom:14px">
+        <div class="field-label">What kind of entry?</div>
+        <div class="type-row">
+          <button class="type-btn active" data-type="note" onclick="selectEventType('note',this)">📝 Note</button>
+          <button class="type-btn" data-type="flare_start" onclick="selectEventType('flare_start',this)">🌀 Flare Start</button>
+          <button class="type-btn" data-type="trigger" onclick="selectEventType('trigger',this)">⚡ Trigger</button>
+          <button class="type-btn" data-type="recovery" onclick="selectEventType('recovery',this)">🌿 Recovery</button>
+          <button class="type-btn" data-type="vrt" onclick="selectEventType('vrt',this)">🔄 VRT</button>
+          <button class="type-btn" data-type="update" onclick="selectEventType('update',this)">📊 Update</button>
+        </div>
+      </div>
+
+      <!-- Open text — primary input -->
+      <div style="margin-bottom:14px">
+        <div class="field-label">What's happening? <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(plain language — anything)</span></div>
+        <textarea class="field-input" id="log-note" placeholder="e.g. Oscillopsia bad after 30 min in Target. Patterned floors, bright lights. Took a break in the car, better after 20 min rest in quiet and dark." style="min-height:110px;font-size:13px" autofocus></textarea>
+      </div>
+
+      <!-- Severity sliders (optional) -->
+      <div style="margin-bottom:14px">
+        <div class="field-label">Severity right now <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional — leave at 0 if not relevant)</span></div>
+        <div class="sev-row">
+          <div class="sev-item">
+            <div class="sev-label" style="color:var(--orange)">Oscillopsia</div>
+            <div class="sev-val" id="osc-val" style="color:var(--orange)">0</div>
+            <input type="range" class="sev-slider osc" id="osc-slider" min="0" max="10" value="0" oninput="updateSev('osc',this.value)" style="background:var(--border2)">
+          </div>
+          <div class="sev-item">
+            <div class="sev-label" style="color:var(--blue)">Balance</div>
+            <div class="sev-val" id="bal-val" style="color:var(--blue)">0</div>
+            <input type="range" class="sev-slider bal" id="bal-slider" min="0" max="10" value="0" oninput="updateSev('bal',this.value)" style="background:var(--border2)">
+          </div>
+          <div class="sev-item">
+            <div class="sev-label" style="color:var(--purple)">Brain Fog</div>
+            <div class="sev-val" id="cog-val" style="color:var(--purple)">0</div>
+            <input type="range" class="sev-slider cog" id="cog-slider" min="0" max="10" value="0" oninput="updateSev('cog',this.value)" style="background:var(--border2)">
+          </div>
+        </div>
+      </div>
+
+      <!-- What helped / worsened (contextual) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
+        <div>
+          <div class="field-label">What helped?</div>
+          <input class="field-input" id="log-helped" placeholder="dark room, rest, water…">
+        </div>
+        <div>
+          <div class="field-label">What made it worse?</div>
+          <input class="field-input" id="log-worsened" placeholder="bright lights, crowds…">
+        </div>
+      </div>
+
+      <!-- Tags -->
+      <div style="margin-bottom:16px">
+        <div class="field-label">Quick tags <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(tap to add)</span></div>
+        <div id="tag-suggestions" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px">
+          <button class="type-btn btn-sm" onclick="toggleTag('cold',this)">❄️ cold</button>
+          <button class="type-btn btn-sm" onclick="toggleTag('outdoor',this)">🌿 outdoor</button>
+          <button class="type-btn btn-sm" onclick="toggleTag('crowded',this)">👥 crowded</button>
+          <button class="type-btn btn-sm" onclick="toggleTag('screens',this)">💻 screens</button>
+          <button class="type-btn btn-sm" onclick="toggleTag('golf',this)">⛳ golf</button>
+          <button class="type-btn btn-sm" onclick="toggleTag('driving',this)">🚗 driving</button>
+          <button class="type-btn btn-sm" onclick="toggleTag('stress',this)">⚡ stress</button>
+          <button class="type-btn btn-sm" onclick="toggleTag('tired',this)">😴 tired</button>
+          <button class="type-btn btn-sm" onclick="toggleTag('patterns',this)">🔲 patterns</button>
+          <button class="type-btn btn-sm" onclick="toggleTag('bright',this)">💡 bright</button>
+        </div>
+        <input class="field-input" id="log-tags" placeholder="custom tags, comma separated" style="font-size:12px">
+      </div>
+
+      <button class="btn btn-p btn-full" onclick="saveEvent()" style="font-size:14px;padding:12px">
+        Save Entry
+      </button>
+
+    </div>
+  </div>
+</div>
+
+<!-- FAB -->
+<button class="fab" id="fab" onclick="openLogSheet()" title="Log event">+</button>
+
+<!-- FLARE SHORTCUT -->
+<button class="fab-flare" id="fab-flare" onclick="quickFlareLog()">🌀 Quick flare log</button>
+
+<nav class="bottom-nav">
+  <button class="nav-btn active" id="nav-today" onclick="showPanel('today',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    <span>Today</span>
+  </button>
+  <button class="nav-btn" id="nav-log" onclick="showPanel('log',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    <span>Journal</span>
+  </button>
+  <button class="nav-btn" id="nav-patterns" onclick="showPanel('patterns',this)" style="position:relative">
+    <div class="nav-badge" id="patterns-badge"></div>
+    <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    <span>Patterns</span>
+  </button>
+  <button class="nav-btn" id="nav-coach" onclick="showPanel('coach',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    <span>Coach</span>
+  </button>
+  <button class="nav-btn" id="nav-data" onclick="showPanel('data',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+    <span>Data</span>
+  </button>
+  <button class="nav-btn" id="nav-settings" onclick="showPanel('settings',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span>Settings</span>
+  </button>
+</nav>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════
+// CONFIG + STATE
+// ══════════════════════════════════════════════════
+const WORKER_KEY  = 'fs3-worker-v2';
+const FS_KEY_STOR = 'fs3-api-key-v2';
+const VEST_DATE_KEY = 'vest-first-date';
+
+let WORKER_URL = localStorage.getItem(WORKER_KEY)  || '';
+let FS_API_KEY = localStorage.getItem(FS_KEY_STOR) || '';
+
+let todayEvents   = [];
+let selectedTags  = new Set();
+let selectedEventType = 'note';
+let vrtFeel       = '';
+let isFlareDayLocal = false;
+let coachHistory  = [];
+let coachInFlight = false;
+
+// ══════════════════════════════════════════════════
+// DATE UTILITIES
+// ══════════════════════════════════════════════════
+function todayISO() {
+  const d = new Date();
+  return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
+}
+function daysAgoISO(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-');
+}
+function fmtDate(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  const today = todayISO();
+  if (iso === today) return 'Today';
+  const diff = Math.round((new Date(today+'T12:00:00') - d) / 86400000);
+  if (diff === 1) return 'Yesterday';
+  return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+}
+function fmtTime(isoOrTime) {
+  if (!isoOrTime) return '';
+  const d = new Date(isoOrTime);
+  return d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+}
+function nowTimeStr() {
+  return new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+}
+
+// ══════════════════════════════════════════════════
+// WORKER
+// ══════════════════════════════════════════════════
+async function wFetch(path, opts = {}) {
+  if (!WORKER_URL) throw new Error('No Worker URL — set it in Settings');
+  const r = await fetch(WORKER_URL + path, {
+    ...opts,
+    headers: { 'Content-Type':'application/json', 'X-FS-Key': FS_API_KEY, ...(opts.headers||{}) },
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'Worker error ' + r.status);
+  return j;
+}
+function setConn(state) {
+  const d = document.getElementById('conn-dot');
+  d.className = 'conn-dot' + (state==='ok'?' ok':state==='err'?' err':'');
+}
+
+// ══════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════
+function showPanel(id, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const panel = document.getElementById('panel-' + id);
+  if (panel) panel.classList.add('active');
+  if (btn && btn.classList) btn.classList.add('active');
+
+  const fab = document.getElementById('fab');
+  const fabFlare = document.getElementById('fab-flare');
+  if (id === 'today' || id === 'log') {
+    fab.style.display = 'flex';
+    fabFlare.style.display = isFlareDayLocal ? 'block' : 'none';
+  } else {
+    fab.style.display = 'none';
+    fabFlare.style.display = 'none';
+  }
+
+  if (id === 'log')      loadEventLog();
+  if (id === 'patterns') loadPatterns();
+  if (id === 'data')     loadDataTab();
+  if (id === 'settings') loadSettings();
+}
+
+// ══════════════════════════════════════════════════
+// WEATHER — 3 windows per day
+// ══════════════════════════════════════════════════
+function getTimeWindow() {
+  const h = new Date().getHours();
+  if (h < 12) return 'morning';
+  if (h < 18) return 'afternoon';
+  return 'evening';
+}
+
+function cToF(c) { return Math.round(c * 9/5 + 32); }
+function mpsToMph(m) { return Math.round(m * 2.237); }
+function windDir(deg) {
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(deg / 45) % 8];
+}
+function wxCodeToLabel(code) {
+  if (code <= 1) return 'Clear';
+  if (code <= 3) return 'Partly Cloudy';
+  if (code <= 48) return 'Foggy';
+  if (code <= 55) return 'Drizzle';
+  if (code <= 67) return 'Rain';
+  if (code <= 77) return 'Snow';
+  if (code <= 82) return 'Showers';
+  if (code <= 99) return 'Thunderstorm';
+  return 'Unknown';
+}
+
+async function fetchWeatherWindow() {
+  const today  = todayISO();
+  const window = getTimeWindow();
+  const key    = `vest-wx-${today}-${window}`;
+  if (localStorage.getItem(key)) { renderWeather(); return; }
+
+  if (!navigator.geolocation) { renderWeather(); return; }
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    try {
+      const { latitude: lat, longitude: lon } = pos.coords;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&current=temperature_2m,apparent_temperature,precipitation,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,relative_humidity_2m,uv_index,cloud_cover&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1`;
+      const data = await (await fetch(url)).json();
+      const cur  = data.current || {};
+      const daily = data.daily  || {};
+
+      // Pressure change vs yesterday's stored value
+      const prevPressure = parseFloat(localStorage.getItem('vest-pressure-prev') || '0');
+      const curPressure  = cur.surface_pressure || 0;
+      const pressureChange = prevPressure > 0 ? Math.round((curPressure - prevPressure) * 10) / 10 : null;
+
+      const payload = {
+        date: today, time_window: window,
+        temp_f:          cToF(cur.temperature_2m || 0),
+        temp_feels_f:    cToF(cur.apparent_temperature || 0),
+        temp_high_f:     daily.temperature_2m_max?.[0] != null ? cToF(daily.temperature_2m_max[0]) : null,
+        temp_low_f:      daily.temperature_2m_min?.[0] != null ? cToF(daily.temperature_2m_min[0]) : null,
+        humidity_pct:    cur.relative_humidity_2m ?? null,
+        pressure_hpa:    curPressure,
+        pressure_change: pressureChange,
+        wind_mph:        mpsToMph(cur.wind_speed_10m || 0),
+        wind_dir:        cur.wind_direction_10m != null ? windDir(cur.wind_direction_10m) : null,
+        precipitation:   cur.precipitation ?? null,
+        cloud_cover_pct: cur.cloud_cover   ?? null,
+        uv_index:        cur.uv_index      ?? null,
+        condition:       wxCodeToLabel(cur.weather_code || 0),
+        lat, lon,
+      };
+
+      // Store pressure for tomorrow's delta
+      if (window === 'morning') localStorage.setItem('vest-pressure-prev', curPressure);
+      localStorage.setItem(key, JSON.stringify(payload));
+
+      // Sync to Worker
+      if (WORKER_URL && FS_API_KEY) {
+        wFetch('/api/vest/weather', { method:'POST', body: JSON.stringify(payload) }).catch(()=>{});
+      }
+
+      renderWeather();
+    } catch (e) { renderWeather(); }
+  }, () => renderWeather());
+}
+
+async function loadWeatherFromWorker() {
+  if (!WORKER_URL || !FS_API_KEY) return;
+  try {
+    const res = await wFetch(`/api/vest/weather?date=${todayISO()}`);
+    const wx = res.weather || [];
+    // Cache each window locally
+    wx.forEach(w => {
+      const key = `vest-wx-${w.date}-${w.time_window}`;
+      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(w));
+    });
+    renderWeather();
+  } catch {}
+}
+
+function renderWeather() {
+  const strip = document.getElementById('wx-strip');
+  const today = todayISO();
+  const windows = ['morning','afternoon','evening'];
+  const labels  = { morning:'Morning', afternoon:'Afternoon', evening:'Evening' };
+  let html = '';
+  let hasAny = false;
+
+  windows.forEach(win => {
+    const key = `vest-wx-${today}-${win}`;
+    const data = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!data) return;
+    hasAny = true;
+
+    const pc = data.pressure_change;
+    let pressClass = 'wx-pressure-stable', pressLabel = '→ stable';
+    if (pc !== null && pc !== undefined) {
+      if (pc >= 3)      { pressClass = 'wx-pressure-up';   pressLabel = `↑ +${pc}hPa`; }
+      else if (pc <= -3){ pressClass = 'wx-pressure-down'; pressLabel = `↓ ${pc}hPa`; }
+      else if (Math.abs(pc) > 0) { pressLabel = `${pc > 0 ? '+' : ''}${pc}hPa`; }
+    }
+
+    html += `<div class="wx-card">
+      <div class="wx-window">${labels[win]}</div>
+      <div class="wx-temp">${data.temp_f ?? '?'}°</div>
+      <div class="wx-detail">${data.condition || ''} · ${data.humidity_pct ?? '?'}% humid</div>
+      <div class="wx-detail">${data.wind_mph ?? 0}mph ${data.wind_dir || ''} · UV ${data.uv_index ?? '?'}</div>
+      ${pc !== null && pc !== undefined ? `<span class="wx-badge ${pressClass}">${pressLabel}</span>` : ''}
+    </div>`;
+  });
+
+  if (!hasAny) {
+    strip.innerHTML = '<div class="wx-card" style="min-width:200px;text-align:center;color:var(--muted);font-size:12px;padding:14px">Weather data unavailable<br><span style="font-size:10px">Enable location access for automatic fetch</span></div>';
+    return;
+  }
+  strip.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════
+// CHECK-IN SUMMARY (from NS check-in in index)
+// ══════════════════════════════════════════════════
+async function loadCheckinSummary() {
+  if (!WORKER_URL || !FS_API_KEY) return;
+  try {
+    const res = await wFetch(`/api/vest/summary?date=${todayISO()}`);
+    const ci  = res.checkin;
+    const wrap = document.getElementById('checkin-summary');
+
+    if (!ci) {
+      wrap.innerHTML = `<div style="text-align:center;padding:14px;color:var(--muted);font-size:12px">
+        <div style="font-size:22px;margin-bottom:6px">🧠</div>
+        Complete your morning check-in in FuelStrong to see readiness here.
+      </div>`;
+      return;
+    }
+
+    const score = ci.readiness_score;
+    const tier = score >= 85 ? { color:'var(--teal)', label:'Ready', emoji:'🟢' }
+               : score >= 70 ? { color:'#8edc6e',    label:'Good — Stay Aware', emoji:'🟡' }
+               : score >= 55 ? { color:'var(--yellow)',label:'Modified Day', emoji:'🟡' }
+               : score >= 40 ? { color:'var(--orange)',label:'Recovery Priority', emoji:'🟠' }
+               : { color:'var(--danger)', label:'Rest Is The Work', emoji:'🔴' };
+
+    const vestColor = ci.vestibular_symptoms === 'significant' ? 'var(--danger)'
+                    : ci.vestibular_symptoms === 'moderate'    ? 'var(--orange)'
+                    : ci.vestibular_symptoms === 'mild'        ? 'var(--yellow)'
+                    : 'var(--teal)';
+
+    wrap.innerHTML = `
+      <div class="readiness-hero">
+        <div>
+          <div class="readiness-num" style="color:${tier.color}">${score ?? '—'}</div>
+          <div style="font-size:9px;color:${tier.color};opacity:.7;text-transform:uppercase;letter-spacing:.8px">/100</div>
+        </div>
+        <div class="readiness-meta">
+          <div class="readiness-tier" style="color:${tier.color}">${tier.emoji} ${tier.label}</div>
+          <div class="readiness-sub">
+            Sleep ${ci.sleep_quality ?? '?'}/5 · ${ci.sleep_duration || '?'} hrs
+            ${ci.sleep_aid === 2 ? ' · <span style="color:var(--purple)">double sleep aid</span>' : ''}
+          </div>
+          <div class="readiness-sub" style="margin-top:2px">
+            Physical fatigue ${ci.physical_fatigue ?? '?'}/10 · Cognitive ${ci.cognitive_fatigue ?? '?'}/10
+          </div>
+        </div>
+      </div>
+      <div class="checkin-grid">
+        <div class="ci-tile">
+          <div class="ci-tile-val" style="color:${vestColor}">${cap(ci.vestibular_symptoms || '—')}</div>
+          <div class="ci-tile-label">Vestibular</div>
+        </div>
+        <div class="ci-tile">
+          <div class="ci-tile-val" style="color:var(--blue)">${cap(ci.visual_strain || 'none')}</div>
+          <div class="ci-tile-label">Visual Strain</div>
+        </div>
+        <div class="ci-tile">
+          <div class="ci-tile-val" style="color:${ci.balance_confidence==='poor'?'var(--danger)':ci.balance_confidence==='reduced'?'var(--yellow)':'var(--teal)'}">${cap(ci.balance_confidence || '—')}</div>
+          <div class="ci-tile-label">Balance</div>
+        </div>
+      </div>`;
+  } catch (e) { console.log('[checkin summary]', e.message); }
+}
+
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+// ══════════════════════════════════════════════════
+// TODAY EVENTS
+// ══════════════════════════════════════════════════
+async function loadTodayEvents() {
+  if (!WORKER_URL || !FS_API_KEY) return;
+  try {
+    const res = await wFetch(`/api/vest/events?date=${todayISO()}`);
+    todayEvents = res.events || [];
+    renderTodayEvents();
+    // Check if any are flare
+    isFlareDayLocal = todayEvents.some(e => e.is_flare_day || e.event_type === 'flare_start');
+    updateFlareBanner();
+  } catch {}
+}
+
+function renderTodayEvents() {
+  const el = document.getElementById('today-events');
+  if (!todayEvents.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px"><div style="font-size:13px">Tap + to log how you\'re feeling</div></div>';
+    return;
+  }
+  el.innerHTML = todayEvents.map(e => renderEventEntry(e)).join('');
+}
+
+function renderEventEntry(e) {
+  const sevChips = [];
+  if (e.oscillopsia) sevChips.push(`<span class="sev-chip" style="color:var(--orange)">osc ${e.oscillopsia}/10</span>`);
+  if (e.balance)     sevChips.push(`<span class="sev-chip" style="color:var(--blue)">bal ${e.balance}/10</span>`);
+  if (e.cognitive)   sevChips.push(`<span class="sev-chip" style="color:var(--purple)">fog ${e.cognitive}/10</span>`);
+
+  const typeMap = { note:'et-note', flare_start:'et-flare', trigger:'et-trigger', recovery:'et-recovery', vrt:'et-vrt', update:'et-note', coach_call:'et-note' };
+  const typeLabel = { note:'Note', flare_start:'Flare', trigger:'Trigger', recovery:'Recovery', vrt:'VRT', update:'Update' };
+  const entryClass = e.event_type === 'flare_start' ? 'flare' : e.event_type === 'recovery' ? 'helper' : '';
+
+  return `<div class="event-entry ${entryClass}" id="ev-${e.id}">
+    <button class="event-remove" onclick="deleteEvent(${e.id})">✕</button>
+    <div class="event-time">
+      ${fmtTime(e.logged_at)}
+      <span class="event-type-badge ${typeMap[e.event_type]||'et-note'}">${typeLabel[e.event_type]||e.event_type}</span>
+      ${e.tags ? e.tags.split(',').map(t=>`<span style="font-size:9px;color:var(--muted);background:var(--card2);padding:1px 5px;border-radius:99px">${t.trim()}</span>`).join('') : ''}
+    </div>
+    ${e.note ? `<div class="event-note">${escHtml(e.note)}</div>` : ''}
+    ${sevChips.length ? `<div class="event-severities">${sevChips.join('')}</div>` : ''}
+    ${e.what_helped ? `<div style="font-size:11px;color:var(--green);margin-top:4px">✓ Helped: ${escHtml(e.what_helped)}</div>` : ''}
+    ${e.what_worsened ? `<div style="font-size:11px;color:var(--orange);margin-top:3px">↑ Worse: ${escHtml(e.what_worsened)}</div>` : ''}
+  </div>`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════════
+// FLARE DAY
+// ══════════════════════════════════════════════════
+function setFlareDay() {
+  isFlareDayLocal = true;
+  updateFlareBanner();
+  openLogSheet('flare_start');
+  toast('🌀 Flare day mode active');
+}
+function clearFlareDay() {
+  isFlareDayLocal = false;
+  updateFlareBanner();
+  document.getElementById('fab-flare').style.display = 'none';
+}
+function updateFlareBanner() {
+  document.getElementById('flare-banner').style.display = isFlareDayLocal ? 'flex' : 'none';
+  document.getElementById('fab-flare').style.display = isFlareDayLocal ? 'block' : 'none';
+  document.getElementById('flare-day-btn').style.display = isFlareDayLocal ? 'none' : 'block';
+}
+function quickFlareLog() { openLogSheet('update'); }
+
+// ══════════════════════════════════════════════════
+// LOG SHEET
+// ══════════════════════════════════════════════════
+function openLogSheet(presetType) {
+  selectedTags = new Set();
+  selectedEventType = presetType || 'note';
+  document.querySelectorAll('#tag-suggestions .type-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.type-btn[data-type]').forEach(b => {
+    b.className = 'type-btn' + (b.dataset.type === selectedEventType ? ' active' : '');
+  });
+  ['log-note','log-helped','log-worsened','log-tags'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  ['osc-slider','bal-slider','cog-slider'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) { el.value = 0; updateSev(id.split('-')[0], 0); }
+  });
+  const title = presetType === 'flare_start' ? '🌀 Log Flare' : presetType === 'recovery' ? '🌿 Log Recovery' : '+ Log Event';
+  document.getElementById('log-sheet-title').textContent = title;
+  document.getElementById('log-sheet').classList.add('open');
+  setTimeout(() => document.getElementById('log-note')?.focus(), 100);
+}
+function closeLogSheet() {
+  document.getElementById('log-sheet').classList.remove('open');
+}
+
+function selectEventType(type, btn) {
+  selectedEventType = type;
+  document.querySelectorAll('.type-btn[data-type]').forEach(b => {
+    b.className = 'type-btn';
+  });
+  btn.className = 'type-btn active';
+}
+
+function updateSev(field, val) {
+  const valEl = document.getElementById(field+'-val');
+  const slider = document.getElementById(field+'-slider');
+  if (valEl) valEl.textContent = val;
+  if (slider) {
+    const pct = (parseInt(val) / 10) * 100;
+    const color = field === 'osc' ? 'var(--orange)' : field === 'bal' ? 'var(--blue)' : 'var(--purple)';
+    slider.style.background = `linear-gradient(to right,${color} ${pct}%,var(--border2) ${pct}%)`;
+  }
+}
+
+function toggleTag(tag, btn) {
+  if (selectedTags.has(tag)) { selectedTags.delete(tag); btn.classList.remove('active'); }
+  else { selectedTags.add(tag); btn.classList.add('active'); }
+}
+
+async function saveEvent() {
+  const note     = document.getElementById('log-note').value.trim();
+  const helped   = document.getElementById('log-helped').value.trim();
+  const worsened = document.getElementById('log-worsened').value.trim();
+  const customTags = document.getElementById('log-tags').value.trim();
+  const osc = parseInt(document.getElementById('osc-slider').value) || null;
+  const bal = parseInt(document.getElementById('bal-slider').value) || null;
+  const cog = parseInt(document.getElementById('cog-slider').value) || null;
+
+  if (!note && !osc && !bal && !cog) { toast('Add a note or severity rating', true); return; }
+
+  const allTags = [...selectedTags, ...(customTags ? customTags.split(',').map(t=>t.trim()).filter(Boolean) : [])].join(',');
+
+  const payload = {
+    date:          todayISO(),
+    event_type:    selectedEventType,
+    oscillopsia:   osc > 0 ? osc : null,
+    balance:       bal > 0 ? bal : null,
+    cognitive:     cog > 0 ? cog : null,
+    note:          note || null,
+    what_helped:   helped || null,
+    what_worsened: worsened || null,
+    tags:          allTags || null,
+    is_flare_day:  isFlareDayLocal || selectedEventType === 'flare_start',
+  };
+
+  try {
+    if (WORKER_URL && FS_API_KEY) {
+      const res = await wFetch('/api/vest/events', { method:'POST', body: JSON.stringify(payload) });
+      payload.id = res.id;
+      payload.logged_at = new Date().toISOString();
+    } else {
+      payload.id = Date.now();
+      payload.logged_at = new Date().toISOString();
+    }
+    todayEvents.push(payload);
+    if (selectedEventType === 'flare_start') { isFlareDayLocal = true; updateFlareBanner(); }
+    renderTodayEvents();
+    closeLogSheet();
+    toast('✓ Logged');
+    document.getElementById('patterns-badge').classList.add('show');
+
+    // Track first entry date
+    if (!localStorage.getItem(VEST_DATE_KEY)) {
+      localStorage.setItem(VEST_DATE_KEY, todayISO());
+      updateReviewSchedule();
+    }
+  } catch (e) { toast('Error: ' + e.message, true); }
+}
+
+async function deleteEvent(id) {
+  try {
+    if (WORKER_URL && FS_API_KEY) await wFetch(`/api/vest/events/${id}`, { method:'DELETE' });
+    todayEvents = todayEvents.filter(e => e.id !== id);
+    renderTodayEvents();
+    toast('Deleted');
+  } catch (e) { toast('Error: ' + e.message, true); }
+}
+
+// ══════════════════════════════════════════════════
+// EVENT JOURNAL (Log tab)
+// ══════════════════════════════════════════════════
+async function loadEventLog() {
+  const days = parseInt(document.getElementById('log-filter')?.value || '7');
+  const since = daysAgoISO(days);
+  const el = document.getElementById('event-log-list');
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted)"><span class="spin"></span> Loading…</div>';
+  try {
+    const res = await wFetch(`/api/vest/events?since=${since}&limit=200`);
+    const events = res.events || [];
+    if (!events.length) {
+      el.innerHTML = '<div class="empty-state"><div class="empty-icon">📓</div><div>No events in this period</div></div>';
+      return;
+    }
+    // Group by date
+    const byDate = {};
+    events.forEach(e => {
+      if (!byDate[e.date]) byDate[e.date] = [];
+      byDate[e.date].push(e);
+    });
+    let html = '';
+    Object.keys(byDate).sort().reverse().forEach(date => {
+      const dayEvents = byDate[date];
+      const hasFl = dayEvents.some(e => e.is_flare_day || e.event_type === 'flare_start');
+      html += `<div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+          <div class="mono" style="font-size:11px;color:var(--teal)">${fmtDate(date)}</div>
+          ${hasFl ? '<span style="font-size:9px;background:rgba(255,107,53,.12);color:var(--orange);padding:1px 6px;border-radius:99px;font-weight:700;text-transform:uppercase">FLARE</span>' : ''}
+        </div>
+        ${dayEvents.map(e => renderEventEntry(e)).join('')}
+      </div>`;
+    });
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><div>Could not load journal: ${e.message}</div></div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════
+// PATTERNS + INSIGHTS
+// ══════════════════════════════════════════════════
+async function loadPatterns() {
+  loadPatternStats();
+  try {
+    const res = await wFetch('/api/vest/insights?limit=20');
+    renderInsights(res.insights || []);
+  } catch {}
+}
+
+async function loadPatternStats() {
+  try {
+    const since30 = daysAgoISO(30);
+    const res = await wFetch(`/api/vest/summary?date=${todayISO()}`);
+    const recent = res.recent30 || [];
+    const flares = (await wFetch(`/api/vest/events?since=${since30}&limit=200`)).events.filter(e=>e.is_flare_day||e.event_type==='flare_start').length;
+    const avgReadiness = recent.filter(r=>r.readiness_score).length
+      ? Math.round(recent.filter(r=>r.readiness_score).reduce((a,r)=>a+(r.readiness_score||0),0)/recent.filter(r=>r.readiness_score).length)
+      : null;
+    const checkInDays = recent.length;
+    const el = document.getElementById('pattern-stats');
+    el.innerHTML = [
+      { val: avgReadiness ?? '—', label: 'Avg Readiness', color: avgReadiness >= 70 ? 'var(--teal)' : avgReadiness >= 55 ? 'var(--yellow)' : 'var(--orange)' },
+      { val: flares, label: 'Flare Days (30d)', color: flares > 6 ? 'var(--danger)' : flares > 3 ? 'var(--orange)' : 'var(--teal)' },
+      { val: checkInDays, label: 'Check-in Days', color: 'var(--blue)' },
+    ].map(s => `<div class="stat"><div class="stat-val" style="color:${s.color}">${s.val}</div><div class="stat-label">${s.label}</div></div>`).join('');
+  } catch {}
+}
+
+async function generateInsight() {
+  const btn = document.getElementById('gen-insight-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Analyzing…';
+  try {
+    const res = await wFetch('/api/vest/insights', { method:'POST', body: JSON.stringify({ date: todayISO() }) });
+    if (res.message) { toast(res.message); }
+    else {
+      toast('✨ New insight generated');
+      loadPatterns();
+    }
+  } catch (e) { toast('Error: ' + e.message, true); }
+  finally { btn.disabled = false; btn.innerHTML = '✨ Generate Insight'; }
+}
+
+function renderInsights(insights) {
+  const el = document.getElementById('insights-list');
+  if (!insights.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🧬</div><div>Generate your first insight above</div><div style="font-size:11px;margin-top:6px">Need at least 7 check-in days to start finding patterns</div></div>';
+    return;
+  }
+  el.innerHTML = insights.map((ins, idx) => {
+    let parsed = ins;
+    try { parsed = JSON.parse(ins.observation); } catch {}
+    const conf = ins.confidence || parsed.confidence || 'low';
+    const typeMap = {
+      stress_correlation:'⚡', sleep_correlation:'😴', weather:'🌤', vrt_response:'🔄',
+      environmental:'🏪', hormonal:'🧬', recovery_pattern:'🌿', insufficient_data:'📊',
+    };
+    const icon = typeMap[ins.insight_type] || typeMap[parsed.insight_type] || '🔍';
+    const obs = parsed.observation || ins.observation || '';
+    const question = parsed.question_for_user || '';
+    const dataPoints = parsed.data_points || '';
+    return `<div class="insight-card" id="insight-${ins.id}">
+      <div class="insight-header" onclick="toggleInsightDetail(${idx})">
+        <div class="insight-icon">${icon}</div>
+        <div class="insight-content">
+          <div class="insight-type">${(ins.insight_type||parsed.insight_type||'observation').replace(/_/g,' ')}</div>
+          <div class="insight-obs">${escHtml(obs)}</div>
+          ${question ? `<div class="insight-question">"${escHtml(question)}"</div>` : ''}
+          <span class="insight-conf conf-${conf}">${conf} confidence</span>
+          ${ins.user_validated ? '<div class="validated-badge">✓ You confirmed this pattern</div>' : ''}
+        </div>
+      </div>
+      <div class="insight-response" id="ir-${idx}">
+        ${dataPoints ? `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;padding:6px 8px;background:var(--card2);border-radius:6px">Data: ${escHtml(dataPoints)}</div>` : ''}
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Does this match your experience?</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-g btn-sm" onclick="validateInsight(${ins.id}, true, ${idx})" style="color:var(--teal);border-color:rgba(0,201,184,.3)">✓ Yes, that's true</button>
+          <button class="btn btn-g btn-sm" onclick="validateInsight(${ins.id}, false, ${idx})">Doesn't match</button>
+          <button class="btn btn-g btn-sm" onclick="sendToCoach('${escHtml(question).replace(/'/g,"\\'")}')">Ask coach →</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleInsightDetail(idx) {
+  const el = document.getElementById('ir-' + idx);
+  if (!el) return;
+  el.style.display = el.style.display === 'block' ? 'none' : 'block';
+}
+
+async function validateInsight(id, validated, idx) {
+  try {
+    await wFetch(`/api/vest/insights`, { method:'POST', body: JSON.stringify({ validate_id: id, validated }) });
+    const badge = document.querySelector(`#insight-${id} .validated-badge`);
+    if (validated) {
+      document.querySelector(`#insight-${id} .insight-content`).insertAdjacentHTML('beforeend',
+        '<div class="validated-badge">✓ You confirmed this pattern</div>');
+    }
+    const resp = document.getElementById('ir-' + idx);
+    if (resp) resp.style.display = 'none';
+    toast(validated ? '✓ Pattern confirmed — helps the analysis' : 'Noted — pattern marked inaccurate');
+  } catch {}
+}
+
+// ══════════════════════════════════════════════════
+// QUARTERLY REVIEW
+// ══════════════════════════════════════════════════
+function showReviewSection() {
+  document.getElementById('review-section').style.display = 'block';
+  document.getElementById('review-section').scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+async function generateReview() {
+  const btn = document.getElementById('gen-review-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Analyzing 90 days…';
+  const content = document.getElementById('review-content');
+  try {
+    const res = await wFetch('/api/vest/reviews', { method:'POST', body: JSON.stringify({ date: todayISO() }) });
+    const r = res.review || {};
+    const stats = res.stats || {};
+
+    const trajColor = r.trajectory === 'improving' ? 'var(--teal)' : r.trajectory === 'worsening' ? 'var(--danger)' : 'var(--yellow)';
+    const trajEmoji = r.trajectory === 'improving' ? '📈' : r.trajectory === 'worsening' ? '📉' : '→';
+
+    let html = `<div class="review-card">
+      <div class="review-trajectory" style="color:${trajColor}">${trajEmoji} ${cap(r.trajectory||'analysis complete')}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${escHtml(r.trajectory_reasoning||'')}</div>`;
+
+    if (stats) {
+      html += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
+        <div class="ci-tile"><div class="ci-tile-val" style="color:var(--teal)">${stats.avgReadiness??'—'}</div><div class="ci-tile-label">Avg Readiness</div></div>
+        <div class="ci-tile"><div class="ci-tile-val" style="color:var(--orange)">${stats.flareDays||0}</div><div class="ci-tile-label">Flare Days</div></div>
+        <div class="ci-tile"><div class="ci-tile-val" style="color:var(--blue)">${stats.vrtDays||0}</div><div class="ci-tile-label">VRT Sessions</div></div>
+      </div>`;
+    }
+
+    if (r.key_findings?.length) {
+      html += `<div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:7px">Key Findings</div>`;
+      html += r.key_findings.map(f => `<div class="review-item">${escHtml(f)}</div>`).join('');
+    }
+
+    if (r.top_helpers?.length) {
+      html += `<div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin:9px 0 7px">What Seems to Help</div>`;
+      html += r.top_helpers.map(h => `<div class="review-item">${escHtml(h)}</div>`).join('');
+    }
+
+    if (r.data_gaps?.length) {
+      html += `<div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin:9px 0 7px">Data Gaps</div>`;
+      html += r.data_gaps.map(g => `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;display:flex;gap:6px"><span>·</span>${escHtml(g)}</div>`).join('');
+    }
+
+    if (r.suggested_tracking_changes?.length) {
+      html += `<div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin:9px 0 7px">Suggested Changes</div>`;
+      html += r.suggested_tracking_changes.map(s => `<div class="review-item" style="color:var(--blue)">${escHtml(s)}</div>`).join('');
+    }
+
+    if (r.next_quarter_question) {
+      html += `<div style="margin-top:10px;padding:10px 12px;background:var(--card2);border-radius:8px;font-size:12px;color:var(--text);font-style:italic;border-left:3px solid var(--teal)">"${escHtml(r.next_quarter_question)}"</div>`;
+    }
+
+    html += `</div>`;
+    content.innerHTML = html;
+    toast('📋 90-day review generated');
+    updateReviewSchedule();
+  } catch (e) {
+    content.innerHTML = `<div style="color:var(--danger);font-size:12px">Error: ${e.message}</div><button class="btn btn-g btn-sm btn-full" onclick="generateReview()" id="gen-review-btn" style="margin-top:8px">Try Again</button>`;
+  }
+  // btn may have been replaced
+  const nb = document.getElementById('gen-review-btn');
+  if (nb) { nb.disabled = false; nb.innerHTML = 'Generate 90-Day Review'; }
+}
+
+function updateReviewSchedule() {
+  const first = localStorage.getItem(VEST_DATE_KEY);
+  if (!first) return;
+  const d = document.getElementById('first-entry-date');
+  const n = document.getElementById('next-review-date');
+  if (d) d.textContent = fmtDate(first);
+  if (n) {
+    const nextDate = new Date(first + 'T12:00:00');
+    nextDate.setDate(nextDate.getDate() + 90);
+    const nextISO = nextDate.toISOString().slice(0,10);
+    n.textContent = fmtDate(nextISO);
+    // Show badge if due
+    if (nextISO <= todayISO()) document.getElementById('patterns-badge').classList.add('show');
+  }
+}
+
+// ══════════════════════════════════════════════════
+// COACH
+// ══════════════════════════════════════════════════
+function sendToCoach(question) {
+  showPanel('coach', document.getElementById('nav-coach'));
+  const input = document.getElementById('coach-input');
+  if (input && question) { input.value = question; sendCoach(); }
+}
+
+async function sendCoach() {
+  const input = document.getElementById('coach-input');
+  const msg   = input?.value.trim();
+  if (!msg || coachInFlight) return;
+  input.value = '';
+  coachInFlight = true;
+
+  const now = nowTimeStr();
+  appendCoachMsg('user', msg, now);
+
+  const typing = document.getElementById('coach-typing');
+  const sendBtn = document.getElementById('coach-send-btn');
+  if (typing) typing.style.display = 'block';
+  if (sendBtn) sendBtn.disabled = true;
+
+  try {
+    const res = await wFetch('/api/vest/coach', {
+      method: 'POST',
+      body: JSON.stringify({
+        message:     msg,
+        date:        todayISO(),
+        currentTime: now,
+        timezoneOffset: new Date().getTimezoneOffset(),
+        history:     coachHistory.slice(-6),
+      }),
+    });
+    const reply = res.response || '…';
+    appendCoachMsg('coach', reply, nowTimeStr());
+    coachHistory.push({ role:'user', content: msg });
+    coachHistory.push({ role:'assistant', content: reply });
+  } catch (e) {
+    appendCoachMsg('coach', '⚠️ ' + e.message, nowTimeStr());
+  } finally {
+    if (typing) typing.style.display = 'none';
+    if (sendBtn) sendBtn.disabled = false;
+    coachInFlight = false;
+  }
+}
+
+function appendCoachMsg(role, text, time) {
+  const thread = document.getElementById('coach-thread');
+  const div = document.createElement('div');
+  if (role === 'coach') {
+    div.innerHTML = `<div class="coach-time">${time}</div><div class="coach-bubble">${formatCoachText(text)}</div>`;
+  } else {
+    div.innerHTML = `<div class="user-bubble">${escHtml(text)}</div>`;
+  }
+  const bar = thread.querySelector('.coach-input-bar');
+  if (bar) thread.insertBefore(div, bar);
+  else thread.appendChild(div);
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function formatCoachText(text) {
+  return escHtml(text)
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
+
+// ══════════════════════════════════════════════════
+// DATA TAB
+// ══════════════════════════════════════════════════
+async function loadDataTab() {
+  loadVRTHistory();
+  loadBiomarkerHistory();
+  // Prefill wearable date
+  const res = await wFetch(`/api/vest/wearable?date=${todayISO()}`).catch(()=>null);
+  if (res?.wearable) {
+    const w = res.wearable;
+    if (w.hrv_morning) document.getElementById('w-hrv').value  = w.hrv_morning;
+    if (w.resting_hr)  document.getElementById('w-hr').value   = w.resting_hr;
+    if (w.sleep_total) document.getElementById('w-total').value = w.sleep_total;
+    if (w.sleep_deep)  document.getElementById('w-deep').value  = w.sleep_deep;
+    if (w.sleep_rem)   document.getElementById('w-rem').value   = w.sleep_rem;
+    if (w.sleep_score) document.getElementById('w-score').value = w.sleep_score;
+    if (w.stress_score)document.getElementById('w-stress').value= w.stress_score;
+    if (w.steps)       document.getElementById('w-steps').value = w.steps;
+  }
+}
+
+async function saveWearable() {
+  const payload = {
+    date:         todayISO(),
+    hrv_morning:  parseFloat(document.getElementById('w-hrv').value)    || null,
+    resting_hr:   parseInt(document.getElementById('w-hr').value)        || null,
+    sleep_total:  parseInt(document.getElementById('w-total').value)     || null,
+    sleep_deep:   parseInt(document.getElementById('w-deep').value)      || null,
+    sleep_rem:    parseInt(document.getElementById('w-rem').value)       || null,
+    sleep_score:  parseInt(document.getElementById('w-score').value)     || null,
+    stress_score: parseInt(document.getElementById('w-stress').value)    || null,
+    steps:        parseInt(document.getElementById('w-steps').value)     || null,
+  };
+  if (Object.values(payload).filter(v => v !== null && v !== todayISO()).every(v => !v)) {
+    toast('Enter at least one value', true); return;
+  }
+  try {
+    await wFetch('/api/vest/wearable', { method:'POST', body: JSON.stringify(payload) });
+    const el = document.getElementById('wearable-saved');
+    if (el) { el.style.display = 'block'; setTimeout(()=>el.style.display='none', 2500); }
+    toast('✓ Wearable data saved');
+  } catch (e) { toast('Error: ' + e.message, true); }
+}
+
+function selectVrtFeel(val, btn) {
+  vrtFeel = val;
+  document.querySelectorAll('#panel-data .type-row .type-btn').forEach(b => b.className = 'type-btn');
+  btn.className = 'type-btn active';
+}
+
+async function saveVRT() {
+  const exercises = document.getElementById('vrt-exercises').value.trim();
+  const duration  = parseInt(document.getElementById('vrt-duration').value) || null;
+  const difficulty= parseInt(document.getElementById('vrt-difficulty').value) || null;
+  const notes     = document.getElementById('vrt-notes').value.trim();
+
+  if (!exercises && !duration) { toast('Add exercises or duration', true); return; }
+
+  try {
+    await wFetch('/api/vest/vrt', { method:'POST', body: JSON.stringify({
+      date: todayISO(), exercises, duration_mins: duration,
+      difficulty, feel_after: vrtFeel || null, notes: notes || null,
+    })});
+    ['vrt-exercises','vrt-duration','vrt-difficulty','vrt-notes'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    vrtFeel = '';
+    document.querySelectorAll('#panel-data .type-row .type-btn').forEach(b => b.className = 'type-btn');
+    toast('✓ VRT session logged');
+    loadVRTHistory();
+  } catch (e) { toast('Error: ' + e.message, true); }
+}
+
+async function loadVRTHistory() {
+  try {
+    const res = await wFetch('/api/vest/vrt?since=' + daysAgoISO(30));
+    const sessions = res.sessions || [];
+    const wrap = document.getElementById('vrt-history-wrap');
+    const list = document.getElementById('vrt-history-list');
+    if (!sessions.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    list.innerHTML = sessions.slice(0,10).map(s => `
+      <div class="vrt-entry">
+        <div class="vrt-info">
+          <div class="vrt-date">${fmtDate(s.date)} ${s.logged_at ? '· ' + fmtTime(s.logged_at) : ''}</div>
+          <div class="vrt-detail">${s.exercises ? escHtml(s.exercises.slice(0,60)) + (s.exercises.length>60?'…':'') : 'VRT session'}${s.duration_mins ? ` · ${s.duration_mins}min` : ''}</div>
+          ${s.feel_after ? `<div class="vrt-feel">Felt ${s.feel_after} after</div>` : ''}
+        </div>
+        <button onclick="deleteVRT(${s.id})" style="background:none;border:none;color:var(--muted2);cursor:pointer;font-size:14px;padding:0 4px">✕</button>
+      </div>`).join('');
+  } catch {}
+}
+
+async function deleteVRT(id) {
+  try {
+    await wFetch(`/api/vest/vrt/${id}`, { method:'DELETE' });
+    loadVRTHistory();
+    toast('Deleted');
+  } catch {}
+}
+
+async function saveBiomarker() {
+  const results = document.getElementById('bm-results').value.trim();
+  if (!results) { toast('Add test results', true); return; }
+  try {
+    await wFetch('/api/vest/biomarkers', { method:'POST', body: JSON.stringify({
+      test_date:     document.getElementById('bm-date').value || todayISO(),
+      test_type:     document.getElementById('bm-type').value,
+      lab_name:      document.getElementById('bm-lab').value.trim() || null,
+      results_json:  { raw: results },
+      context_notes: document.getElementById('bm-context').value.trim() || null,
+    })});
+    ['bm-results','bm-context','bm-lab'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.value = '';
+    });
+    toast('✓ Lab results saved');
+    loadBiomarkerHistory();
+  } catch (e) { toast('Error: ' + e.message, true); }
+}
+
+async function loadBiomarkerHistory() {
+  try {
+    const res = await wFetch('/api/vest/biomarkers');
+    const bms = res.biomarkers || [];
+    const wrap = document.getElementById('bm-history-wrap');
+    const list = document.getElementById('bm-history-list');
+    if (!bms.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    list.innerHTML = bms.slice(0,5).map(bm => {
+      let results = '';
+      try { results = JSON.parse(bm.results_json)?.raw || ''; } catch {}
+      return `<div class="card" style="padding:10px 12px;margin-bottom:7px">
+        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--teal);margin-bottom:4px">${bm.test_date} · ${bm.test_type.replace(/_/g,' ')}</div>
+        ${bm.lab_name ? `<div style="font-size:10px;color:var(--muted);margin-bottom:4px">${escHtml(bm.lab_name)}</div>` : ''}
+        <div style="font-size:11px;color:var(--text);line-height:1.5">${escHtml((results||'').slice(0,200))}${results.length>200?'…':''}</div>
+        ${bm.context_notes ? `<div style="font-size:10px;color:var(--muted);margin-top:4px;font-style:italic">${escHtml(bm.context_notes)}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch {}
+}
+
+// ══════════════════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════════════════
+function loadSettings() {
+  const wu = document.getElementById('worker-url');
+  const ak = document.getElementById('api-key');
+  if (wu) wu.value = WORKER_URL;
+  if (ak) ak.value = FS_API_KEY;
+  updateReviewSchedule();
+}
+function saveSettings() {
+  WORKER_URL = document.getElementById('worker-url').value.trim().replace(/\/$/,'');
+  FS_API_KEY = document.getElementById('api-key').value.trim();
+  localStorage.setItem(WORKER_KEY, WORKER_URL);
+  localStorage.setItem(FS_KEY_STOR, FS_API_KEY);
+  toast('✓ Settings saved');
+  if (WORKER_URL && FS_API_KEY) { testConnectionSilent(); init(); }
+}
+async function testConnection() {
+  const el = document.getElementById('settings-result');
+  el.textContent = 'Testing…'; el.style.color = 'var(--muted)';
+  try {
+    await wFetch('/api/today');
+    el.textContent = '✓ Connected'; el.style.color = 'var(--teal)';
+    setConn('ok');
+  } catch (e) {
+    el.textContent = '✕ ' + e.message; el.style.color = 'var(--danger)';
+    setConn('err');
+  }
+}
+async function testConnectionSilent() {
+  try { await wFetch('/api/today'); setConn('ok'); } catch { setConn('err'); }
+}
+
+// ══════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════
+let _toastTimer;
+function toast(msg, isErr) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.className = '', 2800);
+}
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+function initDateDisplay() {
+  const d = new Date();
+  document.getElementById('date-display').textContent =
+    d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+  // Prefill biomarker date
+  const bd = document.getElementById('bm-date');
+  if (bd) bd.value = todayISO();
+}
+
+async function init() {
+  initDateDisplay();
+  if (!WORKER_URL || !FS_API_KEY) {
+    showPanel('settings', document.getElementById('nav-settings'));
+    return;
+  }
+  testConnectionSilent();
+  // Load today data in parallel
+  Promise.all([
+    loadCheckinSummary(),
+    loadTodayEvents(),
+    loadWeatherFromWorker(),
+  ]).catch(()=>{});
+  // Fetch current weather window
+  fetchWeatherWindow();
+  updateReviewSchedule();
+  // Check if review is due
+  const first = localStorage.getItem(VEST_DATE_KEY);
+  if (first) {
+    const due = new Date(first + 'T12:00:00');
+    due.setDate(due.getDate() + 90);
+    if (due.toISOString().slice(0,10) <= todayISO()) {
+      document.getElementById('patterns-badge').classList.add('show');
+    }
+  }
+}
+
+window.addEventListener('load', init);
+</script>
+</body>
+</html>

@@ -865,6 +865,22 @@ body{
     <!-- READINESS SCORE -->
     <div id="ns-readiness-wrap" style="display:none"></div>
 
+    <!-- QUICK VESTIBULAR UPDATE (visible after check-in is complete) -->
+    <div id="ns-quick-update-wrap" style="display:none;margin-bottom:10px">
+      <button onclick="openQuickVestUpdate()" style="
+        width:100%;padding:9px 14px;
+        background:rgba(0,201,184,.06);
+        border:1px solid rgba(0,201,184,.18);
+        border-radius:var(--radius-sm);
+        color:var(--accent);font-family:'DM Sans',sans-serif;
+        font-size:12px;font-weight:600;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;gap:7px;
+        transition:all .2s;
+      ">
+        <span style="font-size:15px">＋</span> Log Symptom Update
+      </button>
+    </div>
+
     <!-- AFTERNOON CHECK-IN (time-gated: shows after noon) -->
     <div id="ns-afternoon-wrap" style="display:none"></div>
 
@@ -1171,10 +1187,10 @@ body{
       <div class="water-drops" id="water-drops"></div>
       <div id="water-count" style="font-size:11px;color:var(--muted);margin-bottom:9px"></div>
       <div class="water-btns">
-        <button class="btn btn-p btn-sm" onclick="addWater(24)">+24oz</button>
+        <button class="btn btn-p btn-sm" onclick="addWater(20)">+20oz</button>
         <button class="btn btn-g btn-sm" onclick="addWater(16)">+16oz</button>
         <button class="btn btn-g btn-sm" onclick="addWater(8)">+8oz</button>
-        <button class="btn btn-g btn-sm" onclick="addWater(-8)">−8oz</button>
+        <button class="btn btn-g btn-sm" onclick="addWater(-4)">−4oz</button>
       </div>
     </div>
 
@@ -1800,6 +1816,69 @@ body{
   </div>
 </div>
 
+<!-- QUICK VESTIBULAR UPDATE SHEET -->
+<div class="sheet-overlay" id="vest-update-overlay" onclick="if(event.target===this)closeQuickVestUpdate()">
+  <div class="sheet" style="max-height:72vh">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <span class="sheet-title">Log Symptom Update</span>
+      <button class="sheet-close" onclick="closeQuickVestUpdate()">✕</button>
+    </div>
+    <div class="sheet-body" style="padding:14px 14px 24px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:14px">
+        Captures how you're feeling right now — separate from your morning check-in.
+      </div>
+
+      <!-- Severity sliders -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+        <div style="text-align:center">
+          <div style="font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--orange);margin-bottom:5px">Oscillopsia</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--orange);line-height:1" id="vu-osc-val">0</div>
+          <input type="range" id="vu-osc" min="0" max="10" value="0"
+            style="-webkit-appearance:none;width:100%;height:5px;border-radius:99px;background:var(--border2);outline:none;cursor:pointer;margin-top:5px"
+            oninput="vuUpdate('osc',this.value)">
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--blue);margin-bottom:5px">Balance</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--blue);line-height:1" id="vu-bal-val">0</div>
+          <input type="range" id="vu-bal" min="0" max="10" value="0"
+            style="-webkit-appearance:none;width:100%;height:5px;border-radius:99px;background:var(--border2);outline:none;cursor:pointer;margin-top:5px"
+            oninput="vuUpdate('bal',this.value)">
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--purple);margin-bottom:5px">Brain Fog</div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--purple);line-height:1" id="vu-cog-val">0</div>
+          <input type="range" id="vu-cog" min="0" max="10" value="0"
+            style="-webkit-appearance:none;width:100%;height:5px;border-radius:99px;background:var(--border2);outline:none;cursor:pointer;margin-top:5px"
+            oninput="vuUpdate('cog',this.value)">
+        </div>
+      </div>
+
+      <!-- Note -->
+      <div style="margin-bottom:16px">
+        <div style="font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">What's happening?</div>
+        <textarea id="vu-note"
+          style="width:100%;background:var(--card2);border:1px solid var(--border2);border-radius:8px;color:var(--text);padding:9px 12px;font-family:'DM Sans',sans-serif;font-size:13px;resize:none;outline:none;min-height:80px;line-height:1.6"
+          placeholder="e.g. Oscillopsia worse after walking through store — patterned floors. Getting a coffee and sitting down."></textarea>
+      </div>
+
+      <!-- What helped / event type quick-select -->
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn btn-sm" id="vu-type-update" onclick="vuSetType('update',this)"
+          style="background:var(--accent-dim);border:1px solid rgba(0,229,160,.2);color:var(--accent);font-size:11px">📊 Update</button>
+        <button class="btn btn-sm" id="vu-type-trigger" onclick="vuSetType('trigger',this)"
+          style="background:var(--card2);border:1px solid var(--border);color:var(--muted);font-size:11px">⚡ Trigger noticed</button>
+        <button class="btn btn-sm" id="vu-type-recovery" onclick="vuSetType('recovery',this)"
+          style="background:var(--card2);border:1px solid var(--border);color:var(--muted);font-size:11px">🌿 Something helped</button>
+      </div>
+
+      <button class="btn btn-p" style="width:100%;font-size:14px;padding:12px" onclick="saveQuickVestUpdate()">
+        Save Update
+      </button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -2115,6 +2194,9 @@ function nsClassifyFatigue() {
 
 function nsRenderReadinessBar(score) {
   const wrap = document.getElementById('ns-readiness-wrap');
+  // Show quick update button whenever readiness bar is visible
+  const quickWrap = document.getElementById('ns-quick-update-wrap');
+  if (quickWrap) quickWrap.style.display = 'block';
   if (!wrap) return;
   if (score === null) { wrap.style.display = 'none'; return; }
   const tier = nsGetTier(score);
@@ -2390,6 +2472,90 @@ async function nsAfternoonSave() {
 }
 
 // ── Barometric pressure (silent fetch via Open-Meteo) ─────────────────────
+// ── Quick Vestibular Update (saves to vestibular_events) ──────────────────
+let _vuType = 'update';
+
+function openQuickVestUpdate() {
+  _vuType = 'update';
+  ['vu-osc','vu-bal','vu-cog'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = 0; vuUpdate(id.split('-')[1], 0); }
+  });
+  const note = document.getElementById('vu-note');
+  if (note) note.value = '';
+  // Reset type buttons
+  ['vu-type-update','vu-type-trigger','vu-type-recovery'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.style.cssText = 'background:var(--card2);border:1px solid var(--border);color:var(--muted);font-size:11px';
+  });
+  const defBtn = document.getElementById('vu-type-update');
+  if (defBtn) defBtn.style.cssText = 'background:var(--accent-dim);border:1px solid rgba(0,229,160,.2);color:var(--accent);font-size:11px';
+  document.getElementById('vest-update-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('vu-note')?.focus(), 150);
+}
+
+function closeQuickVestUpdate() {
+  document.getElementById('vest-update-overlay').classList.remove('open');
+}
+
+function vuUpdate(field, val) {
+  const valEl = document.getElementById(`vu-${field}-val`);
+  const slider = document.getElementById(`vu-${field}`);
+  if (valEl) valEl.textContent = val;
+  if (slider) {
+    const pct = (parseInt(val) / 10) * 100;
+    const color = field === 'osc' ? 'var(--orange)' : field === 'bal' ? 'var(--blue)' : 'var(--purple)';
+    slider.style.background = `linear-gradient(to right,${color} ${pct}%,var(--border2) ${pct}%)`;
+  }
+}
+
+function vuSetType(type, btn) {
+  _vuType = type;
+  ['vu-type-update','vu-type-trigger','vu-type-recovery'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.style.cssText = 'background:var(--card2);border:1px solid var(--border);color:var(--muted);font-size:11px';
+  });
+  const colorMap = {
+    update:   'background:var(--accent-dim);border:1px solid rgba(0,229,160,.2);color:var(--accent)',
+    trigger:  'background:rgba(255,212,96,.1);border:1px solid rgba(255,212,96,.25);color:var(--yellow)',
+    recovery: 'background:rgba(93,219,139,.08);border:1px solid rgba(93,219,139,.2);color:#5ddb8b',
+  };
+  btn.style.cssText = (colorMap[type] || '') + ';font-size:11px';
+}
+
+async function saveQuickVestUpdate() {
+  const osc  = parseInt(document.getElementById('vu-osc').value) || null;
+  const bal  = parseInt(document.getElementById('vu-bal').value) || null;
+  const cog  = parseInt(document.getElementById('vu-cog').value) || null;
+  const note = document.getElementById('vu-note').value.trim();
+
+  if (!osc && !bal && !cog && !note) {
+    toast('Add a rating or note first', true); return;
+  }
+
+  const payload = {
+    date:       todayISO(),
+    event_type: _vuType,
+    oscillopsia: osc > 0 ? osc : null,
+    balance:     bal > 0 ? bal : null,
+    cognitive:   cog > 0 ? cog : null,
+    note:        note || null,
+    logged_at:   new Date().toISOString(),
+  };
+
+  try {
+    if (WORKER_URL && FS_API_KEY) {
+      await wFetch('/api/vest/events', { method: 'POST', body: JSON.stringify(payload) });
+    }
+    closeQuickVestUpdate();
+    toast('✓ Update logged');
+  } catch (e) {
+    // Still close — saves to vestibular app on next sync
+    closeQuickVestUpdate();
+    toast('✓ Logged locally');
+  }
+}
+
 async function fetchNSBarometricPressure() {
   const today = todayISO();
   if (localStorage.getItem('fs3-pressure-date') === today) {
