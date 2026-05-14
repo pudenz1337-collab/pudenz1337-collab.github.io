@@ -492,7 +492,28 @@ textarea.field-input{resize:vertical;min-height:80px;line-height:1.6}
         <div class="w-field"><label>Deep Sleep (min)</label><input type="number" id="w-deep" placeholder="e.g. 85"></div>
         <div class="w-field"><label>REM Sleep (min)</label><input type="number" id="w-rem" placeholder="e.g. 95"></div>
         <div class="w-field"><label>Sleep Score</label><input type="number" id="w-score" placeholder="e.g. 78"></div>
-        <div class="w-field"><label>Stress Score</label><input type="number" id="w-stress" placeholder="e.g. 32"></div>
+        <div class="w-field" style="grid-column:span 2">
+          <label>Stress Level</label>
+          <div style="display:flex;gap:6px;margin-top:4px" id="w-stress-btns">
+            <button onclick="setStressLevel(1,this)" data-level="1"
+              style="flex:1;padding:8px 4px;border-radius:8px;border:2px solid #4da8ff;background:rgba(77,168,255,.12);color:#4da8ff;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:3px">
+              <span style="width:10px;height:10px;border-radius:50%;background:#4da8ff;display:block"></span>Relaxed
+            </button>
+            <button onclick="setStressLevel(2,this)" data-level="2"
+              style="flex:1;padding:8px 4px;border-radius:8px;border:2px solid var(--border2);background:var(--card2);color:var(--muted);font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:3px">
+              <span style="width:10px;height:10px;border-radius:50%;background:#4caf50;display:block"></span>Low
+            </button>
+            <button onclick="setStressLevel(3,this)" data-level="3"
+              style="flex:1;padding:8px 4px;border-radius:8px;border:2px solid var(--border2);background:var(--card2);color:var(--muted);font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:3px">
+              <span style="width:10px;height:10px;border-radius:50%;background:#ffc107;display:block"></span>Moderate
+            </button>
+            <button onclick="setStressLevel(4,this)" data-level="4"
+              style="flex:1;padding:8px 4px;border-radius:8px;border:2px solid var(--border2);background:var(--card2);color:var(--muted);font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:3px">
+              <span style="width:10px;height:10px;border-radius:50%;background:#ff6b35;display:block"></span>High
+            </button>
+          </div>
+          <input type="hidden" id="w-stress" value="">
+        </div>
         <div class="w-field"><label>Steps</label><input type="number" id="w-steps" placeholder="e.g. 6400"></div>
       </div>
       <button class="btn btn-p btn-sm btn-full" onclick="saveWearable()">Save Wearable Data</button>
@@ -1538,7 +1559,7 @@ async function loadDataTab() {
     if (w.sleep_deep)  document.getElementById('w-deep').value  = w.sleep_deep;
     if (w.sleep_rem)   document.getElementById('w-rem').value   = w.sleep_rem;
     if (w.sleep_score) document.getElementById('w-score').value = w.sleep_score;
-    if (w.stress_score)document.getElementById('w-stress').value= w.stress_score;
+    if (w.stress_score) restoreStressLevel(w.stress_score);
     if (w.steps)       document.getElementById('w-steps').value = w.steps;
   }
 }
@@ -1552,7 +1573,7 @@ async function saveWearable() {
     sleep_deep:   parseInt(document.getElementById('w-deep').value)      || null,
     sleep_rem:    parseInt(document.getElementById('w-rem').value)       || null,
     sleep_score:  parseInt(document.getElementById('w-score').value)     || null,
-    stress_score: parseInt(document.getElementById('w-stress').value)    || null,
+    stress_score: parseInt(document.getElementById('w-stress').value) || null,
     steps:        parseInt(document.getElementById('w-steps').value)     || null,
   };
   if (Object.values(payload).filter(v => v !== null && v !== todayISO()).every(v => !v)) {
@@ -1566,7 +1587,28 @@ async function saveWearable() {
   } catch (e) { toast('Error: ' + e.message, true); }
 }
 
-function selectVrtFeel(val, btn) {
+function setStressLevel(level, btn) {
+  // Map: 1=Relaxed(blue), 2=Low(green), 3=Moderate(yellow), 4=High(orange)
+  const colors = { 1:'#4da8ff', 2:'#4caf50', 3:'#ffc107', 4:'#ff6b35' };
+  const labels = { 1:'Relaxed', 2:'Low', 3:'Moderate', 4:'High' };
+  document.querySelectorAll('#w-stress-btns button').forEach(b => {
+    const lvl = parseInt(b.dataset.level);
+    const c = colors[lvl];
+    b.style.border = `2px solid var(--border2)`;
+    b.style.background = 'var(--card2)';
+    b.style.color = 'var(--muted)';
+  });
+  btn.style.border = `2px solid ${colors[level]}`;
+  btn.style.background = `${colors[level]}22`;
+  btn.style.color = colors[level];
+  document.getElementById('w-stress').value = level;
+}
+
+function restoreStressLevel(level) {
+  if (!level) return;
+  const btn = document.querySelector(`#w-stress-btns button[data-level="${level}"]`);
+  if (btn) setStressLevel(parseInt(level), btn);
+}
   vrtFeel = val;
   document.querySelectorAll('#panel-data .type-row .type-btn').forEach(b => b.className = 'type-btn');
   btn.className = 'type-btn active';
