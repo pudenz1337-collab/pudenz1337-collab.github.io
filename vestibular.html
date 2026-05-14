@@ -1609,7 +1609,8 @@ function restoreStressLevel(level) {
   const btn = document.querySelector(`#w-stress-btns button[data-level="${level}"]`);
   if (btn) setStressLevel(parseInt(level), btn);
 }
-  vrtFeel = val;
+
+function selectVrtFeel(val, btn) {
   document.querySelectorAll('#panel-data .type-row .type-btn').forEach(b => b.className = 'type-btn');
   btn.className = 'type-btn active';
 }
