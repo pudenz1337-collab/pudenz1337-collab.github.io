@@ -462,7 +462,7 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
   <div class="card" style="max-width:700px;margin-bottom:16px">
     <div class="ctitle">☁️ Cloudflare Worker URL</div>
     <div style="color:var(--muted);font-size:12px;margin-bottom:10px">Required for AI coaching and cloud storage. No trailing slash.</div>
-    <input class="ainput" id="worker-url" placeholder="https://fuelstrong-progress.yourname.workers.dev">
+    <input class="ainput" id="worker-url" placeholder="https://fuelstrong-v2.yourname.workers.dev">
     <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn btn-p btn-sm" onclick="saveSettings()">Save</button>
       <button class="btn btn-g btn-sm" onclick="testWorker()">Test Connection</button>
@@ -718,7 +718,7 @@ input.ainput:focus,select.ainput:focus{border-color:var(--accent)}
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-let WORKER_URL = localStorage.getItem('fs-worker-url') || '';
+let WORKER_URL     = localStorage.getItem('fs-worker-url')     || '';
 let data = { evolt: [], fitbod: [], fuelstrong: [] };
 let charts = {};
 let goals = {};
@@ -728,7 +728,7 @@ let measurements = JSON.parse(localStorage.getItem('fs-measurements') || '[]');
 let sessionLogs = JSON.parse(localStorage.getItem('fs-sessions') || '[]');
 
 async function init() {
-  document.getElementById('worker-url').value = WORKER_URL;
+  document.getElementById('worker-url').value     = WORKER_URL;
   restoreGoals();
   renderSupplements();
   restoreTirzepatide();
@@ -2400,6 +2400,7 @@ async function testWorker() {
   const url = document.getElementById('worker-url').value.trim().replace(/\/$/, '');
   const el = document.getElementById('test-result');
   el.textContent = 'Testing...';
+  el.style.color = 'var(--muted)';
   try {
     const resp = await fetch(url + '/api/health');
     const json = await resp.json();
