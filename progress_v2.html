@@ -807,6 +807,40 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
     </div>
 
     <div class="card">
+      <div class="card-title">📤 Export for Coaching Recalibration</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:12px">
+        Exports everything the coach uses — body composition history, nutrition trends, workout patterns, HEM entries, supplement logs, and NS check-in history. Upload this JSON to Claude to recalibrate your coaching.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px;font-size:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="ex-scans" checked style="accent-color:var(--accent)"> Body composition scans (Evolt)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="ex-nutrition" checked style="accent-color:var(--accent)"> Nutrition logs (last 90 days)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="ex-workouts" checked style="accent-color:var(--accent)"> Workout history
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="ex-hem" checked style="accent-color:var(--accent)"> Hunger / energy / mood log
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="ex-ns" checked style="accent-color:var(--accent)"> Nervous system check-ins
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="ex-supps" checked style="accent-color:var(--accent)"> Supplement logs
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="ex-goals" checked style="accent-color:var(--accent)"> Goals &amp; profile
+        </label>
+      </div>
+      <button class="btn btn-p btn-sm" onclick="exportForCoach()" id="export-coach-btn" style="width:100%">
+        📥 Download Coaching Export
+      </button>
+      <div id="export-coach-status" style="font-size:11px;color:var(--muted);margin-top:7px;display:none"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">🏁 Journey Start Date</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">When you started this body recomposition effort. The coach uses this to focus on relevant scan data and set appropriate timeline expectations. Saved to D1 — syncs across all devices.</div>
       <div class="setting-row">
@@ -3697,6 +3731,206 @@ function renderMeasurements() {
       </div>
     </div>`;
   }).join('');
+}
+
+async function exportForCoach() {
+  const btn    = document.getElementById('export-coach-btn');
+  const status = document.getElementById('export-coach-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Gathering data…';
+  status.style.display = 'block';
+  status.textContent = 'Fetching from worker…';
+
+  const include = {
+    scans:     document.getElementById('ex-scans').checked,
+    nutrition: document.getElementById('ex-nutrition').checked,
+    workouts:  document.getElementById('ex-workouts').checked,
+    hem:       document.getElementById('ex-hem').checked,
+    ns:        document.getElementById('ex-ns').checked,
+    supps:     document.getElementById('ex-supps').checked,
+    goals:     document.getElementById('ex-goals').checked,
+  };
+
+  try {
+    const localDate = new Date().toLocaleDateString('en-CA');
+    const since90   = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 90);
+      return d.toLocaleDateString('en-CA');
+    })();
+    const since365  = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 365);
+      return d.toLocaleDateString('en-CA');
+    })();
+
+    // Fetch all selected data in parallel
+    const fetches = await Promise.all([
+      include.scans     ? wFetch('/api/scans').catch(() => ({ scans: [] })) : Promise.resolve({ scans: [] }),
+      include.workouts  ? wFetch('/api/workouts/full').catch(() => ({ sessions: [] })) : Promise.resolve({ sessions: [] }),
+      include.goals     ? wFetch('/api/profile').catch(() => ({})) : Promise.resolve({}),
+      include.nutrition ? wFetch(`/api/daily-logs?since=${since90}`).catch(() => ({ logs: [] })) : Promise.resolve({ logs: [] }),
+      include.hem       ? wFetch(`/api/hem?since=${since90}`).catch(() => ({ entries: [] })) : Promise.resolve({ entries: [] }),
+      include.ns        ? wFetch(`/api/nervous-system/history?since=${since365}`).catch(() => ({ checkins: [] })) : Promise.resolve({ checkins: [] }),
+      include.supps     ? wFetch(`/api/supplements?since=${since90}`).catch(() => ({ logs: [] })) : Promise.resolve({ logs: [] }),
+      wFetch('/api/measurements').catch(() => ({ measurements: [] })),
+      wFetch('/api/weekly-avg').catch(() => ({})),
+    ]);
+
+    const [scansRes, workoutsRes, profileRes, nutritionRes, hemRes, nsRes, suppsRes, measureRes, weeklyRes] = fetches;
+
+    // Build summary stats for context
+    const scans     = scansRes.scans || [];
+    const workouts  = workoutsRes.sessions || [];
+    const nutrition = nutritionRes.logs || [];
+    const hem       = hemRes.entries || [];
+    const nsHistory = nsRes.checkins || [];
+    const supps     = suppsRes.logs || [];
+
+    // Compute trend summaries
+    const avgProtein = nutrition.length
+      ? Math.round(nutrition.reduce((a, l) => a + (l.protein_g || 0), 0) / nutrition.length)
+      : null;
+    const avgCalories = nutrition.length
+      ? Math.round(nutrition.reduce((a, l) => a + (l.calories || 0), 0) / nutrition.length)
+      : null;
+    const trainingDays90 = workouts.filter(w => {
+      const d = new Date(w.session_date + 'T12:00:00');
+      return (Date.now() - d) / 86400000 <= 90;
+    }).length;
+    const avgReadiness = nsHistory.filter(c => c.readiness_score).length
+      ? Math.round(nsHistory.filter(c => c.readiness_score).reduce((a, c) => a + c.readiness_score, 0) / nsHistory.filter(c => c.readiness_score).length)
+      : null;
+    const vestSymCounts = { none: 0, mild: 0, moderate: 0, significant: 0 };
+    nsHistory.forEach(c => { if (c.vestibular_symptoms) vestSymCounts[c.vestibular_symptoms] = (vestSymCounts[c.vestibular_symptoms] || 0) + 1; });
+
+    const payload = {
+      exportedAt:    new Date().toISOString(),
+      exportVersion: 2,
+      exportPurpose: 'coaching_recalibration',
+      dateRange:     { from: since90, to: localDate },
+
+      // ── Profile & Goals ──
+      profile: include.goals ? {
+        goals:          profileRes.goals || {},
+        journeyStart:   profileRes.journeyStartDate || null,
+        contextNotes:   profileRes.coachContext || null,
+      } : null,
+
+      // ── Body Composition ──
+      bodyScans: include.scans ? scans.map(s => ({
+        date:             s.scan_date || s.date,
+        weight_lbs:       s.weight_lbs,
+        body_fat_pct:     s.body_fat_pct,
+        skeletal_muscle:  s.skeletal_muscle_mass,
+        lean_body_mass:   s.lean_body_mass,
+        bmr:              s.bmr,
+        visceral_fat:     s.visceral_fat_level,
+        rec_protein_g:    s.rec_protein_high_g,
+      })) : null,
+
+      measurements: (measureRes.measurements || []).map(m => ({
+        date:    m.date,
+        waist:   m.waist_in  ?? m.waist,
+        hips:    m.hips_in   ?? m.hips,
+        neck:    m.neck_in   ?? m.neck,
+        navyBF:  m.navy_bf   ?? m.navyBF,
+      })),
+
+      // ── Nutrition (last 90 days) ──
+      nutritionLogs: include.nutrition ? nutrition.map(l => ({
+        date:        l.date,
+        calories:    l.calories,
+        protein_g:   l.protein_g,
+        water_oz:    l.water_oz,
+        training:    l.training_day,
+        injection:   l.injection_day,
+        notes:       l.notes || null,
+      })) : null,
+
+      // ── Workouts ──
+      workouts: include.workouts ? workouts.map(w => ({
+        date:          w.session_date,
+        type:          w.session_type,
+        muscle_groups: w.muscle_groups,
+        total_volume:  w.total_volume_lbs,
+        total_sets:    w.total_sets,
+      })) : null,
+
+      // ── HEM (Hunger / Energy / Mood) ──
+      hemLog: include.hem ? hem.map(h => ({
+        date:    h.date,
+        time:    h.timestamp,
+        hunger:  h.hunger,
+        energy:  h.energy,
+        mood:    h.mood,
+        note:    h.note || null,
+      })) : null,
+
+      // ── Nervous System / Vestibular ──
+      nervousSystemCheckins: include.ns ? nsHistory.map(c => ({
+        date:                 c.date,
+        readiness_score:      c.readiness_score,
+        sleep_quality:        c.sleep_quality,
+        sleep_duration:       c.sleep_duration,
+        sleep_aid:            c.sleep_aid,
+        physical_fatigue:     c.physical_fatigue,
+        cognitive_fatigue:    c.cognitive_fatigue,
+        vestibular_symptoms:  c.vestibular_symptoms,
+        visual_strain:        c.visual_strain,
+        balance_confidence:   c.balance_confidence,
+        weather_sensitive:    c.weather_sensitive,
+        afternoon_overall:    c.afternoon_overall,
+        nap_taken:            c.nap_taken,
+      })) : null,
+
+      // ── Supplements ──
+      supplementLogs: include.supps ? supps : null,
+
+      // ── Summary for quick coach context ──
+      summary: {
+        exportDate:          localDate,
+        totalBodyScans:      scans.length,
+        mostRecentScanDate:  scans.length ? scans[scans.length - 1].scan_date || scans[scans.length - 1].date : null,
+        mostRecentWeight:    scans.length ? scans[scans.length - 1].weight_lbs : null,
+        mostRecentBodyFat:   scans.length ? scans[scans.length - 1].body_fat_pct : null,
+        avgProtein90d:       avgProtein,
+        avgCalories90d:      avgCalories,
+        trainingDays90d:     trainingDays90,
+        nutritionDaysLogged: nutrition.length,
+        hemEntriesLogged:    hem.length,
+        nsCheckinDays:       nsHistory.length,
+        avgReadinessScore:   avgReadiness,
+        vestibularSymDays:   vestSymCounts,
+        weeklyAvg:           weeklyRes || null,
+      },
+    };
+
+    const json     = JSON.stringify(payload, null, 2);
+    const blob     = new Blob([json], { type: 'application/json' });
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    const dateStr  = localDate.replace(/-/g, '');
+    a.href         = url;
+    a.download     = `fuelstrong-coaching-export-${dateStr}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    const sizekb = Math.round(json.length / 1024);
+    status.textContent   = `✓ Exported — ${sizekb}KB · ${scans.length} scans · ${nutrition.length} nutrition days · ${nsHistory.length} NS check-ins`;
+    status.style.color   = 'var(--accent)';
+    btn.textContent      = '✓ Downloaded';
+    setTimeout(() => {
+      btn.disabled    = false;
+      btn.textContent = '📥 Download Coaching Export';
+    }, 3000);
+
+  } catch (e) {
+    status.textContent = '✗ Export failed: ' + e.message;
+    status.style.color = 'var(--danger)';
+    btn.disabled       = false;
+    btn.textContent    = '📥 Download Coaching Export';
+  }
 }
 
 async function saveContext() {
