@@ -753,314 +753,6 @@ body{
   <!-- ═══════ TODAY ═══════ -->
   <div id="panel-today" class="panel active">
 
-    <!-- Day Plan -->
-    <div style="display:flex;gap:7px;margin-bottom:10px;align-items:center">
-      <button class="plan-btn" id="btn-training" onclick="toggleFlag('trainingDay',this,'training')" style="flex:2">
-        <span class="plan-icon">💪</span>Trained Today
-      </button>
-      <button class="plan-btn" id="btn-recovery" onclick="toggleFlag('recoveryDay',this,'recovery')" style="flex:2">
-        <span class="plan-icon">😴</span>Not Training
-      </button>
-      <button class="plan-btn" id="btn-injection" onclick="toggleFlag('injectionDay',this,'injection')"
-        style="flex:1;padding:7px 4px;font-size:10px">
-        <span class="plan-icon" style="font-size:15px">💉</span>Injection
-      </button>
-    </div>
-
-    <!-- Macro Progress -->
-    <div class="card" style="margin-bottom:10px">
-      <div class="macro-rings">
-        <div>
-          <div class="ring-wrap">
-            <svg viewBox="0 0 86 86">
-              <circle class="ring-bg" cx="43" cy="43" r="36"/>
-              <circle class="ring-fill" id="ring-p" cx="43" cy="43" r="36"
-                stroke="var(--blue)" stroke-dasharray="0 226"/>
-            </svg>
-            <div class="ring-center">
-              <div class="ring-pct" id="rv-p" style="color:var(--blue)">0%</div>
-              <div class="ring-label">Protein</div>
-            </div>
-          </div>
-          <div class="ring-abs" id="ra-p">0 / 150g</div>
-          <div id="avg-p" style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px"></div>
-        </div>
-        <div>
-          <div class="ring-wrap">
-            <svg viewBox="0 0 86 86">
-              <circle class="ring-bg" cx="43" cy="43" r="36"/>
-              <circle class="ring-fill" id="ring-c" cx="43" cy="43" r="36"
-                stroke="var(--yellow)" stroke-dasharray="0 226"/>
-            </svg>
-            <div class="ring-center">
-              <div class="ring-pct" id="rv-c" style="color:var(--yellow)">0%</div>
-              <div class="ring-label">Calories</div>
-            </div>
-          </div>
-          <div class="ring-abs" id="ra-c">0 / 1800</div>
-          <div id="avg-c" style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px"></div>
-        </div>
-        <div>
-          <div class="ring-wrap">
-            <svg viewBox="0 0 86 86">
-              <circle class="ring-bg" cx="43" cy="43" r="36"/>
-              <circle class="ring-fill" id="ring-w" cx="43" cy="43" r="36"
-                stroke="var(--accent)" stroke-dasharray="0 226"/>
-            </svg>
-            <div class="ring-center">
-              <div class="ring-pct" id="rv-w" style="color:var(--accent)">0%</div>
-              <div class="ring-label">Water</div>
-            </div>
-          </div>
-          <div class="ring-abs" id="ra-w">0 / 80oz</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- H-E-M -->
-    <div class="card" id="hem-card">
-      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleHEMCard()">
-        <span>Hunger · Energy · Mood</span>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span id="hem-logged-badge" style="display:none;font-size:10px;color:var(--accent)">✓ logged</span>
-          <span id="hem-nudge-badge" style="display:none;font-size:10px;color:var(--yellow)">○ tap to log</span>
-          <span id="hem-chevron" style="font-size:12px;color:var(--muted)">▲</span>
-        </div>
-      </div>
-      <div id="hem-body">
-        <div class="hem-quick" style="margin-top:10px">
-          <div class="hem-quick-label">Hunger</div>
-          <div class="hem-btns">
-            <button class="hem-btn" id="h-1" onclick="setHEM('h',1)" title="Not hungry">😶</button>
-            <button class="hem-btn" id="h-2" onclick="setHEM('h',2)" title="A little">🙂</button>
-            <button class="hem-btn" id="h-3" onclick="setHEM('h',3)" title="Very hungry">😤</button>
-          </div>
-        </div>
-        <div class="hem-quick">
-          <div class="hem-quick-label">Energy</div>
-          <div class="hem-btns">
-            <button class="hem-btn" id="e-1" onclick="setHEM('e',1)" title="Low">🪫</button>
-            <button class="hem-btn" id="e-2" onclick="setHEM('e',2)" title="Medium">⚡</button>
-            <button class="hem-btn" id="e-3" onclick="setHEM('e',3)" title="High">🔥</button>
-          </div>
-        </div>
-        <div class="hem-quick">
-          <div class="hem-quick-label">Mood</div>
-          <div class="hem-btns">
-            <button class="hem-btn" id="m-1" onclick="setHEM('m',1)" title="Low">😞</button>
-            <button class="hem-btn" id="m-2" onclick="setHEM('m',2)" title="OK">😐</button>
-            <button class="hem-btn" id="m-3" onclick="setHEM('m',3)" title="Good">😊</button>
-          </div>
-        </div>
-        <button id="hem-spike-btn" class="btn btn-g btn-sm" style="width:100%;margin-top:8px;color:var(--danger);border-color:var(--danger)" onclick="logHungerSpike()">
-          🔥 Feeling it — flag hunger spike
-        </button>
-        <input id="hem-note" class="field-input" placeholder="Optional note…" style="width:100%;margin-top:8px">
-        <div class="hem-timeline-list" id="hem-timeline"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">🏋️ Workout</div>
-      <div id="workout-log"></div>
-      <button class="btn btn-g btn-sm" onclick="openWorkoutSheet()" id="add-workout-btn">+ Log Workout</button>
-    </div>
-
-    <!-- Supplement Tracker -->
-    <div class="card">
-      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
-        <span>💊 Supplements</span>
-        <span id="supp-streak-badge" style="font-size:10px;font-family:'DM Mono',monospace;color:var(--accent)"></span>
-      </div>
-      <div id="supp-list">
-        <div class="supp-row">
-          <button class="supp-check" id="supp-creatine" onclick="toggleSupplement('creatine',this)"></button>
-          <div class="supp-info">
-            <div class="supp-name">Creatine</div>
-            <div class="supp-meta">5g · anytime · take daily for full effect</div>
-            <div id="supp-meta-creatine" style="font-size:10px;margin-top:2px"></div>
-          </div>
-          <div class="supp-streak" id="creatine-streak"></div>
-        </div>
-        <div class="supp-row">
-          <button class="supp-check" id="supp-magnesium" onclick="toggleSupplement('magnesium',this)"></button>
-          <div class="supp-info">
-            <div class="supp-name">Magnesium</div>
-            <div class="supp-meta" id="mag-meta">200–400mg · 1–2 hrs before bed</div>
-            <div id="supp-meta-magnesium" style="font-size:10px;margin-top:2px"></div>
-          </div>
-        </div>
-        <div class="supp-row">
-          <button class="supp-check" id="supp-preworkout" onclick="toggleSupplement('preworkout',this)"></button>
-          <div class="supp-info">
-            <div class="supp-name">Pre-workout</div>
-            <div class="supp-meta" id="pre-meta">1 serving · 30–45 min before training</div>
-            <div id="supp-meta-preworkout" style="font-size:10px;margin-top:2px"></div>
-          </div>
-        </div>
-        <div class="supp-row">
-          <button class="supp-check" id="supp-liquid_iv" onclick="toggleSupplement('liquid_iv',this)"></button>
-          <div class="supp-info">
-            <div class="supp-name">Liquid IV</div>
-            <div class="supp-meta">1 packet · electrolytes + hydration · counts toward water goal</div>
-            <div id="supp-meta-liquid_iv" style="font-size:10px;margin-top:2px"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Water -->
-    <div class="card">
-      <div class="card-title">💧 Water</div>
-      <div class="water-drops" id="water-drops"></div>
-      <div id="water-count" style="font-size:11px;color:var(--muted);margin-bottom:9px"></div>
-      <div class="water-btns">
-        <button class="btn btn-p btn-sm" onclick="addWater(20)">+20oz</button>
-        <button class="btn btn-g btn-sm" onclick="addWater(16)">+16oz</button>
-        <button class="btn btn-g btn-sm" onclick="addWater(8)">+8oz</button>
-        <button class="btn btn-g btn-sm" onclick="addWater(-4)">−4oz</button>
-      </div>
-    </div>
-
-    <!-- Recovery Events -->
-    <div class="card" id="recovery-card">
-      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleRecoveryCard()">
-        <span>🛁 Recovery</span>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span id="rec-logged-badge" style="display:none;font-size:10px;color:var(--accent)">✓ logged</span>
-          <span id="rec-card-chevron" style="font-size:12px;color:var(--muted)">▼</span>
-        </div>
-      </div>
-      <div id="rec-card-body" style="display:none;margin-top:12px">
-
-        <!-- Follow-up feel prompt (shown next day if feel not logged) -->
-        <div id="rec-followup-prompt" style="display:none;margin-bottom:12px;padding:10px 12px;background:rgba(77,168,255,.07);border:1px solid rgba(77,168,255,.2);border-radius:10px">
-          <div style="font-size:12px;font-weight:600;color:var(--blue);margin-bottom:6px">How did you feel after yesterday's recovery session?</div>
-          <div id="rec-followup-info" style="font-size:11px;color:var(--muted);margin-bottom:8px"></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap" id="rec-followup-feel-btns"></div>
-          <button onclick="dismissRecoveryFollowup()" style="margin-top:8px;background:none;border:none;color:var(--muted2);font-size:10px;cursor:pointer;text-decoration:underline">skip</button>
-        </div>
-
-        <!-- Log new recovery event -->
-        <div id="rec-log-form">
-          <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Log Recovery</div>
-
-          <!-- Type -->
-          <div style="margin-bottom:10px">
-            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Type</div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px" id="rec-type-btns"></div>
-            <div id="rec-custom-wrap" style="display:none;margin-top:8px">
-              <input class="field-input" id="rec-custom-input" placeholder="Custom recovery type..." style="width:100%">
-            </div>
-          </div>
-
-          <!-- Duration -->
-          <div style="margin-bottom:10px">
-            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Duration</div>
-            <div style="display:flex;gap:6px;align-items:center">
-              <button class="rec-type-btn" onclick="setRecDuration(30,this)">30 min</button>
-              <button class="rec-type-btn" onclick="setRecDuration(60,this)">60 min</button>
-              <button class="rec-type-btn" onclick="setRecDuration(90,this)">90 min</button>
-              <input type="number" id="rec-duration-input" class="field-input" placeholder="min" min="5" max="240"
-                style="width:65px;padding:6px 8px" oninput="clearRecDurationBtns()">
-            </div>
-          </div>
-
-          <!-- Body Area chips -->
-          <div style="margin-bottom:10px">
-            <div style="font-size:10px;color:var(--muted);margin-bottom:4px">Body Area <span style="font-size:10px;color:var(--muted2)">(select all that apply)</span></div>
-            <div id="rec-area-chips"></div>
-          </div>
-
-          <!-- How did you feel after (optional) -->
-          <div style="margin-bottom:12px">
-            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">How did you feel after? <span style="font-size:10px;color:var(--muted2)">(optional — can add tomorrow)</span></div>
-            <div style="display:flex;gap:5px" id="rec-feel-btns">
-              <button class="rec-feel-btn" data-feel="energetic" onclick="selectRecFeel('energetic',this)">💪<br>Energetic</button>
-              <button class="rec-feel-btn" data-feel="neutral"   onclick="selectRecFeel('neutral',this)">😐<br>Neutral</button>
-              <button class="rec-feel-btn" data-feel="tired"     onclick="selectRecFeel('tired',this)">😴<br>Tired</button>
-              <button class="rec-feel-btn" data-feel="sore"      onclick="selectRecFeel('sore',this)">😣<br>Sore</button>
-              <button class="rec-feel-btn" data-feel="worked"    onclick="selectRecFeel('worked',this)">🔥<br>Worked</button>
-            </div>
-          </div>
-
-          <!-- Notes -->
-          <input class="field-input" id="rec-notes" placeholder="Notes (optional — areas of focus, issues, etc.)" style="width:100%;margin-bottom:10px">
-
-          <button class="btn btn-p btn-sm" style="width:100%" onclick="saveRecoveryEvent()">Log Recovery Session</button>
-        </div>
-
-        <!-- History -->
-        <div id="rec-history-wrap" style="margin-top:14px;display:none">
-          <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;margin-bottom:6px" onclick="toggleRecHistory()">
-            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Recent Sessions</div>
-            <span id="rec-hist-chevron" style="font-size:11px;color:var(--muted)">▼</span>
-          </div>
-          <div id="rec-history-list" style="display:none"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Activity Buttons -->
-    <div class="card">
-      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
-        <span>🏃 Activity</span>
-        <span id="activity-burn-total" style="font-size:11px;color:var(--accent);font-family:'DM Mono',monospace"></span>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">MET values from Compendium of Physical Activities</div>
-      <!-- Golf buttons — additive (each tap = one 9-hole session) -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <button class="activity-btn" id="act-golf_walk_9" onclick="addActivitySession('golf_walk_9')">
-          <span class="act-icon">⛳</span>
-          <span>Golf 9 holes</span>
-          <span style="font-size:10px">(walking)</span>
-          <span class="act-kcal" id="act-kcal-golf_walk_9">~675 kcal</span>
-          <span id="act-count-golf_walk_9" style="font-size:10px;color:var(--accent);font-weight:600;display:none"></span>
-        </button>
-        <button class="activity-btn" id="act-golf_cart_9" onclick="addActivitySession('golf_cart_9')">
-          <span class="act-icon">🛺</span>
-          <span>Golf 9 holes</span>
-          <span style="font-size:10px">(cart)</span>
-          <span class="act-kcal" id="act-kcal-golf_cart_9">~445 kcal</span>
-          <span id="act-count-golf_cart_9" style="font-size:10px;color:var(--accent);font-weight:600;display:none"></span>
-        </button>
-      </div>
-      <!-- Active day toggle -->
-      <div style="margin-bottom:10px">
-        <button class="activity-btn" id="act-active_day" onclick="logActivity('active_day',this)" style="width:100%;flex-direction:row;gap:8px;padding:10px 12px;justify-content:flex-start">
-          <span class="act-icon" style="font-size:18px">⚡</span>
-          <div style="text-align:left;flex:1">
-            <div style="font-size:12px;font-weight:500">Active day</div>
-            <div style="font-size:10px;color:var(--muted)">on feet all day</div>
-          </div>
-          <span class="act-kcal" id="act-kcal-active_day">+250 kcal</span>
-        </button>
-      </div>
-      <!-- Steps + Floors entry -->
-      <div style="padding:10px 12px;background:var(--card2);border:1px solid var(--border2);border-radius:10px;margin-bottom:8px">
-        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px">📱 Steps / Floors (from Health app)</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-          <div>
-            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Steps</div>
-            <input type="number" id="steps-input" class="field-input" placeholder="e.g. 12000" min="0" step="500"
-              style="width:100%;padding:6px 8px;font-size:13px" oninput="previewStepsKcal()">
-          </div>
-          <div>
-            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Floors (optional)</div>
-            <input type="number" id="floors-input" class="field-input" placeholder="e.g. 8" min="0" step="1"
-              style="width:100%;padding:6px 8px;font-size:13px" oninput="previewStepsKcal()">
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <button class="btn btn-p btn-sm" onclick="logSteps()" style="flex:1">Log Steps</button>
-          <span id="steps-kcal-preview" style="font-size:11px;color:var(--accent);font-family:'DM Mono',monospace"></span>
-          <button id="steps-clear-btn" style="display:none;background:none;border:none;color:var(--muted2);font-size:11px;cursor:pointer;text-decoration:underline" onclick="clearSteps()">clear</button>
-        </div>
-        <div id="steps-logged-info" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
-      </div>
-      <div id="activity-log-list" style="margin-top:4px;font-size:11px;color:var(--muted)"></div>
-    </div>
-
     <!-- NERVOUS SYSTEM MORNING CHECK-IN -->
     <div class="ns-card" id="ns-checkin-card">
       <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none" onclick="toggleNSCheckin()">
@@ -1070,12 +762,11 @@ body{
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span id="ns-summary-badge" style="display:none"></span>
-          <span id="ns-nudge-label" style="font-size:10px;color:var(--muted)">Tap to log if something's off today</span>
-          <span id="ns-chevron" style="font-size:10px;color:var(--muted)">▶</span>
+          <span id="ns-chevron" style="font-size:10px;color:var(--muted)">▼</span>
         </div>
       </div>
 
-      <div id="ns-checkin-body" style="margin-top:12px;display:none">
+      <div id="ns-checkin-body" style="margin-top:12px">
 
         <!-- SLEEP -->
         <div class="ns-section">
@@ -1193,6 +884,20 @@ body{
     <!-- AFTERNOON CHECK-IN (time-gated: shows after noon) -->
     <div id="ns-afternoon-wrap" style="display:none"></div>
 
+    <!-- Day Plan -->
+    <div style="display:flex;gap:7px;margin-bottom:10px;align-items:center">
+      <button class="plan-btn" id="btn-training" onclick="toggleFlag('trainingDay',this,'training')" style="flex:2">
+        <span class="plan-icon">💪</span>Trained Today
+      </button>
+      <button class="plan-btn" id="btn-recovery" onclick="toggleFlag('recoveryDay',this,'recovery')" style="flex:2">
+        <span class="plan-icon">😴</span>Not Training
+      </button>
+      <button class="plan-btn" id="btn-injection" onclick="toggleFlag('injectionDay',this,'injection')"
+        style="flex:1;padding:7px 4px;font-size:10px">
+        <span class="plan-icon" style="font-size:15px">💉</span>Injection
+      </button>
+    </div>
+
     <!-- Yesterday prompt — shown when previous day was sparse -->
     <div id="yesterday-prompt" style="display:none;margin-bottom:10px;padding:11px 13px;background:rgba(255,193,7,.07);border:1px solid rgba(255,193,7,.2);border-radius:12px">
       <div style="font-size:12px;font-weight:600;color:var(--yellow);margin-bottom:8px">📋 Yesterday looks incomplete</div>
@@ -1212,6 +917,52 @@ body{
         <div style="display:flex;align-items:center;gap:10px">
           <div style="font-size:11px;color:var(--muted)" id="hero-time"></div>
           <div id="hero-streak" style="font-size:11px;color:var(--accent);display:none"></div>
+        </div>
+      </div>
+      <div class="macro-rings">
+        <div>
+          <div class="ring-wrap">
+            <svg viewBox="0 0 86 86">
+              <circle class="ring-bg" cx="43" cy="43" r="36"/>
+              <circle class="ring-fill" id="ring-p" cx="43" cy="43" r="36"
+                stroke="var(--blue)" stroke-dasharray="0 226"/>
+            </svg>
+            <div class="ring-center">
+              <div class="ring-pct" id="rv-p" style="color:var(--blue)">0%</div>
+              <div class="ring-label">Protein</div>
+            </div>
+          </div>
+          <div class="ring-abs" id="ra-p">0 / 150g</div>
+          <div id="avg-p" style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px"></div>
+        </div>
+        <div>
+          <div class="ring-wrap">
+            <svg viewBox="0 0 86 86">
+              <circle class="ring-bg" cx="43" cy="43" r="36"/>
+              <circle class="ring-fill" id="ring-c" cx="43" cy="43" r="36"
+                stroke="var(--yellow)" stroke-dasharray="0 226"/>
+            </svg>
+            <div class="ring-center">
+              <div class="ring-pct" id="rv-c" style="color:var(--yellow)">0%</div>
+              <div class="ring-label">Calories</div>
+            </div>
+          </div>
+          <div class="ring-abs" id="ra-c">0 / 1800</div>
+          <div id="avg-c" style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px"></div>
+        </div>
+        <div>
+          <div class="ring-wrap">
+            <svg viewBox="0 0 86 86">
+              <circle class="ring-bg" cx="43" cy="43" r="36"/>
+              <circle class="ring-fill" id="ring-w" cx="43" cy="43" r="36"
+                stroke="var(--accent)" stroke-dasharray="0 226"/>
+            </svg>
+            <div class="ring-center">
+              <div class="ring-pct" id="rv-w" style="color:var(--accent)">0%</div>
+              <div class="ring-label">Water</div>
+            </div>
+          </div>
+          <div class="ring-abs" id="ra-w">0 / 80oz</div>
         </div>
       </div>
     </div>
@@ -1242,6 +993,247 @@ body{
 
     <!-- Momentum Signal -->
     <div id="momentum-wrap"></div>
+    <div class="card">
+      <div class="card-title">🏋️ Workout</div>
+      <div id="workout-log"></div>
+      <button class="btn btn-g btn-sm" onclick="openWorkoutSheet()" id="add-workout-btn">+ Log Workout</button>
+    </div>
+
+    <!-- Activity Buttons -->
+    <div class="card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span>🏃 Activity</span>
+        <span id="activity-burn-total" style="font-size:11px;color:var(--accent);font-family:'DM Mono',monospace"></span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">MET values from Compendium of Physical Activities</div>
+      <!-- Golf buttons — additive (each tap = one 9-hole session) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <button class="activity-btn" id="act-golf_walk_9" onclick="addActivitySession('golf_walk_9')">
+          <span class="act-icon">⛳</span>
+          <span>Golf 9 holes</span>
+          <span style="font-size:10px">(walking)</span>
+          <span class="act-kcal" id="act-kcal-golf_walk_9">~675 kcal</span>
+          <span id="act-count-golf_walk_9" style="font-size:10px;color:var(--accent);font-weight:600;display:none"></span>
+        </button>
+        <button class="activity-btn" id="act-golf_cart_9" onclick="addActivitySession('golf_cart_9')">
+          <span class="act-icon">🛺</span>
+          <span>Golf 9 holes</span>
+          <span style="font-size:10px">(cart)</span>
+          <span class="act-kcal" id="act-kcal-golf_cart_9">~445 kcal</span>
+          <span id="act-count-golf_cart_9" style="font-size:10px;color:var(--accent);font-weight:600;display:none"></span>
+        </button>
+      </div>
+      <!-- Active day toggle -->
+      <div style="margin-bottom:10px">
+        <button class="activity-btn" id="act-active_day" onclick="logActivity('active_day',this)" style="width:100%;flex-direction:row;gap:8px;padding:10px 12px;justify-content:flex-start">
+          <span class="act-icon" style="font-size:18px">⚡</span>
+          <div style="text-align:left;flex:1">
+            <div style="font-size:12px;font-weight:500">Active day</div>
+            <div style="font-size:10px;color:var(--muted)">on feet all day</div>
+          </div>
+          <span class="act-kcal" id="act-kcal-active_day">+250 kcal</span>
+        </button>
+      </div>
+      <!-- Steps + Floors entry -->
+      <div style="padding:10px 12px;background:var(--card2);border:1px solid var(--border2);border-radius:10px;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px">📱 Steps / Floors (from Health app)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Steps</div>
+            <input type="number" id="steps-input" class="field-input" placeholder="e.g. 12000" min="0" step="500"
+              style="width:100%;padding:6px 8px;font-size:13px" oninput="previewStepsKcal()">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Floors (optional)</div>
+            <input type="number" id="floors-input" class="field-input" placeholder="e.g. 8" min="0" step="1"
+              style="width:100%;padding:6px 8px;font-size:13px" oninput="previewStepsKcal()">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-p btn-sm" onclick="logSteps()" style="flex:1">Log Steps</button>
+          <span id="steps-kcal-preview" style="font-size:11px;color:var(--accent);font-family:'DM Mono',monospace"></span>
+          <button id="steps-clear-btn" style="display:none;background:none;border:none;color:var(--muted2);font-size:11px;cursor:pointer;text-decoration:underline" onclick="clearSteps()">clear</button>
+        </div>
+        <div id="steps-logged-info" style="font-size:10px;color:var(--muted);margin-top:4px"></div>
+      </div>
+      <div id="activity-log-list" style="margin-top:4px;font-size:11px;color:var(--muted)"></div>
+    </div>
+
+    <!-- Recovery Events -->
+    <div class="card" id="recovery-card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleRecoveryCard()">
+        <span>🛁 Recovery</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="rec-logged-badge" style="display:none;font-size:10px;color:var(--accent)">✓ logged</span>
+          <span id="rec-card-chevron" style="font-size:12px;color:var(--muted)">▼</span>
+        </div>
+      </div>
+      <div id="rec-card-body" style="display:none;margin-top:12px">
+
+        <!-- Follow-up feel prompt (shown next day if feel not logged) -->
+        <div id="rec-followup-prompt" style="display:none;margin-bottom:12px;padding:10px 12px;background:rgba(77,168,255,.07);border:1px solid rgba(77,168,255,.2);border-radius:10px">
+          <div style="font-size:12px;font-weight:600;color:var(--blue);margin-bottom:6px">How did you feel after yesterday's recovery session?</div>
+          <div id="rec-followup-info" style="font-size:11px;color:var(--muted);margin-bottom:8px"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap" id="rec-followup-feel-btns"></div>
+          <button onclick="dismissRecoveryFollowup()" style="margin-top:8px;background:none;border:none;color:var(--muted2);font-size:10px;cursor:pointer;text-decoration:underline">skip</button>
+        </div>
+
+        <!-- Log new recovery event -->
+        <div id="rec-log-form">
+          <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Log Recovery</div>
+
+          <!-- Type -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Type</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px" id="rec-type-btns"></div>
+            <div id="rec-custom-wrap" style="display:none;margin-top:8px">
+              <input class="field-input" id="rec-custom-input" placeholder="Custom recovery type..." style="width:100%">
+            </div>
+          </div>
+
+          <!-- Duration -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Duration</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <button class="rec-type-btn" onclick="setRecDuration(30,this)">30 min</button>
+              <button class="rec-type-btn" onclick="setRecDuration(60,this)">60 min</button>
+              <button class="rec-type-btn" onclick="setRecDuration(90,this)">90 min</button>
+              <input type="number" id="rec-duration-input" class="field-input" placeholder="min" min="5" max="240"
+                style="width:65px;padding:6px 8px" oninput="clearRecDurationBtns()">
+            </div>
+          </div>
+
+          <!-- Body Area chips -->
+          <div style="margin-bottom:10px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:4px">Body Area <span style="font-size:10px;color:var(--muted2)">(select all that apply)</span></div>
+            <div id="rec-area-chips"></div>
+          </div>
+
+          <!-- How did you feel after (optional) -->
+          <div style="margin-bottom:12px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">How did you feel after? <span style="font-size:10px;color:var(--muted2)">(optional — can add tomorrow)</span></div>
+            <div style="display:flex;gap:5px" id="rec-feel-btns">
+              <button class="rec-feel-btn" data-feel="energetic" onclick="selectRecFeel('energetic',this)">💪<br>Energetic</button>
+              <button class="rec-feel-btn" data-feel="neutral"   onclick="selectRecFeel('neutral',this)">😐<br>Neutral</button>
+              <button class="rec-feel-btn" data-feel="tired"     onclick="selectRecFeel('tired',this)">😴<br>Tired</button>
+              <button class="rec-feel-btn" data-feel="sore"      onclick="selectRecFeel('sore',this)">😣<br>Sore</button>
+              <button class="rec-feel-btn" data-feel="worked"    onclick="selectRecFeel('worked',this)">🔥<br>Worked</button>
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <input class="field-input" id="rec-notes" placeholder="Notes (optional — areas of focus, issues, etc.)" style="width:100%;margin-bottom:10px">
+
+          <button class="btn btn-p btn-sm" style="width:100%" onclick="saveRecoveryEvent()">Log Recovery Session</button>
+        </div>
+
+        <!-- History -->
+        <div id="rec-history-wrap" style="margin-top:14px;display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;margin-bottom:6px" onclick="toggleRecHistory()">
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Recent Sessions</div>
+            <span id="rec-hist-chevron" style="font-size:11px;color:var(--muted)">▼</span>
+          </div>
+          <div id="rec-history-list" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Supplement Tracker -->
+    <div class="card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span>💊 Supplements</span>
+        <span id="supp-streak-badge" style="font-size:10px;font-family:'DM Mono',monospace;color:var(--accent)"></span>
+      </div>
+      <div id="supp-list">
+        <div class="supp-row">
+          <button class="supp-check" id="supp-creatine" onclick="toggleSupplement('creatine',this)"></button>
+          <div class="supp-info">
+            <div class="supp-name">Creatine</div>
+            <div class="supp-meta">5g · anytime · take daily for full effect</div>
+            <div id="supp-meta-creatine" style="font-size:10px;margin-top:2px"></div>
+          </div>
+          <div class="supp-streak" id="creatine-streak"></div>
+        </div>
+        <div class="supp-row">
+          <button class="supp-check" id="supp-magnesium" onclick="toggleSupplement('magnesium',this)"></button>
+          <div class="supp-info">
+            <div class="supp-name">Magnesium</div>
+            <div class="supp-meta" id="mag-meta">200–400mg · 1–2 hrs before bed</div>
+            <div id="supp-meta-magnesium" style="font-size:10px;margin-top:2px"></div>
+          </div>
+        </div>
+        <div class="supp-row">
+          <button class="supp-check" id="supp-preworkout" onclick="toggleSupplement('preworkout',this)"></button>
+          <div class="supp-info">
+            <div class="supp-name">Pre-workout</div>
+            <div class="supp-meta" id="pre-meta">1 serving · 30–45 min before training</div>
+            <div id="supp-meta-preworkout" style="font-size:10px;margin-top:2px"></div>
+          </div>
+        </div>
+        <div class="supp-row">
+          <button class="supp-check" id="supp-liquid_iv" onclick="toggleSupplement('liquid_iv',this)"></button>
+          <div class="supp-info">
+            <div class="supp-name">Liquid IV</div>
+            <div class="supp-meta">1 packet · electrolytes + hydration · counts toward water goal</div>
+            <div id="supp-meta-liquid_iv" style="font-size:10px;margin-top:2px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Water -->
+    <div class="card">
+      <div class="card-title">💧 Water</div>
+      <div class="water-drops" id="water-drops"></div>
+      <div id="water-count" style="font-size:11px;color:var(--muted);margin-bottom:9px"></div>
+      <div class="water-btns">
+        <button class="btn btn-p btn-sm" onclick="addWater(20)">+20oz</button>
+        <button class="btn btn-g btn-sm" onclick="addWater(16)">+16oz</button>
+        <button class="btn btn-g btn-sm" onclick="addWater(8)">+8oz</button>
+        <button class="btn btn-g btn-sm" onclick="addWater(-4)">−4oz</button>
+      </div>
+    </div>
+
+    <!-- H-E-M -->
+    <div class="card" id="hem-card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleHEMCard()">
+        <span>Hunger · Energy · Mood</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="hem-logged-badge" style="display:none;font-size:10px;color:var(--accent)">✓ logged</span>
+          <span id="hem-nudge-badge" style="display:none;font-size:10px;color:var(--yellow)">○ tap to log</span>
+          <span id="hem-chevron" style="font-size:12px;color:var(--muted)">▲</span>
+        </div>
+      </div>
+      <div id="hem-body">
+        <div class="hem-quick" style="margin-top:10px">
+          <div class="hem-quick-label">Hunger</div>
+          <div class="hem-btns">
+            <button class="hem-btn" id="h-1" onclick="setHEM('h',1)" title="Not hungry">😶</button>
+            <button class="hem-btn" id="h-2" onclick="setHEM('h',2)" title="A little">🙂</button>
+            <button class="hem-btn" id="h-3" onclick="setHEM('h',3)" title="Very hungry">😤</button>
+          </div>
+        </div>
+        <div class="hem-quick">
+          <div class="hem-quick-label">Energy</div>
+          <div class="hem-btns">
+            <button class="hem-btn" id="e-1" onclick="setHEM('e',1)" title="Low">🪫</button>
+            <button class="hem-btn" id="e-2" onclick="setHEM('e',2)" title="Medium">⚡</button>
+            <button class="hem-btn" id="e-3" onclick="setHEM('e',3)" title="High">🔥</button>
+          </div>
+        </div>
+        <div class="hem-quick">
+          <div class="hem-quick-label">Mood</div>
+          <div class="hem-btns">
+            <button class="hem-btn" id="m-1" onclick="setHEM('m',1)" title="Low">😞</button>
+            <button class="hem-btn" id="m-2" onclick="setHEM('m',2)" title="OK">😐</button>
+            <button class="hem-btn" id="m-3" onclick="setHEM('m',3)" title="Good">😊</button>
+          </div>
+        </div>
+        <input id="hem-note" class="field-input" placeholder="Optional note…" style="width:100%;margin-top:8px">
+        <div class="hem-timeline-list" id="hem-timeline"></div>
+      </div>
+    </div>
+
     <!-- Food Log -->
     <div class="card">
       <div class="card-title">📝 Food Log</div>
@@ -1303,68 +1295,6 @@ body{
           placeholder="Ask your coach anything…"
           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();askCoach()}">
         <button class="coach-send" id="coach-send" onclick="askCoach()">→</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════ DOSE ═══════ -->
-  <div id="panel-dose" class="panel">
-
-    <div id="dose-injection-banner" style="display:none;margin-bottom:12px;padding:10px 12px;background:rgba(255,212,96,.08);border:1px solid rgba(255,212,96,.25);border-radius:10px;display:flex;align-items:center;gap:8px">
-      <span style="font-size:16px">🔔</span>
-      <span style="font-size:13px" id="dose-injection-banner-text">Injection day — log this week's summary</span>
-    </div>
-
-    <div class="card" style="margin-bottom:12px">
-      <div class="card-title">Medication profile</div>
-      <div class="field-grid">
-        <div>
-          <div class="field-label">Vial concentration (mg/mL)</div>
-          <input class="field-input" id="mp-concentration" type="number" step="0.1" placeholder="e.g. 17">
-        </div>
-        <div>
-          <div class="field-label">Vial size (mL)</div>
-          <input class="field-input" id="mp-vial-size" type="number" step="0.1" placeholder="e.g. 3">
-        </div>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin:8px 0">Set once — only update this when you get a new vial with a different concentration.</div>
-      <button class="btn btn-p btn-sm" onclick="saveMedicationProfile()">Save Profile</button>
-      <span id="mp-saved" style="font-size:12px;color:var(--accent);display:none;margin-left:8px">✓ Saved</span>
-    </div>
-
-    <div class="card" style="margin-bottom:12px">
-      <div class="card-title-row" style="display:flex;justify-content:space-between;align-items:baseline">
-        <span class="card-title" style="margin-bottom:0">Current dose</span>
-        <span id="dose-current-since" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-      <div id="dose-current-display" style="font-size:24px;font-weight:600;margin:4px 0">—</div>
-      <div id="dose-steady-note" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
-      <div style="height:6px;background:var(--border2);border-radius:99px;overflow:hidden;margin-bottom:6px">
-        <div id="dose-steady-bar" style="height:100%;width:0%;background:var(--accent3)"></div>
-      </div>
-      <div id="dose-vial-life" style="font-size:12px;color:var(--muted)"></div>
-
-      <div id="dose-log-form" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border2)">
-        <div class="field-grid">
-          <div>
-            <div class="field-label">New dose (units)</div>
-            <input class="field-input" id="dose-new-units" type="number" step="0.5" placeholder="e.g. 48" oninput="previewDoseMg()">
-          </div>
-          <div>
-            <div class="field-label">= mg (auto)</div>
-            <input class="field-input" id="dose-new-mg-preview" disabled placeholder="—">
-          </div>
-        </div>
-        <input class="field-input" id="dose-log-note" placeholder="Optional note…" style="width:100%;margin-top:8px">
-        <button class="btn btn-p btn-sm" style="width:100%;margin-top:8px" onclick="saveDoseChange()">Save Dose Change</button>
-      </div>
-      <button class="btn btn-g btn-sm" style="width:100%;margin-top:12px" onclick="toggleDoseLogForm()" id="dose-log-toggle-btn">+ Log a dose change</button>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Dose comparison</div>
-      <div id="dose-comparison-table" style="font-size:12px">
-        <div style="color:var(--muted);padding:8px 0">No dose changes logged yet.</div>
       </div>
     </div>
   </div>
@@ -1682,11 +1612,6 @@ body{
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     <div class="nav-badge" id="coach-badge"></div>
     <span>Coach</span>
-  </button>
-  <button class="nav-btn" id="nav-dose" onclick="showPanel('dose',this)" style="position:relative">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
-    <div class="nav-badge" id="dose-badge"></div>
-    <span>Dose</span>
   </button>
   <button class="nav-btn" id="nav-history" onclick="showPanel('history',this)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><line x1="12" y1="7" x2="12" y2="12"/><line x1="12" y1="12" x2="16" y2="14"/></svg>
@@ -2341,8 +2266,6 @@ async function saveNSCheckin() {
   document.getElementById('ns-summary-badge').style.display = 'inline';
   document.getElementById('ns-summary-badge').innerHTML =
     `<span style="font-size:10px;padding:2px 9px;border-radius:99px;background:${tier.bg};color:${tier.color};border:1px solid ${tier.border};font-weight:700">${tier.emoji} ${score} — ${tier.label}</span>`;
-  const nudgeEl = document.getElementById('ns-nudge-label');
-  if (nudgeEl) nudgeEl.style.display = 'none';
 
   nsRenderReadinessBar(score);
   renderInsights(); // re-render with new coaching mode
@@ -2430,22 +2353,17 @@ function nsRestoreUI() {
   document.getElementById('ns-summary-badge').style.display = 'inline';
   document.getElementById('ns-summary-badge').innerHTML =
     `<span style="font-size:10px;padding:2px 9px;border-radius:99px;background:${tier.bg};color:${tier.color};border:1px solid ${tier.border};font-weight:700">${tier.emoji} ${score} — ${tier.label}</span>`;
-  const nudgeEl = document.getElementById('ns-nudge-label');
-  if (nudgeEl) nudgeEl.style.display = 'none';
 
   nsRenderReadinessBar(score);
   nsCheckAfternoon();
 }
 
 function toggleNSCheckin() {
-  const body   = document.getElementById('ns-checkin-body');
-  const chev   = document.getElementById('ns-chevron');
-  const nudge  = document.getElementById('ns-nudge-label');
-  const open   = body.style.display !== 'none';
+  const body  = document.getElementById('ns-checkin-body');
+  const chev  = document.getElementById('ns-chevron');
+  const open  = body.style.display !== 'none';
   body.style.display = open ? 'none' : 'block';
   chev.textContent   = open ? '▶' : '▼';
-  // Only show the nudge label when collapsed AND check-in hasn't been completed today
-  if (nudge) nudge.style.display = (!open && !nsState.checkinComplete) ? 'none' : (open ? 'none' : 'inline');
 }
 
 // ── Afternoon check-in ────────────────────────────────────────────────────
@@ -2716,7 +2634,6 @@ function showPanel(id, btn) {
   if (id === 'settings') { loadSupplementSettings(); }
   if (id === 'foods')   { loadLibraryFoods(); }
   if (id === 'history') { renderHistory(); }
-  if (id === 'dose')    { loadDosePanel(); }
   if (id === 'coach')   {
     document.getElementById('coach-badge').classList.remove('show');
     // Sync supplement and activity UI state
@@ -3391,32 +3308,6 @@ function setHEM(type, val) {
   }, 10000);
 }
 
-function logHungerSpike() {
-  const entry = {
-    timestamp: new Date().toISOString(),
-    h: null, e: null, m: null,
-    spike: true,
-    note: null,
-  };
-  dayData.hem.push(entry);
-  renderHEMTimeline();
-  updateHEMBadge();
-  renderInsights();
-  saveDayDebounced();
-  markCoachBadge();
-  toast('🔥 Hunger spike logged');
-  if (WORKER_URL && FS_API_KEY) {
-    wFetch('/api/hem', {
-      method: 'POST',
-      body: JSON.stringify({
-        date:      viewDate,
-        timestamp: entry.timestamp,
-        spike:     true,
-      }),
-    }).catch(() => {});
-  }
-}
-
 function logHEM() {
   const note  = document.getElementById('hem-note').value.trim();
   const entry = {
@@ -3486,7 +3377,6 @@ function renderHEMTimeline() {
     if (e.h) parts.push(emojis.h[e.h] + ' H' + e.h);
     if (e.e) parts.push(emojis.e[e.e] + ' E' + e.e);
     if (e.m) parts.push(emojis.m[e.m] + ' M' + e.m);
-    if (e.spike) parts.push('🔥 spike');
     return `<div class="hem-entry">
       <span class="hem-entry-time">${fmtTime(e.timestamp)}</span>
       <span class="hem-entry-vals">${parts.join('  ')}${e.note ? ' · ' + e.note : ''}</span>
@@ -6476,169 +6366,6 @@ function saveTirz() {
 }
 
 // ══════════════════════════════════════════════════
-// DOSE TAB
-// ══════════════════════════════════════════════════
-let medicationProfile = null; // { vial_concentration_mg_ml, vial_size_ml }
-let doseComparisonData = [];
-
-async function loadDosePanel() {
-  checkInjectionDayBanner();
-  await Promise.all([loadMedicationProfile(), loadDoseComparison()]);
-  renderCurrentDose();
-}
-
-async function loadMedicationProfile() {
-  if (!WORKER_URL || !FS_API_KEY) return;
-  try {
-    const res = await wFetch('/api/medication-profile');
-    if (res.profile) {
-      medicationProfile = res.profile;
-      document.getElementById('mp-concentration').value = medicationProfile.vial_concentration_mg_ml;
-      document.getElementById('mp-vial-size').value      = medicationProfile.vial_size_ml;
-    }
-  } catch (e) { /* offline */ }
-}
-
-async function saveMedicationProfile() {
-  const conc = parseFloat(document.getElementById('mp-concentration').value);
-  const size = parseFloat(document.getElementById('mp-vial-size').value);
-  if (!conc || !size) { toast('Enter both concentration and vial size'); return; }
-  medicationProfile = { vial_concentration_mg_ml: conc, vial_size_ml: size };
-  const el = document.getElementById('mp-saved');
-  el.style.display = 'inline';
-  setTimeout(() => el.style.display = 'none', 2000);
-  renderCurrentDose();
-  if (WORKER_URL && FS_API_KEY) {
-    try {
-      await wFetch('/api/medication-profile', {
-        method: 'POST',
-        body: JSON.stringify({ vialConcentration: conc, vialSize: size }),
-      });
-    } catch (e) { /* offline */ }
-  }
-}
-
-function toggleDoseLogForm() {
-  const form = document.getElementById('dose-log-form');
-  const open = form.style.display !== 'none';
-  form.style.display = open ? 'none' : 'block';
-  document.getElementById('dose-log-toggle-btn').style.display = open ? 'block' : 'none';
-}
-
-function previewDoseMg() {
-  const units = parseFloat(document.getElementById('dose-new-units').value);
-  const out   = document.getElementById('dose-new-mg-preview');
-  if (!units || !medicationProfile) { out.value = ''; return; }
-  const mg = units / 100 * medicationProfile.vial_concentration_mg_ml;
-  out.value = Math.round(mg * 100) / 100;
-}
-
-async function saveDoseChange() {
-  const units = parseFloat(document.getElementById('dose-new-units').value);
-  if (!units) { toast('Enter the new dose in units'); return; }
-  if (!medicationProfile) { toast('Set your medication profile first'); return; }
-  const mg   = Math.round((units / 100 * medicationProfile.vial_concentration_mg_ml) * 100) / 100;
-  const note = document.getElementById('dose-log-note').value.trim();
-
-  if (WORKER_URL && FS_API_KEY) {
-    try {
-      await wFetch('/api/tirz', {
-        method: 'POST',
-        body: JSON.stringify({ eventType: 'dose_change', dose: mg, note: note || null }),
-      });
-      toast(`✓ Dose change logged — ${mg}mg`);
-    } catch (e) { toast('❌ Could not save — check connection'); return; }
-  }
-  document.getElementById('dose-new-units').value = '';
-  document.getElementById('dose-new-mg-preview').value = '';
-  document.getElementById('dose-log-note').value = '';
-  toggleDoseLogForm();
-  await loadDoseComparison();
-  renderCurrentDose();
-}
-
-async function loadDoseComparison() {
-  if (!WORKER_URL || !FS_API_KEY) return;
-  try {
-    const res = await wFetch('/api/dose-comparison');
-    doseComparisonData = res.periods || [];
-    renderDoseComparison();
-  } catch (e) { /* offline */ }
-}
-
-function renderCurrentDose() {
-  const el = document.getElementById('dose-current-display');
-  const since = document.getElementById('dose-current-since');
-  const noteEl = document.getElementById('dose-steady-note');
-  const bar = document.getElementById('dose-steady-bar');
-  const vialLifeEl = document.getElementById('dose-vial-life');
-
-  const current = doseComparisonData.find(p => p.current);
-  if (!current) {
-    el.textContent = '—';
-    since.textContent = '';
-    noteEl.textContent = 'No dose changes logged yet.';
-    bar.style.width = '0%';
-    vialLifeEl.textContent = '';
-    return;
-  }
-
-  const units = medicationProfile ? Math.round(current.doseMg / medicationProfile.vial_concentration_mg_ml * 100) : null;
-  el.innerHTML = `${current.doseMg}mg${units ? ` <span style="font-size:14px;color:var(--muted);font-weight:400">· ${units} units</span>` : ''}`;
-  since.textContent = 'since ' + current.startDate;
-
-  const daysIn = current.daysInPeriod;
-  const pct = Math.min(100, Math.round(daysIn / 28 * 100));
-  bar.style.width = pct + '%';
-  noteEl.textContent = current.steadyState
-    ? 'At steady state'
-    : `Stabilizing — ${28 - daysIn} more day${28 - daysIn === 1 ? '' : 's'} until steady state`;
-
-  if (medicationProfile) {
-    const weeklyMg = current.doseMg;
-    const totalMg  = medicationProfile.vial_concentration_mg_ml * medicationProfile.vial_size_ml;
-    const weeksPerVial = Math.round(totalMg / weeklyMg * 10) / 10;
-    vialLifeEl.textContent = `~${weeksPerVial} weeks per vial at this dose`;
-  } else {
-    vialLifeEl.textContent = 'Set your medication profile to see vial life estimate';
-  }
-}
-
-function renderDoseComparison() {
-  const el = document.getElementById('dose-comparison-table');
-  if (!doseComparisonData.length) {
-    el.innerHTML = '<div style="color:var(--muted);padding:8px 0">No dose changes logged yet.</div>';
-    return;
-  }
-  const rows = doseComparisonData.slice().reverse().map(p => {
-    const label = p.current ? `${p.doseMg}mg (current)` : `${p.doseMg}mg`;
-    const stateNote = p.steadyState ? '' : ' <span style="color:var(--muted)">(stabilizing)</span>';
-    return `<tr style="border-top:1px solid var(--border2)">
-      <td style="padding:6px 4px">${label}${stateNote}</td>
-      <td style="padding:6px 4px;text-align:right">${p.avgHunger !== null ? p.avgHunger : '—'}</td>
-      <td style="padding:6px 4px;text-align:right">${p.spikesPerWeek !== null ? p.spikesPerWeek : '—'}</td>
-    </tr>`;
-  }).join('');
-  el.innerHTML = `<table style="width:100%;border-collapse:collapse">
-    <tr style="color:var(--muted)"><td style="padding:4px">Dose</td><td style="padding:4px;text-align:right">Avg hunger</td><td style="padding:4px;text-align:right">Spikes/wk</td></tr>
-    ${rows}
-  </table>`;
-}
-
-function checkInjectionDayBanner() {
-  const banner = document.getElementById('dose-injection-banner');
-  const text   = document.getElementById('dose-injection-banner-text');
-  if (tirz.day === undefined || tirz.day === '' || tirz.day === null) { banner.style.display = 'none'; return; }
-  const today = new Date().getDay();
-  if (parseInt(tirz.day) === today) {
-    text.textContent = "Injection day — log this week's summary";
-    banner.style.display = 'flex';
-  } else {
-    banner.style.display = 'none';
-  }
-}
-
-// ══════════════════════════════════════════════════
 // EXPORT / IMPORT
 // ══════════════════════════════════════════════════
 function exportData() {
@@ -7174,17 +6901,6 @@ async function init() {
   updateCloseSec();
   setInterval(updateCloseSec, 300000);
   setInterval(updateHEMBadge, 3600000); // re-check HEM nudge every hour
-
-  updateDoseNavBadge();
-  setInterval(updateDoseNavBadge, 3600000);
-}
-
-function updateDoseNavBadge() {
-  const badge = document.getElementById('dose-badge');
-  if (!badge) return;
-  const today = new Date().getDay();
-  const isInjectionDay = tirz.day !== undefined && tirz.day !== '' && tirz.day !== null && parseInt(tirz.day) === today;
-  badge.classList.toggle('show', isInjectionDay);
 }
 
 // Wait for all external scripts (coach-utils.js, ZXing, etc.) to finish loading
