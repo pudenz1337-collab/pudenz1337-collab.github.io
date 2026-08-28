@@ -1384,8 +1384,12 @@ function resetDriveCheckHistory() {
 
 // interactive=true: shows consent UI if needed and toasts the result (Check Now button).
 // interactive=false: silent — used on page load; fails quietly if the session's expired.
+let driveCheckInFlight = false;
+
 async function checkDriveFolder(interactive) {
   if (!driveFolderId) return;
+  if (driveCheckInFlight) { if (interactive) toast('A Drive check is already running…'); return; }
+  driveCheckInFlight = true;
   try {
     let token;
     try {
@@ -1454,6 +1458,8 @@ async function checkDriveFolder(interactive) {
   } catch (e) {
     if (interactive) toast('Drive check failed: ' + e.message, true);
     // Silent on page load — session likely expired, status button stays put
+  } finally {
+    driveCheckInFlight = false;
   }
 }
 
