@@ -982,9 +982,12 @@ let FS_API_KEY = localStorage.getItem(FS_KEY_STOR) || '';
 let goals       = JSON.parse(localStorage.getItem('fsp-goals-v2') || '{}');
 let appSettings = JSON.parse(localStorage.getItem('fs3-settings-v2') || '{}');  // shared with index_v2
 
-// Drive auto-import (Picker-based, drive.file scope — access limited to the
-// one folder the user explicitly picks, not the whole Drive)
-const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file';
+// Drive auto-import (Picker still used to choose which folder to watch,
+// but the scope must be drive.readonly — drive.file only grants access to
+// files the app creates or the user individually selects, NOT pre-existing
+// files already sitting inside a folder that gets picked. Confirmed platform
+// limitation, not something workaroundable at the folder-grant level.)
+const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.readonly';
 let driveClientId      = localStorage.getItem('fs-drive-client-id')   || '';
 let driveApiKey        = localStorage.getItem('fs-drive-api-key')     || '';
 let driveFolderId      = localStorage.getItem('fs-drive-folder-id')   || '';
@@ -1256,9 +1259,11 @@ function mapEvoltToD1Scan(e) {
 }
 
 // ══════════════════════════════════════════════
-// GOOGLE DRIVE AUTO-IMPORT (Picker-based)
-// Scope is drive.file — the token can only ever see the one folder the
-// user explicitly selects via the picker, not the rest of their Drive.
+// GOOGLE DRIVE AUTO-IMPORT (Picker for folder selection, drive.readonly scope)
+// Picker is kept purely as a friendly folder-selection UI. The actual access
+// grant is drive.readonly (whole-Drive read access) because drive.file scope
+// cannot see pre-existing files inside a picked folder — only files the app
+// itself creates or the user individually selects file-by-file.
 // ══════════════════════════════════════════════
 function initDriveUI2() {
   const hasCreds  = driveClientId && driveApiKey;
@@ -1390,9 +1395,11 @@ async function checkDriveFolder(interactive) {
       token = await getDriveToken(true);  // Check Now: fall back to visible consent screen
     }
     const q = encodeURIComponent(`'${driveFolderId}' in parents and mimeType='application/pdf' and trashed=false`);
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`, {
-      headers: { Authorization: 'Bearer ' + token },
-    });
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)` +
+      `&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`,
+      { headers: { Authorization: 'Bearer ' + token } }
+    );
     if (!res.ok) throw new Error(`Drive list failed (${res.status})`);
     const { files = [] } = await res.json();
     const newFiles = files.filter(f => !driveProcessedIds.includes(f.id));
