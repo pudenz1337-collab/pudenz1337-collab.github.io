@@ -8,6 +8,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="coach-utils.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
 <style>
 :root {
   --bg:#080b10; --surface:#0f1319; --card:#141a24; --card2:#1a2130;
@@ -683,6 +685,28 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
           <input type="file" accept=".pdf" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer" onchange="testParseEvolt(this.files)">
         </label>
       </div>
+
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+        <div class="card-title">📁 Auto-Check Drive Folder</div>
+        <div id="drive-setup" style="display:none">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px">One-time setup — paste your Google Cloud OAuth Client ID and API Key:</div>
+          <input type="text" id="drive-client-id-input" placeholder="OAuth Client ID"
+            style="width:100%;margin-bottom:6px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;font-size:12px;font-family:'DM Mono',monospace">
+          <input type="text" id="drive-api-key-input" placeholder="API Key"
+            style="width:100%;margin-bottom:8px;background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;font-size:12px;font-family:'DM Mono',monospace">
+          <button class="btn btn-g btn-sm" onclick="saveDriveCreds()">Save Credentials</button>
+        </div>
+        <div id="drive-connect" style="display:none">
+          <button class="btn btn-g btn-sm" onclick="connectDriveFolder()">☁️ Choose Drive Folder</button>
+        </div>
+        <div id="drive-status" style="display:none">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Watching folder: <span id="drive-folder-label" style="color:var(--text)"></span></div>
+          <div class="btn-row">
+            <button class="btn btn-g btn-sm" onclick="checkDriveFolder(true)">🔄 Check Now</button>
+            <button class="btn btn-g btn-sm" onclick="changeDriveFolder()">Change Folder</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -957,6 +981,17 @@ let FS_API_KEY = localStorage.getItem(FS_KEY_STOR) || '';
 let goals       = JSON.parse(localStorage.getItem('fsp-goals-v2') || '{}');
 let appSettings = JSON.parse(localStorage.getItem('fs3-settings-v2') || '{}');  // shared with index_v2
 
+// Drive auto-import (Picker-based, drive.file scope — access limited to the
+// one folder the user explicitly picks, not the whole Drive)
+const DRIVE_SCOPE      = 'https://www.googleapis.com/auth/drive.file';
+let driveClientId      = localStorage.getItem('fs-drive-client-id')   || '';
+let driveApiKey        = localStorage.getItem('fs-drive-api-key')     || '';
+let driveFolderId      = localStorage.getItem('fs-drive-folder-id')   || '';
+let driveFolderName    = localStorage.getItem('fs-drive-folder-name') || '';
+let driveAccessToken   = null;
+let driveTokenExpiry   = 0;
+let driveProcessedIds  = JSON.parse(localStorage.getItem('fs-drive-processed-ids') || '[]');
+
 let data = { evolt: [], fitbod: [], fuelstrong: [], measurements: [] };
 let coachThread   = JSON.parse(localStorage.getItem('fsp-coach') || '[]');
 let coachContext  = '';
@@ -1217,6 +1252,175 @@ function mapEvoltToD1Scan(e) {
     recProteinHigh:    e.recProteinHigh,
     source:            'pdf_upload',
   };
+}
+
+// ══════════════════════════════════════════════
+// GOOGLE DRIVE AUTO-IMPORT (Picker-based)
+// Scope is drive.file — the token can only ever see the one folder the
+// user explicitly selects via the picker, not the rest of their Drive.
+// ══════════════════════════════════════════════
+function initDriveUI2() {
+  const hasCreds  = driveClientId && driveApiKey;
+  const hasFolder = !!driveFolderId;
+  const setupEl   = document.getElementById('drive-setup');
+  const connectEl = document.getElementById('drive-connect');
+  const statusEl  = document.getElementById('drive-status');
+  if (!setupEl) return; // panel not in DOM yet
+  setupEl.style.display   = hasCreds ? 'none'  : 'block';
+  connectEl.style.display = (hasCreds && !hasFolder) ? 'block' : 'none';
+  statusEl.style.display  = (hasCreds && hasFolder)  ? 'block' : 'none';
+  if (hasFolder) document.getElementById('drive-folder-label').textContent = driveFolderName || driveFolderId;
+}
+
+function saveDriveCreds() {
+  const cid = document.getElementById('drive-client-id-input').value.trim();
+  const key = document.getElementById('drive-api-key-input').value.trim();
+  if (!cid || !key) { toast('Enter both fields', true); return; }
+  driveClientId = cid;
+  driveApiKey   = key;
+  localStorage.setItem('fs-drive-client-id', driveClientId);
+  localStorage.setItem('fs-drive-api-key',   driveApiKey);
+  initDriveUI2();
+  toast('✓ Drive credentials saved');
+}
+
+// Returns a valid access token, silently reusing a cached one when possible.
+// interactive=true shows the Google consent UI if needed; interactive=false
+// fails quietly (used for the on-page-load check so it never pops a dialog).
+function getDriveToken(interactive) {
+  return new Promise((resolve, reject) => {
+    if (driveAccessToken && Date.now() < driveTokenExpiry - 30000) {
+      resolve(driveAccessToken);
+      return;
+    }
+    if (!driveClientId) { reject(new Error('No Drive Client ID set')); return; }
+    if (typeof google === 'undefined' || !google.accounts) { reject(new Error('Google auth script not loaded')); return; }
+    try {
+      const tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: driveClientId,
+        scope: DRIVE_SCOPE,
+        callback: (resp) => {
+          if (resp.error) { reject(new Error(resp.error)); return; }
+          driveAccessToken = resp.access_token;
+          driveTokenExpiry = Date.now() + (resp.expires_in * 1000);
+          resolve(driveAccessToken);
+        },
+      });
+      tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
+    } catch (e) { reject(e); }
+  });
+}
+
+function loadDrivePicker() {
+  return new Promise((resolve) => {
+    if (window.google?.picker) { resolve(); return; }
+    gapi.load('picker', resolve);
+  });
+}
+
+async function connectDriveFolder() {
+  try {
+    const token = await getDriveToken(true);
+    await loadDrivePicker();
+    const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+      .setSelectFolderEnabled(true)
+      .setIncludeFolders(true);
+    const picker = new google.picker.PickerBuilder()
+      .setOAuthToken(token)
+      .setDeveloperKey(driveApiKey)
+      .addView(view)
+      .setCallback((pdata) => {
+        if (pdata.action === google.picker.Action.PICKED) {
+          const folder = pdata.docs[0];
+          driveFolderId   = folder.id;
+          driveFolderName = folder.name;
+          localStorage.setItem('fs-drive-folder-id',   driveFolderId);
+          localStorage.setItem('fs-drive-folder-name', driveFolderName);
+          initDriveUI2();
+          toast(`✓ Watching "${driveFolderName}"`);
+          checkDriveFolder(true);
+        }
+      })
+      .build();
+    picker.setVisible(true);
+  } catch (e) {
+    toast('Drive connect failed: ' + e.message, true);
+  }
+}
+
+function changeDriveFolder() {
+  driveFolderId = ''; driveFolderName = '';
+  localStorage.removeItem('fs-drive-folder-id');
+  localStorage.removeItem('fs-drive-folder-name');
+  initDriveUI2();
+  connectDriveFolder();
+}
+
+// interactive=true: shows consent UI if needed and toasts the result (Check Now button).
+// interactive=false: silent — used on page load; fails quietly if the session's expired.
+async function checkDriveFolder(interactive) {
+  if (!driveFolderId) return;
+  try {
+    const token = await getDriveToken(!!interactive);
+    const q = encodeURIComponent(`'${driveFolderId}' in parents and mimeType='application/pdf' and trashed=false`);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!res.ok) throw new Error(`Drive list failed (${res.status})`);
+    const { files = [] } = await res.json();
+    const newFiles = files.filter(f => !driveProcessedIds.includes(f.id));
+
+    if (!newFiles.length) {
+      if (interactive) toast('No new scans in Drive folder');
+      return;
+    }
+
+    const logEl = document.getElementById('parse-log');
+    if (logEl) logEl.style.display = 'block';
+    plog(`📁 Found ${newFiles.length} new PDF(s) in Drive folder…`, 'linfo');
+
+    const countBefore = data.evolt.length;
+    for (const f of newFiles) {
+      try {
+        const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        if (!fileRes.ok) throw new Error(`download failed (${fileRes.status})`);
+        const blob = await fileRes.blob();
+        const file = new File([blob], f.name, { type: 'application/pdf' });
+
+        const result = await parseEvoltPDF(file);
+        if (!result) { plog(`⚠ Could not parse ${f.name}`, 'lwarn'); continue; }
+
+        const saved = await saveToWorker('evolt', [result]);
+        if (saved && saved.dupes) {
+          plog(`⏭ ${result.date} already in D1 — skipped (${f.name})`, 'lwarn');
+        } else {
+          data.evolt.push(result);
+          plog(`✓ ${result.date} imported from Drive (${f.name})`, 'linfo');
+          document.getElementById('ins-badge').classList.add('show');
+          document.getElementById('coach-badge').classList.add('show');
+        }
+        // Mark processed on success or duplicate. Leave off the list on
+        // failure so a transient error (network blip, etc.) can retry
+        // next check instead of being silently skipped forever.
+        driveProcessedIds.push(f.id);
+        localStorage.setItem('fs-drive-processed-ids', JSON.stringify(driveProcessedIds));
+      } catch (e) {
+        plog(`⚠ ${f.name}: ${e.message}`, 'lwarn');
+      }
+    }
+
+    if (data.evolt.length > countBefore) {
+      data.evolt.sort((a, b) => new Date(a.date) - new Date(b.date));
+      destroyCharts();
+      renderOverview(); renderBody(); renderTraining(); renderDataSummary();
+      loadMomentum();
+    }
+  } catch (e) {
+    if (interactive) toast('Drive check failed: ' + e.message, true);
+    // Silent on page load — session likely expired, status button stays put
+  }
 }
 
 async function clearType(type) {
@@ -1595,10 +1799,11 @@ function parseEvoltText(text, filename) {
   const bfm = text.match(/(\d+\.?\d*)%\s*\/\s*(?:High|Low|Optimal|Under Range|Over Range)/);
   const bodyFatPct = bfm ? parseFloat(bfm[1]) : null;
 
-  // ── BMR ──────────────────────────────────────────────────────────────────
-  // First "NNNN kCal" in the text (BMR); second would be TEE
+  // ── BMR / TEE ────────────────────────────────────────────────────────────
+  // First "NNNN kCal" in the text is BMR; second is TEE
   const bmrMatches = [...text.matchAll(/(\d{3,4})\s*kCal/gi)];
-  const bmr = bmrMatches.length ? parseInt(bmrMatches[0][1]) : null;
+  const bmr = bmrMatches.length     ? parseInt(bmrMatches[0][1]) : null;
+  const tee = bmrMatches.length > 1 ? parseInt(bmrMatches[1][1]) : null;
 
   // ── VISCERAL FAT MASS ────────────────────────────────────────────────────
   // Format: "9.9[ 5.4% ]" — small value followed by [pct%]
@@ -1606,6 +1811,36 @@ function parseEvoltText(text, filename) {
   const pctBracketVals = [...text.matchAll(/(\d+\.?\d*)\s*\[\s*\d+\.?\d*%/g)]
     .map(m => parseFloat(m[1]));
   const visceral = pctBracketVals.find(v => v < 20) ?? null;
+
+  // ── VISCERAL FAT LEVEL ───────────────────────────────────────────────────
+  // Format: "11 / Over Range" — same "NUMBER / Rating" shape as the other
+  // fields, but uniquely has NO trailing "[range]" bracket. Negative lookahead
+  // excludes every bracketed field (LBM, SMM, protein, etc.) that shares the
+  // same rating words.
+  const vflMatch = text.match(/(\d{1,2})\s*\/\s*(?:Optimal|Balanced|Over Range)\b(?!\s*\[)/);
+  const visceralFatLevel = vflMatch ? parseInt(vflMatch[1]) : null;
+
+  // ── BIO AGE / BWI SCORE ──────────────────────────────────────────────────
+  // These render as three bare numbers immediately after the TEE value:
+  // bioAge (int) → bwiScore (X.X) → literal "10" (BWI is always "/10").
+  // Anchoring on the TEE match position + the literal "10" denominator makes
+  // this reliable despite the numbers having no labels of their own.
+  let bioAge = null, bwiScore = null;
+  if (bmrMatches.length > 1) {
+    const afterTee = text.slice(bmrMatches[1].index + bmrMatches[1][0].length);
+    const bwiMatch = afterTee.match(/^\s*(\d{1,3})\s+(\d{1,2}\.\d{1,2})\s+10\b/);
+    if (bwiMatch) {
+      bioAge   = parseInt(bwiMatch[1]);
+      bwiScore = parseFloat(bwiMatch[2]);
+    }
+  }
+
+  // ── RECOMMENDED PROTEIN RANGE ────────────────────────────────────────────
+  // "YOUR NUTRITION" section renders three "NNNg - NNNg (NN%)" blocks in
+  // order: Protein, Carbs, Fat. Take the first as the protein rec.
+  const gRangeMatches = [...text.matchAll(/(\d{2,3})g\s*-\s*(\d{2,3})g\s*\(\d{1,2}%\)/g)];
+  const recProteinLow  = gRangeMatches.length ? parseInt(gRangeMatches[0][1]) : null;
+  const recProteinHigh = gRangeMatches.length ? parseInt(gRangeMatches[0][2]) : null;
 
   // ── SEQUENTIAL "VALUE / Rating [range]" EXTRACTION ───────────────────────
   // The Evolt PDF renders labels and values in separate text layers.
@@ -1634,7 +1869,13 @@ function parseEvoltText(text, filename) {
     skeletalMuscleMass: smm        ?? null,
     leanBodyMass:       lbm        ?? null,
     bmr:                bmr        ?? null,
+    tee:                tee        ?? null,
     visceralFatMass:    visceral   ?? null,
+    visceralFatLevel:   visceralFatLevel ?? null,
+    bioAge:             bioAge     ?? null,
+    bwiScore:           bwiScore   ?? null,
+    recProteinLow:      recProteinLow  ?? null,
+    recProteinHigh:     recProteinHigh ?? null,
     segmental:          {},
     source:             filename,
     savedAt:            new Date().toISOString(),
@@ -4217,6 +4458,8 @@ function init() {
   } else {
     document.getElementById('overview-empty').style.display = 'block';
   }
+  initDriveUI2();
+  if (driveFolderId) checkDriveFolder(false); // silent — no popup if session's expired
 }
 
 init();
