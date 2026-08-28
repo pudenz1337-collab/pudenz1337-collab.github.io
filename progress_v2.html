@@ -704,6 +704,7 @@ textarea.setting-input{resize:vertical;min-height:80px;line-height:1.6}
           <div class="btn-row">
             <button class="btn btn-g btn-sm" onclick="checkDriveFolder(true)">🔄 Check Now</button>
             <button class="btn btn-g btn-sm" onclick="changeDriveFolder()">Change Folder</button>
+            <button class="btn btn-g btn-sm" onclick="resetDriveCheckHistory()">Reset Check History</button>
           </div>
         </div>
       </div>
@@ -1295,11 +1296,21 @@ function getDriveToken(interactive) {
     }
     if (!driveClientId) { reject(new Error('No Drive Client ID set')); return; }
     if (typeof google === 'undefined' || !google.accounts) { reject(new Error('Google auth script not loaded')); return; }
+    let settled = false;
+    // Silent (non-interactive) requests occasionally never invoke Google's
+    // callback at all rather than erroring — guard with a timeout so we
+    // always fall through to the visible consent screen instead of hanging.
+    const timeout = interactive ? null : setTimeout(() => {
+      if (!settled) { settled = true; reject(new Error('Silent auth timed out')); }
+    }, 4000);
     try {
       const tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: driveClientId,
         scope: DRIVE_SCOPE,
         callback: (resp) => {
+          if (settled) return;
+          settled = true;
+          if (timeout) clearTimeout(timeout);
           if (resp.error) { reject(new Error(resp.error)); return; }
           driveAccessToken = resp.access_token;
           driveTokenExpiry = Date.now() + (resp.expires_in * 1000);
@@ -1307,7 +1318,10 @@ function getDriveToken(interactive) {
         },
       });
       tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
-    } catch (e) { reject(e); }
+    } catch (e) {
+      if (timeout) clearTimeout(timeout);
+      if (!settled) { settled = true; reject(e); }
+    }
   });
 }
 
@@ -1356,12 +1370,25 @@ function changeDriveFolder() {
   connectDriveFolder();
 }
 
+function resetDriveCheckHistory() {
+  if (!confirm('Forget which Drive files have already been checked? Next "Check Now" will re-examine every PDF in the folder (already-imported dates are still skipped as duplicates by D1, this only affects the local "seen it" list).')) return;
+  driveProcessedIds = [];
+  localStorage.removeItem('fs-drive-processed-ids');
+  toast('✓ Drive check history reset');
+}
+
 // interactive=true: shows consent UI if needed and toasts the result (Check Now button).
 // interactive=false: silent — used on page load; fails quietly if the session's expired.
 async function checkDriveFolder(interactive) {
   if (!driveFolderId) return;
   try {
-    const token = await getDriveToken(!!interactive);
+    let token;
+    try {
+      token = await getDriveToken(false); // try silent first — avoids re-prompting every click
+    } catch (silentErr) {
+      if (!interactive) throw silentErr; // page-load check: fail quietly, no popup
+      token = await getDriveToken(true);  // Check Now: fall back to visible consent screen
+    }
     const q = encodeURIComponent(`'${driveFolderId}' in parents and mimeType='application/pdf' and trashed=false`);
     const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)`, {
       headers: { Authorization: 'Bearer ' + token },
